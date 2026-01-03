@@ -1,0 +1,40 @@
+# Build Directories
+build/
+dist/
+out/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# Binaries and Object Files
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+*.elf
+*.bin
+*.exe
+
+# NeolyxOS Specific Artifacts
+*.img
+*.iso
+*.fd
+neolyx.img*
+hdd_*.img
+*.vmdk
+*.qcow2
+
+# Logs and Temporary Files
+*.log
+*.tmp
+*.bak
+*~
+*.swp
+.DS_Store
+
+# User/Config specifics (if any)
+neolyx.img.d/
