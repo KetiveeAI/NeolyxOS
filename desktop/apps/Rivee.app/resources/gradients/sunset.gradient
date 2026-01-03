@@ -1,0 +1,11 @@
+{
+    "name": "Sunset",
+    "type": "linear",
+    "angle": 135,
+    "stops": [
+        {"position": 0.0, "color": "#FF6B35"},
+        {"position": 0.4, "color": "#F7931E"},
+        {"position": 0.7, "color": "#FCEE21"},
+        {"position": 1.0, "color": "#8CC63F"}
+    ]
+}

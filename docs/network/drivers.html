@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Drivers - NeolyxOS Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --border: #30363d;
+            --code-bg: #1f2428;
+            --success: #238636;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1,
+        h2,
+        h3 {
+            color: var(--accent);
+        }
+
+        h1 {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        code {
+            background: var(--code-bg);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        pre {
+            background: var(--code-bg);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+
+        .chipset-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .chip-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            padding: 1rem;
+            border-radius: 4px;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+    </style>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <a href="index.html" class="back-link">← Back to Network Overview</a>
+
+        <h1>🔌 Network Hardware Support</h1>
+        <p>NeolyxOS uses a unified kernel driver (<code>nxnet.kdrv</code>) that abstracts various hardware NICs into a
+            common interface.</p>
+
+        <h2>Architecture</h2>
+        <p>The system uses <code>detect_network_devices()</code> to scan the PCI bus for Class 0x02 (Network).
+            Recognized cards are automatically initialized and registered as <code>eth0</code> through
+            <code>ethN</code>.</p>
+
+        <h3>Supported Ethernet Controllers (Wired)</h3>
+
+        <div class="chipset-list">
+            <div class="chip-card">
+                <h3>Intel E1000</h3>
+                <code>82540EM (QEMU)</code>
+                <p>Status: <span style="color: var(--success)">Stable</span></p>
+                <p>Full MMIO driver with TX/RX ring buffers.</p>
+            </div>
+            <div class="chip-card">
+                <h3>Intel E1000e</h3>
+                <code>82574L (PCIe)</code>
+                <p>Status: <span style="color: var(--success)">Stable</span></p>
+                <p>PCIe variant of E1000.</p>
+            </div>
+            <div class="chip-card">
+                <h3>VirtIO-Net</h3>
+                <code>1AF4:1000</code>
+                <p>Status: <span style="color: var(--success)">Stable</span></p>
+                <p>Paravirtualized driver for high-performance VM networking.</p>
+            </div>
+            <div class="chip-card">
+                <h3>Realtek</h3>
+                <code>RTL8139 / RTL8169</code>
+                <p>Status: <span style="color: var(--success)">Beta</span></p>
+                <p>Legacy 10/100 support.</p>
+            </div>
+        </div>
+
+        <h2>📡 WiFi Support</h2>
+        <p><strong>Source:</strong> <code>kernel/src/drivers/network/wifi.c</code></p>
+        <p>WiFi support is integrated via a generic Firmware Abstraction Layer. This allows supporting multiple vendors
+            with a consistent API.</p>
+
+        <h3>Supported Chipsets</h3>
+        <ul>
+            <li><strong>Intel:</strong> <code>8260</code> series</li>
+            <li><strong>Broadcom:</strong> <code>BCM4360</code> series</li>
+            <li><strong>Atheros:</strong> <code>AR9280</code> series</li>
+            <li><strong>Realtek:</strong> <code>RTL8821CE</code> series</li>
+        </ul>
+
+        <h3>Features</h3>
+        <table>
+            <tr>
+                <th>Feature</th>
+                <th>Status</th>
+                <th>Notes</th>
+            </tr>
+            <tr>
+                <td>Scanning</td>
+                <td>✅ Working</td>
+                <td>Retrieves SSID, Signal Strength (RSSI), Security Type.</td>
+            </tr>
+            <tr>
+                <td>WPA2-PSK</td>
+                <td>✅ Working</td>
+                <td>Personal mode (Password).</td>
+            </tr>
+            <tr>
+                <td>Open Networks</td>
+                <td>✅ Working</td>
+                <td>No security.</td>
+            </tr>
+            <tr>
+                <td>Power Save</td>
+                <td>✅ Working</td>
+                <td>Can toggle power states.</td>
+            </tr>
+        </table>
+    </div>
+</body>
+
+</html>

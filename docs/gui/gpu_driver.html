@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPU Driver | NXRender | NeolyxOS</title>
+    
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="nav">
+        <a href="nxrender.html">← Back to NXRender</a>
+    </div>
+
+    <div class="container">
+        <h1>GPU Driver Interface</h1>
+        <p>NXRender includes a GPU driver interface for hardware-accelerated rendering. The driver communicates with the
+            NeolyxOS kernel GPU subsystem via command buffers.</p>
+
+        <h2>Architecture</h2>
+        <div class="diagram">
+            ┌──────────────────────────────────────────────────────────────────┐
+            │ USER SPACE (NXRender) │
+            │ │
+            │ ┌────────────┐ ┌────────────┐ ┌────────────┐ │
+            │ │ Widgets │───▶│ Compositor │───▶│ GPU Driver │ │
+            │ └────────────┘ └────────────┘ └─────┬──────┘ │
+            │ │ │
+            │ Command Buffer │
+            │ │ │
+            └────────────────────────────────────────────┼─────────────────────┘
+            │
+            SYSCALL
+            │
+            ┌────────────────────────────────────────────▼─────────────────────┐
+            │ KERNEL SPACE │
+            │ │
+            │ ┌────────────┐ ┌────────────┐ ┌────────────┐ │
+            │ │ /dev/gpu │───▶│ GPU Driver │───▶│ DMA Engine │ │
+            │ └────────────┘ │ (nxgfx) │ └─────┬──────┘ │
+            │ └────────────┘ │ │
+            │ │ │
+            └────────────────────────────────────────────┼─────────────────────┘
+            │
+            PCIe/DMA
+            │
+            ┌────────────────────────────────────────────▼─────────────────────┐
+            │ GPU HARDWARE │
+            │ │
+            │ ┌────────────┐ ┌────────────┐ ┌────────────┐ │
+            │ │ VRAM │◀───│ Shaders │◀───│ Cmd Parser │ │
+            │ │ (textures) │ │ (vertex, │ │ │ │
+            │ │ (buffers) │ │ fragment) │ │ │ │
+            │ └────────────┘ └────────────┘ └────────────┘ │
+            │ │
+            └──────────────────────────────────────────────────────────────────┘
+        </div>
+
+        <h2>Command Buffer</h2>
+        <p>NXRender uses a ring buffer to queue GPU commands. This allows the CPU to continue preparing the next frame
+            while the GPU executes the current one.</p>
+
+        <div class="diagram">
+            ┌───────────────────────────────────────────────────────────────┐
+            │ Command Ring Buffer │
+            ├───────────────────────────────────────────────────────────────┤
+            │ [CLEAR] [RECT] [RECT] [CIRCLE] [BLIT] [LINE] [PRESENT] [...] │
+            │ ↑ ↑ │
+            │ read_idx write_idx │
+            │ (GPU) (CPU) │
+            └───────────────────────────────────────────────────────────────┘
+
+            CPU writes commands at write_idx
+            GPU reads and executes at read_idx
+            When read_idx catches up to write_idx, GPU is idle
+        </div>
+
+        <div class="code-block">
+            // Command buffer structure
+            typedef struct {
+            nx_gpu_cmd_t commands[4096]; // 4096 commands
+            volatile uint32_t write_index; // CPU writes here
+            volatile uint32_t read_index; // GPU reads here
+            volatile uint32_t fence_value; // Synchronization
+            } nx_gpu_cmd_buffer_t;
+        </div>
+
+        <h2>Basic Usage</h2>
+
+        <div class="code-block">
+            // Initialize GPU driver
+            nx_gpu_driver_t* gpu = nx_gpu_driver_init();
+
+            // Enable VSync (prevents tearing)
+            nx_gpu_set_vsync(gpu, true);
+
+            // Main render loop
+            while (running) {
+            // Begin frame
+            nx_gpu_begin_frame(gpu);
+
+            // Queue draw commands
+            nx_gpu_cmd_clear(gpu, NX_COLOR_BLACK);
+            nx_gpu_cmd_rect(gpu, (nx_rect_t){100, 100, 200, 150},
+            NX_COLOR_WHITE, 8);
+            nx_gpu_cmd_circle(gpu, (nx_point_t){400, 300}, 50,
+            NX_COLOR_BLUE);
+
+            // End frame and present
+            nx_gpu_end_frame(gpu);
+            nx_gpu_present(gpu); // Waits for VSync
+            }
+
+            // Cleanup
+            nx_gpu_driver_shutdown(gpu);
+        </div>
+
+        <h2>Draw Commands</h2>
+        <table>
+            <tr>
+                <th>Function</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td>nx_gpu_cmd_clear(gpu, color)</td>
+                <td>Clear framebuffer</td>
+            </tr>
+            <tr>
+                <td>nx_gpu_cmd_rect(gpu, rect, color, radius)</td>
+                <td>Draw rectangle (with optional rounded corners)</td>
+            </tr>
+            <tr>
+                <td>nx_gpu_cmd_circle(gpu, center, radius, color)</td>
+                <td>Draw filled circle</td>
+            </tr>
+            <tr>
+                <td>nx_gpu_cmd_line(gpu, p1, p2, color, width)</td>
+                <td>Draw line</td>
+            </tr>
+            <tr>
+                <td>nx_gpu_cmd_blit(gpu, texture, dst)</td>
+                <td>Draw texture</td>
+            </tr>
+            <tr>
+                <td>nx_gpu_cmd_mesh(gpu, verts, indices, count)</td>
+                <td>Draw 3D mesh</td>
+            </tr>
+        </table>
+
+        <h2>Texture Management</h2>
+
+        <div class="code-block">
+            // Create texture
+            nx_gpu_texture_t tex = nx_gpu_create_texture(gpu, 256, 256, NX_TEX_RGBA8);
+
+            // Upload pixel data
+            uint32_t* pixels = malloc(256 * 256 * 4);
+            // ... fill pixels ...
+            nx_gpu_upload_texture(gpu, tex, pixels);
+            free(pixels);
+
+            // Use texture
+            nx_gpu_cmd_blit(gpu, tex, (nx_rect_t){0, 0, 256, 256});
+
+            // Cleanup
+            nx_gpu_destroy_texture(gpu, tex);
+        </div>
+
+        <h3>Texture Formats</h3>
+        <table>
+            <tr>
+                <th>Format</th>
+                <th>Bytes/Pixel</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td>NX_TEX_RGBA8</td>
+                <td>4</td>
+                <td>Standard 32-bit color with alpha</td>
+            </tr>
+            <tr>
+                <td>NX_TEX_BGRA8</td>
+                <td>4</td>
+                <td>Windows-style byte order</td>
+            </tr>
+            <tr>
+                <td>NX_TEX_RGB8</td>
+                <td>3</td>
+                <td>24-bit color, no alpha</td>
+            </tr>
+            <tr>
+                <td>NX_TEX_R8</td>
+                <td>1</td>
+                <td>Single channel (grayscale)</td>
+            </tr>
+            <tr>
+                <td>NX_TEX_DEPTH24</td>
+                <td>3</td>
+                <td>Depth buffer</td>
+            </tr>
+            <tr>
+                <td>NX_TEX_DEPTH32F</td>
+                <td>4</td>
+                <td>Float depth buffer</td>
+            </tr>
+        </table>
+
+        <h2>Buffer Management</h2>
+
+        <div class="code-block">
+            // Create vertex buffer
+            nx_gpu_buffer_t vbo = nx_gpu_create_buffer(gpu,
+            sizeof(nx_vertex_t) * 1000, // Size
+            0 // Usage flags
+            );
+
+            // Map for CPU access
+            nx_vertex_t* vertices = nx_gpu_map_buffer(gpu, vbo);
+
+            // Fill vertices
+            vertices[0] = (nx_vertex_t){
+            .position = {0, 0, 0},
+            .normal = {0, 1, 0},
+            .texcoord = {0, 0},
+            .color = 0xFFFFFFFF
+            };
+            // ...
+
+            nx_gpu_unmap_buffer(gpu, vbo);
+
+            // Or upload directly
+            nx_gpu_upload_buffer(gpu, vbo, my_vertices, sizeof(my_vertices));
+        </div>
+
+        <h2>VSync and Frame Timing</h2>
+
+        <div class="code-block">
+            // Enable VSync (60 FPS cap, no tearing)
+            nx_gpu_set_vsync(gpu, true);
+
+            // Get frame timing
+            uint64_t frame_time_us = nx_gpu_get_frame_time_us(gpu);
+            uint32_t fps = nx_gpu_get_fps(gpu);
+
+            printf("Frame time: %lu us, FPS: %u\n", frame_time_us, fps);
+        </div>
+
+        <p><strong>VSync enabled:</strong> GPU waits for monitor refresh (typically 60 Hz), prevents screen tearing but
+            adds latency.</p>
+        <p><strong>VSync disabled:</strong> Maximum frame rate, may cause tearing artifacts.</p>
+
+        <h2>Synchronization</h2>
+        <p>Use fences to synchronize CPU and GPU:</p>
+
+        <div class="code-block">
+            // Submit commands and wait for completion
+            nx_gpu_submit(gpu);
+            nx_gpu_wait_idle(gpu); // Blocks until GPU finishes
+
+            // Now safe to read back results or reuse resources
+        </div>
+
+        <h2>GPU Information</h2>
+
+        <div class="code-block">
+            const nx_gpu_info_t* info = nx_gpu_get_info(gpu);
+
+            printf("GPU: %s\n", info->name);
+            printf("VRAM: %lu MB\n", info->vram_size / (1024*1024));
+            printf("Max texture: %u x %u\n", info->max_texture_size,
+            info->max_texture_size);
+            printf("Resolution: %u x %u @ %u Hz\n",
+            info->framebuffer_width,
+            info->framebuffer_height,
+            info->refresh_rate);
+            printf("Compute: %s\n", info->supports_compute ? "yes" : "no");
+            printf("Raytracing: %s\n", info->supports_raytracing ? "yes" : "no");
+        </div>
+
+        <h2>Kernel Integration</h2>
+        <p>When integrating with the NeolyxOS kernel GPU driver:</p>
+
+        <ol style="color: var(--text-secondary); margin-left: 20px;">
+            <li>Open <code>/dev/nxgpu</code> device</li>
+            <li>MMAP command buffer memory</li>
+            <li>MMAP VRAM for textures</li>
+            <li>Use IOCTL for synchronization</li>
+        </ol>
+
+        <div class="code-block">
+            // Kernel integration (future)
+            gpu->driver_fd = open("/dev/nxgpu", O_RDWR);
+            gpu->cmd_buffer = mmap(NULL, cmd_size, PROT_READ | PROT_WRITE,
+            MAP_SHARED, gpu->driver_fd, CMD_BUFFER_OFFSET);
+            gpu->vram_base = mmap(NULL, vram_size, PROT_READ | PROT_WRITE,
+            MAP_SHARED, gpu->driver_fd, VRAM_OFFSET);
+        </div>
+
+        <h2>Command Types</h2>
+        <table>
+            <tr>
+                <th>Command</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td>NX_GPU_CMD_CLEAR</td>
+                <td>Clear framebuffer to color</td>
+            </tr>
+            <tr>
+                <td>NX_GPU_CMD_DRAW_RECT</td>
+                <td>Draw rectangle</td>
+            </tr>
+            <tr>
+                <td>NX_GPU_CMD_DRAW_CIRCLE</td>
+                <td>Draw circle</td>
+            </tr>
+            <tr>
+                <td>NX_GPU_CMD_DRAW_LINE</td>
+                <td>Draw line</td>
+            </tr>
+            <tr>
+                <td>NX_GPU_CMD_DRAW_MESH</td>
+                <td>Draw 3D mesh</td>
+            </tr>
+            <tr>
+                <td>NX_GPU_CMD_BLIT_TEXTURE</td>
+                <td>Copy texture to screen</td>
+            </tr>
+            <tr>
+                <td>NX_GPU_CMD_SET_SCISSOR</td>
+                <td>Set clipping rectangle</td>
+            </tr>
+            <tr>
+                <td>NX_GPU_CMD_SET_BLEND</td>
+                <td>Set blend mode</td>
+            </tr>
+            <tr>
+                <td>NX_GPU_CMD_UPLOAD_TEXTURE</td>
+                <td>Upload texture data</td>
+            </tr>
+            <tr>
+                <td>NX_GPU_CMD_PRESENT</td>
+                <td>Swap buffers</td>
+            </tr>
+            <tr>
+                <td>NX_GPU_CMD_FENCE</td>
+                <td>Synchronization point</td>
+            </tr>
+        </table>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- RoleCut App Icon - NeolyxOS Native Icon Format -->
+<nxi version="1.0" width="128" height="128">
+  <metadata>
+    <name>RoleCut</name>
+    <author>KetiveeAI</author>
+    <description>Video editor icon - film clapperboard with cut symbol</description>
+  </metadata>
+  
+  <defs>
+    <linearGradient id="clapperGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff8a8a"/>
+      <stop offset="100%" stop-color="#ff6b6b"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffe066"/>
+      <stop offset="100%" stop-color="#ffd93d"/>
+    </linearGradient>
+    <linearGradient id="darkGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3a3a3a"/>
+      <stop offset="100%" stop-color="#2a2a2a"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="56" fill="url(#clapperGrad)"/>
+  
+  <!-- Clapperboard body -->
+  <rect x="28" y="48" width="72" height="48" rx="4" fill="url(#darkGrad)"/>
+  
+  <!-- Clapperboard top (hinged part) -->
+  <path d="M28 48 L100 48 L100 38 L28 38 Z" fill="url(#darkGrad)"/>
+  <path d="M28 38 L100 38 L95 28 L33 28 Z" fill="#4a4a4a"/>
+  
+  <!-- Diagonal stripes on clapper -->
+  <path d="M35 28 L40 38 L48 38 L43 28 Z" fill="url(#accentGrad)"/>
+  <path d="M51 28 L56 38 L64 38 L59 28 Z" fill="url(#accentGrad)"/>
+  <path d="M67 28 L72 38 L80 38 L75 28 Z" fill="url(#accentGrad)"/>
+  <path d="M83 28 L88 38 L93 38 L88 28 Z" fill="url(#accentGrad)"/>
+  
+  <!-- Film frames on body -->
+  <rect x="34" y="54" width="16" height="12" rx="2" fill="#5a5a5a"/>
+  <rect x="56" y="54" width="16" height="12" rx="2" fill="#5a5a5a"/>
+  <rect x="78" y="54" width="16" height="12" rx="2" fill="#5a5a5a"/>
+  
+  <!-- Cut symbol (scissors) -->
+  <g transform="translate(48, 72)">
+    <!-- Left blade -->
+    <ellipse cx="8" cy="8" rx="8" ry="4" fill="#fff" transform="rotate(-30 8 8)"/>
+    <circle cx="4" cy="6" r="3" fill="#ff6b6b"/>
+    <!-- Right blade -->
+    <ellipse cx="24" cy="8" rx="8" ry="4" fill="#fff" transform="rotate(30 24 8)"/>
+    <circle cx="28" cy="6" r="3" fill="#ff6b6b"/>
+    <!-- Center pivot -->
+    <circle cx="16" cy="10" r="3" fill="#ffd93d"/>
+  </g>
+  
+  <!-- Highlight -->
+  <ellipse cx="44" cy="36" rx="8" ry="3" fill="rgba(255,255,255,0.3)"/>
+</nxi>

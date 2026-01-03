@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NXFS Filesystem - NeolyxOS Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-code: #1c2128;
+            --text-primary: #c9d1d9;
+            --accent: #58a6ff;
+            --border: #30363d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        nav {
+            margin-bottom: 2rem;
+        }
+
+        nav a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin: 2rem 0 1rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            margin: 1.5rem 0 0.5rem;
+            color: var(--accent);
+        }
+
+        p {
+            margin-bottom: 1rem;
+        }
+
+        code {
+            background: var(--bg-code);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Consolas', monospace;
+        }
+
+        pre {
+            background: var(--bg-code);
+            padding: 1rem;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        ul {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status.complete {
+            background: #238636;
+            color: white;
+        }
+
+        .file-ref {
+            font-size: 0.9em;
+            color: var(--accent);
+            border-top: 1px solid var(--border);
+            padding-top: 1rem;
+            margin-top: 2rem;
+        }
+    </style>
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        
+
+        <h1>💿 NXFS - Native Filesystem <span class="status complete">Complete</span></h1>
+        <p>NeolyxOS native filesystem with extents, encryption, and checksums.</p>
+
+        <h2>Files</h2>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><code>kernel/src/fs/nxfs/nxfs.c</code></td>
+                <td>NXFS driver</td>
+            </tr>
+            <tr>
+                <td><code>kernel/include/fs/nxfs.h</code></td>
+                <td>NXFS structures</td>
+            </tr>
+        </table>
+
+        <h2>Features</h2>
+        <ul>
+            <li><strong>Extent-based allocation</strong> - Contiguous block ranges</li>
+            <li><strong>B-tree directories</strong> - Fast lookup</li>
+            <li><strong>Optional AES-256 encryption</strong></li>
+            <li><strong>CRC32 checksums</strong> - Data integrity</li>
+            <li><strong>Journaling</strong> - Crash recovery</li>
+        </ul>
+
+        <h2>Disk Layout</h2>
+        <pre><code>+------------------+
+| Superblock       | Block 0
++------------------+
+| Block Bitmap     | Blocks 1-N
++------------------+
+| Inode Table      | 
++------------------+
+| Data Blocks      |
++------------------+</code></pre>
+
+        <h2>Superblock Structure</h2>
+        <pre><code>typedef struct {
+    uint32_t magic;           // 0x4E584653 "NXFS"
+    uint32_t version;
+    uint64_t total_blocks;
+    uint64_t free_blocks;
+    uint32_t block_size;      // 4096 default
+    uint32_t inode_count;
+    uint32_t root_inode;
+    uint32_t flags;           // ENCRYPTED, JOURNALED
+    uint8_t  uuid[16];
+    char     label[64];
+} nxfs_superblock_t;</code></pre>
+
+        <h2>Inode Structure</h2>
+        <pre><code>typedef struct {
+    uint32_t mode;            // File type + permissions
+    uint32_t uid, gid;
+    uint64_t size;
+    uint64_t blocks;
+    uint64_t atime, mtime, ctime;
+    uint32_t links;
+    uint32_t flags;
+    
+    // Extent array (inline for small files)
+    nxfs_extent_t extents[4];
+    uint64_t extent_tree;     // B-tree for large files
+    
+    uint32_t checksum;
+} nxfs_inode_t;</code></pre>
+
+        <h2>Extent Structure</h2>
+        <pre><code>typedef struct {
+    uint64_t logical_block;   // File offset (in blocks)
+    uint64_t physical_block;  // Disk location
+    uint32_t length;          // Number of blocks
+    uint32_t flags;
+} nxfs_extent_t;</code></pre>
+
+        <h2>API</h2>
+        <pre><code>// Mount NXFS volume
+int nxfs_mount(block_device_t *dev, vfs_node_t **root);
+
+// File operations
+int nxfs_read(vfs_node_t *node, void *buf, size_t size, size_t off);
+int nxfs_write(vfs_node_t *node, const void *buf, size_t size, size_t off);
+
+// Directory operations  
+vfs_node_t *nxfs_lookup(vfs_node_t *dir, const char *name);
+int nxfs_create(vfs_node_t *dir, const char *name, uint32_t mode);
+
+// Format
+int nxfs_format(block_device_t *dev, const char *label);</code></pre>
+
+        <div class="file-ref">
+            <strong>Source:</strong> <a href="../../kernel/src/fs/nxfs/">kernel/src/fs/nxfs/</a>
+        </div>
+    </div>
+</body>
+
+</html>

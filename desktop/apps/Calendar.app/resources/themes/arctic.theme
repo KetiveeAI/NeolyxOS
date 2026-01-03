@@ -1,0 +1,21 @@
+# Arctic Theme - Light icy blue theme
+# NeolyxOS Calendar App
+
+[Theme]
+Name = Arctic
+Type = Light
+
+[Colors]
+Background = 0xF0F5FF
+TextPrimary = 0x1A1A2E
+TextSecondary = 0x505060
+Accent = 0x2080D0
+Highlight = 0x60A0E0
+Border = 0xD0D5E0
+
+[ClockFace]
+DialColor = 0xFFFFFF
+HandHour = 0x1A1A2E
+HandMinute = 0x2080D0
+HandSecond = 0xFF4040
+MarkerColor = 0x505060

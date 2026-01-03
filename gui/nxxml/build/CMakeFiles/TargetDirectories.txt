@@ -1,0 +1,7 @@
+/home/swana/Documents/zeprabrowser/source/nxxml/build/CMakeFiles/nxxml.dir
+/home/swana/Documents/zeprabrowser/source/nxxml/build/CMakeFiles/edit_cache.dir
+/home/swana/Documents/zeprabrowser/source/nxxml/build/CMakeFiles/rebuild_cache.dir
+/home/swana/Documents/zeprabrowser/source/nxxml/build/CMakeFiles/list_install_components.dir
+/home/swana/Documents/zeprabrowser/source/nxxml/build/CMakeFiles/install.dir
+/home/swana/Documents/zeprabrowser/source/nxxml/build/CMakeFiles/install/local.dir
+/home/swana/Documents/zeprabrowser/source/nxxml/build/CMakeFiles/install/strip.dir

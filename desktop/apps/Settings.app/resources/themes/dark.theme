@@ -1,0 +1,70 @@
+# Settings.app Dark Theme
+# NeolyxOS Theme Format
+
+[theme]
+name = "dark"
+variant = "dark"
+author = "KetiveeAI"
+
+[window]
+background = #1C1C1E
+titlebar = #161618
+border = #3A3A3C
+
+[toolbar]
+background = #161618
+border = #2C2C2E
+button = #2C2C2E
+button_hover = #3A3A3C
+button_active = #48484A
+button_disabled = #1C1C1E
+
+[sidebar]
+background = #161618
+section_header = #8E8E93
+item = #FFFFFF
+item_hover = #2C2C2E
+item_active = #3A3A3C
+
+[content]
+background = #1C1C1E
+card = #2C2C2E
+card_border = #3A3A3C
+selected = #3A3A3C
+hover = #2C2C2E
+
+[panel]
+background = #1C1C1E
+header = #FFFFFF
+subheader = #8E8E93
+separator = #3A3A3C
+
+[icons]
+system = #007AFF
+network = #34C759
+bluetooth = #5856D6
+display = #FF9500
+sound = #FF2D55
+storage = #8E8E93
+accounts = #5AC8FA
+security = #FF453A
+privacy = #30D158
+appearance = #AF52DE
+power = #FFCC00
+updates = #007AFF
+
+[text]
+primary = #FFFFFF
+secondary = #AEAEB2
+dim = #6C6C70
+accent = #007AFF
+error = #FF453A
+success = #30D158
+warning = #FF9F0A
+
+[controls]
+toggle_on = #30D158
+toggle_off = #636366
+slider_track = #3A3A3C
+slider_fill = #007AFF
+slider_thumb = #FFFFFF

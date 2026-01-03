@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS - Filesystem Hierarchy</title>
+    
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    
+
+    <div class="container">
+        <h1>📁 NeolyxOS Filesystem Hierarchy</h1>
+        <p style="color: var(--text-secondary);">Clean, organized directory structure with Unix foundations.</p>
+
+        <h2>Root Directory Structure</h2>
+        <div class="card">
+            <div class="tree">
+                <span class="folder">/</span> (root)
+                ├── <span class="protected">System/</span> <span class="badge badge-protected">SIP Protected</span>
+                │ ├── Kernel/ <i style="color:var(--text-secondary);">— kernel.bin, modules</i>
+                │ ├── Library/ <i style="color:var(--text-secondary);">— System frameworks</i>
+                │ └── Drivers/ <i style="color:var(--text-secondary);">— Kernel drivers (.kdrv)</i>
+                │
+                ├── <span class="folder">Applications/</span> <i style="color:var(--text-secondary);">— System-wide
+                    apps</i>
+                │
+                ├── <span class="folder">Library/</span> <i style="color:var(--text-secondary);">— System-wide
+                    resources</i>
+                │ ├── Fonts/ <i style="color:var(--text-secondary);">— System fonts</i>
+                │ ├── Preferences/ <i style="color:var(--text-secondary);">— Global preferences</i>
+                │ ├── Logs/ <i style="color:var(--text-secondary);">— System logs</i>
+                │ ├── <span class="folder">Frameworks/</span> <i style="color:var(--text-secondary);">— Shared
+                    frameworks</i>
+                │ ├── <span class="folder">Bin/</span> <i style="color:var(--text-secondary);">— System PATH
+                    binaries</i>
+                │ ├── <span class="folder">Audio/</span>
+                │ │ ├── Plugins/
+                │ │ │ ├── VST/ <i style="color:var(--text-secondary);">— VST plugins</i>
+                │ │ │ ├── VST3/ <i style="color:var(--text-secondary);">— VST3 plugins</i>
+                │ │ │ ├── AU/ <i style="color:var(--text-secondary);">— Audio Units</i>
+                │ │ │ └── CLAP/ <i style="color:var(--text-secondary);">— CLAP plugins</i>
+                │ │ └── Presets/ <i style="color:var(--text-secondary);">— Audio presets</i>
+                │ └── <span class="folder">Runtimes/</span>
+                │ ├── Python/ <i style="color:var(--text-secondary);">— Python installation</i>
+                │ ├── Node/ <i style="color:var(--text-secondary);">— Node.js</i>
+                │ ├── Rust/ <i style="color:var(--text-secondary);">— Rust toolchain</i>
+                │ ├── Go/ <i style="color:var(--text-secondary);">— Go toolchain</i>
+                │ └── Java/ <i style="color:var(--text-secondary);">— JVM</i>
+                │
+                ├── <span class="user">Users/</span>
+                │ ├── Shared/ <i style="color:var(--text-secondary);">— Shared between users</i>
+                │ └── {username}/ <i style="color:var(--text-secondary);">— Per-user home</i>
+                │
+                ├── <span class="folder">Public/</span> <i style="color:var(--text-secondary);">— System-wide shared
+                    data</i>
+                │ ├── Documents/ <i style="color:var(--text-secondary);">— Public documents</i>
+                │ ├── Pictures/ <i style="color:var(--text-secondary);">— Public photos</i>
+                │ ├── Music/ <i style="color:var(--text-secondary);">— Public music</i>
+                │ ├── Videos/ <i style="color:var(--text-secondary);">— Public videos</i>
+                │ └── Downloads/ <i style="color:var(--text-secondary);">— Public downloads</i>
+                │
+                ├── <span class="folder">Developer/</span>
+                │ ├── SDKs/ <i style="color:var(--text-secondary);">— Development SDKs</i>
+                │ ├── Toolchains/ <i style="color:var(--text-secondary);">— Compilers, linkers</i>
+                │ └── Debuggers/ <i style="color:var(--text-secondary);">— Debugging tools</i>
+                │
+                ├── <span class="folder">Games/</span> <i style="color:var(--text-secondary);">— First-class games
+                    directory</i>
+                │
+                ├── <span class="folder">Caches/</span> <i style="color:var(--text-secondary);">— Volatile, wipeable</i>
+                │ ├── ShaderCache/ <i style="color:var(--text-secondary);">— Compiled shaders</i>
+                │ ├── RenderCache/ <i style="color:var(--text-secondary);">— Render data</i>
+                │ └── AssetCache/ <i style="color:var(--text-secondary);">— Asset caches</i>
+                │
+                ├── <span class="folder">CrashReports/</span> <i style="color:var(--text-secondary);">— Crash
+                    isolation</i>
+                │ ├── Kernel/ <i style="color:var(--text-secondary);">— Kernel crashes</i>
+                │ ├── Drivers/ <i style="color:var(--text-secondary);">— Driver crashes</i>
+                │ ├── Applications/ <i style="color:var(--text-secondary);">— App crashes</i>
+                │ └── Games/ <i style="color:var(--text-secondary);">— Game crashes</i>
+                │
+                ├── <span class="folder">Volumes/</span>
+                │ ├── NeolyxOS/ <i style="color:var(--text-secondary);">— Boot volume</i>
+                │ └── {mounted}/ <i style="color:var(--text-secondary);">— External drives</i>
+                │
+                ├── <span class="protected">Boot/</span> <span class="badge badge-protected">SIP Protected</span>
+                │ ├── EFI/ <i style="color:var(--text-secondary);">— UEFI bootloader</i>
+                │ └── Recovery/ <i style="color:var(--text-secondary);">— Recovery mode</i>
+                │
+                └── <span class="folder">tmp/</span> <i style="color:var(--text-secondary);">— Temporary files</i>
+            </div>
+        </div>
+
+        <h2>Protection Levels</h2>
+        <div class="card">
+            <table>
+                <tr>
+                    <th>Path</th>
+                    <th>Protection</th>
+                    <th>Who Can Modify</th>
+                </tr>
+                <tr>
+                    <td><code>/System/</code></td>
+                    <td><span class="badge badge-protected">SIP</span></td>
+                    <td>Recovery Mode only</td>
+                </tr>
+                <tr>
+                    <td><code>/Kernel/</code></td>
+                    <td><span class="badge badge-protected">SIP</span></td>
+                    <td>Recovery Mode only</td>
+                </tr>
+                <tr>
+                    <td><code>/Boot/</code></td>
+                    <td><span class="badge badge-protected">SIP</span></td>
+                    <td>Recovery Mode only</td>
+                </tr>
+                <tr>
+                    <td><code>/Applications/</code></td>
+                    <td>Admin</td>
+                    <td>Admin users</td>
+                </tr>
+                <tr>
+                    <td><code>/Library/</code></td>
+                    <td>Admin</td>
+                    <td>Admin users</td>
+                </tr>
+                <tr>
+                    <td><code>/Users/{user}/</code></td>
+                    <td><span class="badge badge-user">User</span></td>
+                    <td>Owner only</td>
+                </tr>
+                <tr>
+                    <td><code>/tmp/</code></td>
+                    <td>Open</td>
+                    <td>All processes</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>Special Directories</h2>
+        <div class="card">
+            <h3>/System/Library/</h3>
+            <p>Core OS frameworks and services. Never modify directly.</p>
+            <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                <li><code>CoreServices/</code> — Window server, login</li>
+                <li><code>Frameworks/</code> — NXRender, NXAudio, etc.</li>
+                <li><code>Extensions/</code> — Kernel extensions</li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h3>/Volumes/</h3>
+            <p>All mounted filesystems appear here.</p>
+            <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                <li>Boot drive: <code>/Volumes/NeolyxOS</code></li>
+                <li>USB drives auto-mount here</li>
+                <li>Network shares mount here</li>
+            </ul>
+        </div>
+
+        <h2>Device Name & Hostname</h2>
+        <div class="card">
+            <pre style="background:var(--bg-secondary);padding:1rem;border-radius:8px;"><code># Terminal prompt uses username
+user@neolyx:~$ 
+
+# Set device name (used for network)
+nxconfig set hostname "MyMachine"
+
+# Get current hostname
+nxconfig get hostname
+→ MyMachine</code></pre>
+        </div>
+
+        <footer
+            style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-secondary); text-align: center;">
+            NeolyxOS © 2025 KetiveeAI | Filesystem Architecture
+        </footer>
+    </div>
+</body>
+
+</html>

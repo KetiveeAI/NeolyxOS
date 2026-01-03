@@ -1,0 +1,73 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Terminal.app Application Icon
+
+[nxi]
+version = 1.0
+name = terminal
+size = 64
+author = KetiveeAI
+category = app
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+bg = #1E1E2E
+frame = #45475A
+screen = #11111B
+prompt = #A6E3A1
+cursor = #F5E0DC
+text = #CDD6F4
+btn_close = #F38BA8
+btn_min = #F9E2AF
+btn_max = #A6E3A1
+
+[paths]
+# Window frame
+frame = M4,8 L60,8 L60,56 L4,56 Z
+# Title bar
+titlebar = M4,8 L60,8 L60,16 L4,16 Z
+# Window buttons
+btn_close_circle = circle center=10,12 radius=2
+btn_min_circle = circle center=16,12 radius=2
+btn_max_circle = circle center=22,12 radius=2
+# Screen
+screen_rect = M8,20 L56,20 L56,52 L8,52 Z
+# Prompt chevron
+prompt_path = M12,28 L18,32 L12,36
+# Cursor
+cursor_rect = M24,28 L28,28 L28,36 L24,36 Z
+# Text lines
+line1 = M12,40 L44,40
+line2 = M12,46 L36,46
+
+[style]
+frame.fill = bg
+frame.stroke = frame
+frame.stroke-width = 1
+titlebar.fill = frame
+btn_close_circle.fill = btn_close
+btn_min_circle.fill = btn_min
+btn_max_circle.fill = btn_max
+screen_rect.fill = screen
+prompt_path.stroke = prompt
+prompt_path.stroke-width = 2
+prompt_path.stroke-linecap = round
+prompt_path.fill = none
+cursor_rect.fill = cursor
+line1.stroke = text
+line1.stroke-width = 1.5
+line2.stroke = text
+line2.stroke-width = 1.5
+
+[style.dark]
+# Already dark theme-first, provide alternate dark variant
+bg = #0D1117
+frame = #30363D
+screen = #010409
+prompt = #3FB950
+cursor = #F0883E
+text = #E6EDF3

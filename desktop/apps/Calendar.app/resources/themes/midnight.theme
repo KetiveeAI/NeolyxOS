@@ -1,0 +1,21 @@
+# Midnight Theme - Default dark theme
+# NeolyxOS Calendar App
+
+[Theme]
+Name = Midnight
+Type = Dark
+
+[Colors]
+Background = 0x0A0B1A
+TextPrimary = 0xFFFFFF
+TextSecondary = 0x808090
+Accent = 0x4080B0
+Highlight = 0x6090C0
+Border = 0x303050
+
+[ClockFace]
+DialColor = 0x1A1B2A
+HandHour = 0xFFFFFF
+HandMinute = 0x4080B0
+HandSecond = 0xFF4040
+MarkerColor = 0x606080

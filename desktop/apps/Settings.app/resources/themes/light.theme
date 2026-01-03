@@ -1,0 +1,70 @@
+# Settings.app Light Theme
+# NeolyxOS Theme Format
+
+[theme]
+name = "light"
+variant = "light"
+author = "KetiveeAI"
+
+[window]
+background = #F2F2F7
+titlebar = #FFFFFF
+border = #C6C6C8
+
+[toolbar]
+background = #FFFFFF
+border = #E5E5EA
+button = #E5E5EA
+button_hover = #D1D1D6
+button_active = #C7C7CC
+button_disabled = #F2F2F7
+
+[sidebar]
+background = #FFFFFF
+section_header = #8E8E93
+item = #000000
+item_hover = #E5E5EA
+item_active = #D1D1D6
+
+[content]
+background = #F2F2F7
+card = #FFFFFF
+card_border = #E5E5EA
+selected = #D1D1D6
+hover = #E5E5EA
+
+[panel]
+background = #F2F2F7
+header = #000000
+subheader = #8E8E93
+separator = #C6C6C8
+
+[icons]
+system = #007AFF
+network = #34C759
+bluetooth = #5856D6
+display = #FF9500
+sound = #FF2D55
+storage = #8E8E93
+accounts = #5AC8FA
+security = #FF3B30
+privacy = #34C759
+appearance = #AF52DE
+power = #FFCC00
+updates = #007AFF
+
+[text]
+primary = #000000
+secondary = #8E8E93
+dim = #C7C7CC
+accent = #007AFF
+error = #FF3B30
+success = #34C759
+warning = #FF9500
+
+[controls]
+toggle_on = #34C759
+toggle_off = #E5E5EA
+slider_track = #E5E5EA
+slider_fill = #007AFF
+slider_thumb = #FFFFFF

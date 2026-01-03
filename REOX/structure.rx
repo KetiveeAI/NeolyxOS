@@ -1,0 +1,78 @@
+// Reox Project Structure (from reox-spec.md)
+//
+// 1. Compiler (Rust implementation)
+// ---------------------------------
+//
+// reolab/
+// ├── src/
+// │   ├── main.rs          # Compiler entry point
+// │   ├── lexer/           # Tokenizer
+// │   ├── parser/          # AST builder
+// │   ├── typechecker/     # Type validation
+// │   ├── codegen/         # LLVM code generation
+// │   ├── stdlib/          # Standard library
+// │   └── runtime/         # Runtime support
+// ├── tests/               # Compiler tests
+// └── examples/            # Example Reox programs
+//
+// Core compiler modules (Rust crate paths):
+// - reolab/src/lexer/mod.rs
+// - reolab/src/parser/mod.rs
+// - reolab/src/typechecker/mod.rs
+// - reolab/src/codegen/mod.rs
+//
+// 2. Standard Library (Reox source)
+// ---------------------------------
+//
+// reox/stdlib/
+// ├── core/
+// │   ├── print.reox       # Output functions
+// │   ├── string.reox      # String operations
+// │   ├── math.reox        # Math functions
+// │   └── mem.reox         # Memory operations
+// ├── io/
+// │   ├── file.reox        # File I/O
+// │   ├── network.reox     # Network operations
+// │   └── serial.reox      # Serial I/O
+// ├── ui/
+// │   ├── window.reox      # Window management
+// │   ├── controls.reox    # UI controls
+// │   └── graphics.reox    # Drawing primitives
+// └── ai/
+//     ├── assistant.reox   # AI integration
+//     └── ml.reox          # ML utilities
+//
+// 3. Reox Compiler (self-hosted, planned)
+// ---------------------------------------
+//
+// reox/compiler/main.reox
+// // The Reox compiler, written in Reox!
+// // Conceptual compile pipeline:
+// //   source.reox
+// //     -> lexer.tokenize(source)
+// //     -> parser.parse(tokens)
+// //     -> typechecker.check(ast)
+// //     -> codegen.generate(checked_ast)
+// //     -> linker.link(ir)
+// //     -> output.elf
+//
+// 4. Language Server (LSP)
+// ------------------------
+//
+// reox-lsp/
+// ├── completion.rs       # Auto-completion
+// ├── diagnostics.rs      # Error/warning display
+// ├── hover.rs            # Hover tooltips
+// ├── goto_definition.rs  # Jump to definition
+// └── formatting.rs       # Code formatting
+//
+// 5. Package Manager (CLI surface)
+// --------------------------------
+//
+// reoxpm new <name>        # Create new project
+// reoxpm add <package>     # Add dependency
+// reoxpm build             # Build project
+// reoxpm run               # Run application
+// reoxpm test              # Run tests
+// reoxpm publish           # Publish to registry
+

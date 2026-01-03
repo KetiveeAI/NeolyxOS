@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS Documentation</title>
+    <!-- Styles are now in assets/navbar.css -->
+    <!-- Use external navbar assets -->
+    <link rel="stylesheet" href="assets/navbar.css">
+    <script src="assets/navbar.js"></script>
+</head>
+
+<body>
+    <!-- Navbar will be auto-injected by navbar.js -->
+
+    <div class="container">
+        <header>
+            <h1>🚀 NeolyxOS Documentation</h1>
+            <p class="subtitle">Custom 64-bit Operating System - Developer Reference</p>
+            <div class="quick-links">
+                <a href="project_status.html">📊 Project Status</a>
+                <a href="phases.html">🚀 Phases</a>
+                <a href="reox/index.html">📝 REOX Language</a>
+                <a href="architecture/overview.html">📐 Architecture</a>
+                <a href="drivers/gpu_3d.html">🎮 GPU & 3D</a>
+                <a href="drivers/kdrv.html">🔧 Drivers</a>
+                <a href="kernel/syscalls.html">📞 Syscalls</a>
+                <a href="security/security_hardening.html">🔒 Security</a>
+            </div>
+        </header>
+
+        <h3 class="section-title">📊 Project Status</h3>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="project_status.html">Complete Project Audit</a> <span class="status complete">New</span>
+                </h2>
+                <p>What's implemented, partial, stub, or missing</p>
+            </div>
+            <div class="card">
+                <h2><a href="boot_roadmap.html">Boot Roadmap</a> <span class="status complete">New</span></h2>
+                <p>8-phase plan to boot NeolyxOS with GUI</p>
+            </div>
+            <div class="card">
+                <h2><a href="stability/nxgame_bridge.html">NXGame Bridge</a> <span class="status complete">Phase
+                        9</span></h2>
+                <p>Direct hardware access for games/creative apps</p>
+            </div>
+            <div class="card">
+                <h2><a href="security/sip.html">System Integrity Protection</a> <span class="status complete">Phase
+                        9</span></h2>
+                <p>Protect system files from modification</p>
+            </div>
+            <div class="card">
+                <h2><a href="kernel/syscalls.html">Syscalls Reference</a> <span class="status complete">24
+                        Syscalls</span></h2>
+                <p>Complete syscall list with NXGame Bridge</p>
+            </div>
+        </div>
+
+        <h3 class="section-title">📐 Architecture</h3>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="architecture/overview.html">System Overview</a></h2>
+                <p>Full system stack, directory structure</p>
+            </div>
+            <div class="card">
+                <h2><a href="architecture/filesystem.html">Filesystem Hierarchy</a> <span
+                        class="status complete">New</span></h2>
+                <p>/System, /Applications, /Users, /Volumes</p>
+            </div>
+            <div class="card">
+                <h2><a href="architecture/user_dirs.html">User Directories</a> <span class="status complete">New</span>
+                </h2>
+                <p>Desktop, Documents, Public folder</p>
+            </div>
+            <div class="card">
+                <h2><a href="architecture/applications.html">Applications</a> <span class="status complete">New</span>
+                </h2>
+                <p>App bundles (.nxapp), capabilities</p>
+            </div>
+            <div class="card">
+                <h2><a href="architecture/boot.html">Boot Process</a> <span class="status complete">Complete</span></h2>
+                <p>UEFI → bootloader → kernel handoff</p>
+            </div>
+            <div class="card">
+                <h2><a href="architecture/arm64.html">ARM64 / AArch64</a> <span class="status complete">New</span></h2>
+                <p>Boot, MMU, FDT, GIC, exception vectors</p>
+            </div>
+        </div>
+
+        <h3 class="section-title">🧠 Kernel</h3>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="kernel/boot_manager.html">Boot Manager</a> <span class="status complete">Complete</span>
+                </h2>
+                <p>Graphical boot menu, navigation, source files</p>
+            </div>
+            <div class="card">
+                <h2><a href="kernel/syscalls.html">System Calls</a> <span class="status complete">Complete</span></h2>
+                <p>SYSCALL/SYSRET, process/file/memory calls</p>
+            </div>
+            <div class="card">
+                <h2><a href="kernel/interrupts.html">Interrupts</a> <span class="status complete">Complete</span></h2>
+                <p>IDT, PIC, IRQ handlers, exceptions</p>
+            </div>
+            <div class="card">
+                <h2><a href="kernel/memory.html">Memory Management</a> <span class="status complete">Complete</span>
+                </h2>
+                <p>PMM, VMM paging, address spaces, kmalloc</p>
+            </div>
+            <div class="card">
+                <h2><a href="kernel/process.html">Process Management</a> <span class="status complete">Complete</span>
+                </h2>
+                <p>PCB, scheduler, context switch</p>
+            </div>
+            <div class="card">
+                <h2><a href="kernel/userspace_ram.html">Userspace Memory</a> <span class="status complete">New</span>
+                </h2>
+                <p>ELF loading, BSS handling, heap, stack (Ring 3)</p>
+            </div>
+        </div>
+
+        <h3 class="section-title">💾 Drivers & Apps</h3>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="drivers/kdrv.html">Kernel Drivers (kdrv)</a> <span class="status complete">New</span></h2>
+                <p>All 10 unified drivers with API docs</p>
+            </div>
+            <div class="card">
+                <h2><a href="drivers/keyboard.html">Keyboard Layout</a> <span class="status complete">New</span></h2>
+                <p>ALLOW key, MODE modifier, media shortcuts</p>
+            </div>
+            <div class="card">
+                <h2><a href="drivers/index.html">Driver Index</a> <span class="status complete">74 Files</span></h2>
+                <p>All hardware drivers: display, touch, sensors</p>
+            </div>
+            <div class="card">
+                <h2><a href="drivers/gpu_3d.html">GPU & 3D</a> <span class="status complete">Phase D</span></h2>
+                <p>GPU memory, 2D accel, 3D pipeline</p>
+            </div>
+            <div class="card">
+                <h2><a href="drivers/nxgame_abi.html">NXGame ABI v1.0</a> <span class="status complete">Frozen</span>
+                </h2>
+                <p>Syscall 110-119, capability query</p>
+            </div>
+            <div class="card">
+                <h2><a href="drivers/storage.html">Storage Drivers</a> <span class="status complete">New</span></h2>
+                <p>AHCI, NVMe, ATA specs and performance</p>
+            </div>
+            <div class="card">
+                <h2><a href="filesystem/nucleus_production.html">Nucleus Production</a> <span
+                        class="status complete">New</span></h2>
+                <p>Disk formatting guide & safety features</p>
+            </div>
+            <div class="card">
+                <h2><a href="filesystem/nucleus_safety.html">Nucleus Safety</a> <span class="status complete">New</span>
+                </h2>
+                <p>Boot protection & confirmation dialogs</p>
+            </div>
+        </div>
+
+        <h3 class="section-title">🖼️ GUI Framework</h3>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="gui/desktop.html">Desktop Environment</a> <span class="status complete">Ring 3</span></h2>
+                <p>Userspace shell, WM, Dock, syscalls</p>
+            </div>
+            <div class="card">
+                <h2><a href="gui/nxrender.html">NXRender</a> <span class="status complete">New</span></h2>
+                <p>Pure C GUI framework, 4,747 lines, zero dependencies</p>
+            </div>
+            <div class="card">
+                <h2><a href="gui/animation.html">Animation System</a> <span class="status complete">New</span></h2>
+                <p>Springs, bezier curves, keyframes, timelines</p>
+            </div>
+            <div class="card">
+                <h2><a href="gui/lighting.html">3D Lighting</a> <span class="status complete">New</span></h2>
+                <p>Blinn-Phong, reflections, Fresnel, materials</p>
+            </div>
+            <div class="card">
+                <h2><a href="gui/gpu_driver.html">GPU Driver</a> <span class="status complete">New</span></h2>
+                <p>Command buffers, VSync, textures</p>
+            </div>
+        </div>
+
+        <h3 class="section-title">📁 Filesystem</h3>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="filesystem/vfs.html">Virtual File System</a> <span class="status complete">Complete</span>
+                </h2>
+                <p>VFS nodes, mount, path resolution</p>
+            </div>
+            <div class="card">
+                <h2><a href="filesystem/nxfs.html">NXFS Native FS</a> <span class="status complete">Complete</span></h2>
+                <p>Extents, encryption, checksums</p>
+            </div>
+        </div>
+
+        <h3 class="section-title">📚 Reference</h3>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="../GEMINI.md">GEMINI.md</a></h2>
+                <p>AI developer guide</p>
+            </div>
+            <div class="card">
+                <h2><a href="../todo.md">TODO List</a></h2>
+                <p>Current tasks</p>
+            </div>
+            <div class="card">
+                <h2><a href="../DEVELOPMENT_GUIDE.md">Dev Guide</a></h2>
+                <p>Build, test, contribute</p>
+            </div>
+        </div>
+
+        <footer>
+            <p>NeolyxOS © 2025 KetiveeAI — <strong>27 documentation pages</strong></p>
+            <p style="margin-top: 0.5rem;">Custom 64-bit OS with hardware-accelerated GUI | <a href="drivers/index.html"
+                    style="color: var(--accent);">74 Drivers</a> | <a href="kernel/syscalls.html"
+                    style="color: var(--accent);">24 Syscalls</a></p>
+            <p style="margin-top: 0.5rem;"><kbd
+                    style="background: var(--bg-secondary); padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid var(--border);">Ctrl+K</kbd>
+                or <kbd
+                    style="background: var(--bg-secondary); padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid var(--border);">/</kbd>
+                to search</p>
+        </footer>
+    </div>
+</body>
+
+</html>

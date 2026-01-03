@@ -1,0 +1,62 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Shared Folder Icon - with connected people emblem
+
+[nxi]
+version = 1.0
+name = shared
+size = 32
+author = KetiveeAI
+category = directory
+viewbox = 0 0 32 32
+
+[canvas]
+width = 32
+height = 32
+background = transparent
+
+[colors]
+shadow = #000000
+folder_base = #F2D6C9
+folder_dark = #DDAE98
+person = #DDAE98
+
+[paths]
+# Shadow layer
+shadow = M0,4 L0,26 L30,26 L30,6 L15,6 L13,4 Z
+
+# Back folder tab
+back_tab = M0,5 L0,27 L31,27 L31,7 L16,7 L14,5 Z
+
+# Front folder body
+front = M0,8 L0,28 L32,28 L32,10 L18,10 L16,8 Z
+
+# Left person head
+head1 = M12,12 a2,2 0 1,0 0.01,0
+
+# Left person body
+body1 = M9,20 Q9,16 12,16 Q15,16 15,20 Z
+
+# Right person head
+head2 = M20,12 a2,2 0 1,0 0.01,0
+
+# Right person body
+body2 = M17,20 Q17,16 20,16 Q23,16 23,20 Z
+
+# Connection line
+connect = M14,14 L18,14
+
+[style]
+shadow.fill = shadow
+shadow.opacity = 0.3
+back_tab.fill = folder_base
+front.fill = folder_base
+head1.fill = person
+body1.fill = person
+head2.fill = person
+body2.fill = person
+connect.stroke = person
+connect.stroke-width = 2
+
+[style.dark]
+folder_base = #C4A99E
+person = #B8988A

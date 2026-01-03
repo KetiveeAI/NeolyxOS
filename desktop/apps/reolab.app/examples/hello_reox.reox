@@ -1,0 +1,4 @@
+fn main() -> int {
+    print("Hello, Neolyx OS from ReoX!");
+    return 0;
+} 

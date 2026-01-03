@@ -1,0 +1,2 @@
+/usr/bin/ar qc libnxvideo.a "CMakeFiles/nxvideo-static.dir/src/core/init.c.o" "CMakeFiles/nxvideo-static.dir/src/core/player.c.o"
+/usr/bin/ranlib libnxvideo.a

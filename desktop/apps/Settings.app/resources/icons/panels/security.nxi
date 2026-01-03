@@ -1,0 +1,46 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Security Panel Icon - Red gradient tile with shield
+
+[nxi]
+version = 1.0
+name = security
+size = 64
+author = KetiveeAI
+category = settings
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+tile_start = #FF3B30
+tile_end = #CC2D24
+icon_color = #FFFFFF
+check_color = rgba(255,255,255,0.9)
+
+[gradients]
+tileGrad = linear 0,0 64,64 tile_start tile_end
+
+[shapes]
+# Rounded square tile background
+rect x=0 y=0 width=64 height=64 rx=12 fill=tileGrad
+
+[paths]
+# Shield shape
+shield = M32,10 L12,20 L12,34 C12,46 20,54 32,58 C44,54 52,46 52,34 L52,20 Z
+# Checkmark
+check = M24,32 L30,40 L42,26
+
+[style]
+shield.fill = icon_color
+check.fill = none
+check.stroke = tile_start
+check.stroke-width = 4
+check.stroke-linecap = round
+check.stroke-linejoin = round
+
+[style.dark]
+tile_start = #FF453A
+tile_end = #CC2D24

@@ -1,0 +1,89 @@
+[2J[01;01H[=3h[2J[01;01H[2J[01;01H[=3h[2J[01;01H[2J[01;01H[=3h[2J[01;01HBdsDxe: loading Boot0006 "EFI Internal Shell" from Fv(7CB8BDC9-F8EB-4F34-AAEA-3EE4AF6516A1)/FvFile(7C04A583-9E3E-4F1C-AD65-E05268D0B4D1)
+BdsDxe: starting Boot0006 "EFI Internal Shell" from Fv(7CB8BDC9-F8EB-4F34-AAEA-3EE4AF6516A1)/FvFile(7C04A583-9E3E-4F1C-AD65-E05268D0B4D1)
+[2J[01;01H[01;01HUEFI Interactive Shell v2.2
+EDK II
+UEFI v2.70 (Ubuntu distribution of EDK II, 0x00010000)
+[1m[33m[40mMapping table[0m[37m[40m
+[1m[33m[40m      FS0:[0m[37m[40m [1m[37m[40mAlias(s):[0m[37m[40mF0a:;BLK0:
+          PciRoot(0x0)/Pci(0x1,0x1)/Ata(0x0)
+[1m[33m[40m     BLK1:[0m[37m[40m [1m[37m[40mAlias(s):[0m[37m[40m
+          PciRoot(0x0)/Pci(0x1,0x1)/Ata(0x0)
+[09;01HPress [1m[37m[40mESC[0m[37m[40m in 5 seconds to skip [1m[33m[40mstartup.nsh[0m[37m[40m or any other key to continue.[09;01HPress [1m[37m[40mESC[0m[37m[40m in 4 seconds to skip [1m[33m[40mstartup.nsh[0m[37m[40m or any other key to continue.[09;01HPress [1m[37m[40mESC[0m[37m[40m in 3 seconds to skip [1m[33m[40mstartup.nsh[0m[37m[40m or any other key to continue.[09;01HPress [1m[37m[40mESC[0m[37m[40m in 2 seconds to skip [1m[33m[40mstartup.nsh[0m[37m[40m or any other key to continue.[09;01HPress [1m[37m[40mESC[0m[37m[40m in 1 seconds to skip [1m[33m[40mstartup.nsh[0m[37m[40m or any other key to continue.
+[1m[33m[40mShell> [0m[37m[40mfs0:
+[1m[33m[40mFS0:\> [0m[37m[40m\EFI\BOOT\BOOTX64.EFI
+
+[1m[32m[40m    ✓ NeolyxOS UEFI Firmware v8.0
+
+[1m[37m[40m    Press F2 for boot menu...
+    No other OS detected, booting NeolyxOS directly
+    [ 15%] Initializing filesystem...
+    [ 25%] Searching for kernel...
+    Found: \EFI\BOOT\kernel.bin
+    [ 35%] Reading kernel file...
+    Kernel size: 545748 bytes
+    [ 45%] Allocating kernel memory...
+    [ 55%] Loading kernel...
+    [ 65%] Validating kernel...
+    [ 75%] Loading raw binary...
+    Raw binary at: 0x100000
+    [ 80%] Kernel ready...
+[1m[32m[40m
+    ✓ Kernel loaded: 545748 bytes
+    ✓ Entry point: 0x100000
+    ✓ Boot info at: 0x1DD86080
+
+[1m[37m[40m    [ 85%] Getting memory map...
+    [BOOT] No neolyx.installed - Installer Mode
+    [ 90%] Exiting boot services...
+K64
+STK
+GO!
+
+
+========================================
+    NeolyxOS Boot Firmware
+========================================
+
+[OK] Framebuffer initialized
+[PLATFORM] Virtual Machine detected
+[OK] Mouse initialized
+[PMM] Initializing physical memory manager...
+[PMM] Memory map entries: 130
+  0x0000000000186000 - 0x0000000000800000 (6 MB) Usable
+  0x0000000000900000 - 0x0000000001780000 (14 MB) Usable
+  0x0000000001780000 - 0x000000001BB75000 (419 MB) Usable
+  0x000000001BB95000 - 0x000000001DC80000 (32 MB) Usable
+  0x000000001DDD1000 - 0x000000001E589000 (7 MB) Usable
+  0x000000001F7FF000 - 0x000000001FE00000 (6 MB) Usable
+  0x000000FD00000000 - 0x0000010000000000 (12288 MB) Reserved/MMIO
+[PMM] Ready: 505 MB free, 12799 MB total
+[OK] PMM initialized for AHCI
+[BOOT] Starting nucleus_init...
+[NUCLEUS] Init started
+[NUCLEUS] Starting disk scan...
+[AHCI] Scanning for controllers...
+[AHCI] No controller found
+[NUCLEUS] AHCI init failed
+[NVMe] Scanning for NVMe controllers...
+[NVMe] Found 0 controller(s)
+[NUCLEUS] No NVMe controllers found
+[NUCLEUS] Disk scan complete: 0 disk(s)
+[NUCLEUS] Init complete
+[OK] Nucleus initialized
+[OK] Heap initialized
+[BOOT] Initializing VFS/NXFS components...
+[VFS] Initializing virtual filesystem...
+[VFS] Ready
+[NXFS] Initializing NXFS filesystem driver...
+[VFS] Registered filesystem: nxfs
+[VFS] Registered filesystem: nxfs_enc
+[NXFS] Ready (standard + encrypted modes)
+[FAT] Initializing FAT filesystem driver...
+[VFS] Registered filesystem: fat
+[VFS] Registered filesystem: fat32
+[FAT] Ready (FAT12/16/32)
+[AHCI_BLK] Initializing AHCI block adapter...
+[AHCI_BLK] Ready
+[AHCI_BLK] Failed to identify drive
+[BOOT] Drawing boot manager...
+[OK] Boot Firmware displayed

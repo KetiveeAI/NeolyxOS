@@ -1,0 +1,35 @@
+{
+    "name": "App Icon",
+    "category": "Icons",
+    "description": "NeolyxOS application icon template (1024x1024)",
+    "size": {"width": 1024, "height": 1024},
+    "units": "pixels",
+    "guides": [
+        {"type": "horizontal", "position": 128},
+        {"type": "horizontal", "position": 896},
+        {"type": "vertical", "position": 128},
+        {"type": "vertical", "position": 896}
+    ],
+    "layers": [
+        {
+            "name": "Background",
+            "shapes": [
+                {
+                    "type": "rectangle",
+                    "x": 0, "y": 0,
+                    "width": 1024, "height": 1024,
+                    "corner_radius": 200,
+                    "fill": {"type": "gradient", "ref": "sunset"}
+                }
+            ]
+        },
+        {
+            "name": "Icon Content",
+            "shapes": []
+        },
+        {
+            "name": "Highlights",
+            "shapes": []
+        }
+    ]
+}

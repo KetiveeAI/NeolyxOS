@@ -1,0 +1,509 @@
+// ============================================================================
+// REOX Standard Library Prelude
+// Native UI scripting language for NeolyxOS
+// 
+// FEATURES:
+// - Swift-like syntax with C performance
+// - Memory-safe execution
+// - React-style component system
+// - Built-in state management with diffing
+// ============================================================================
+
+/*
+ * COMMENT STYLES:
+ * 
+ * // Single-line comment
+ * 
+ * /* Multi-line comment
+ *    Can span multiple lines
+ *    Supports /* nested */ comments
+ * */
+ * 
+ * /// Documentation comment (for functions)
+ */
+
+// ============================================================================
+// CORE: Print Functions
+// ============================================================================
+
+/// Print string with newline
+extern fn println(s: string) -> void;
+
+/// Print string without newline
+extern fn print(s: string) -> void;
+
+/// Print integer value
+extern fn print_int(n: int) -> void;
+
+/// Print float value
+extern fn print_float(n: float) -> void;
+
+/// Print boolean value
+extern fn print_bool(b: bool) -> void;
+
+// ============================================================================
+// CORE: Math Functions
+// ============================================================================
+
+// Integer math
+extern fn abs_int(x: int) -> int;
+extern fn min_int(a: int, b: int) -> int;
+extern fn max_int(a: int, b: int) -> int;
+extern fn clamp_int(x: int, min_val: int, max_val: int) -> int;
+
+// Float math
+extern fn abs_float(x: float) -> float;
+extern fn min_float(a: float, b: float) -> float;
+extern fn max_float(a: float, b: float) -> float;
+extern fn clamp_float(x: float, min_val: float, max_val: float) -> float;
+extern fn pow_float(base: float, exp: float) -> float;
+extern fn sqrt_float(x: float) -> float;
+extern fn sin_float(x: float) -> float;
+extern fn cos_float(x: float) -> float;
+extern fn tan_float(x: float) -> float;
+extern fn floor_float(x: float) -> float;
+extern fn ceil_float(x: float) -> float;
+extern fn round_float(x: float) -> float;
+extern fn log_float(x: float) -> float;
+extern fn exp_float(x: float) -> float;
+
+// ============================================================================
+// CORE: Memory & System
+// ============================================================================
+
+/// Allocate memory (returns pointer as int)
+extern fn rx_alloc(size: int) -> int;
+
+/// Free allocated memory
+extern fn rx_free(ptr: int) -> void;
+
+/// Exit program with code
+extern fn rx_exit(code: int) -> void;
+
+/// Panic with error message
+extern fn rx_panic(message: string) -> void;
+
+// ============================================================================
+// UI: Colors
+// ============================================================================
+
+/// RGBA Color (0-255 per channel)
+struct Color {
+    r: int,
+    g: int,
+    b: int,
+    a: int
+}
+
+// Color Constructors
+extern fn color_rgba(r: int, g: int, b: int, a: int) -> Color;
+extern fn color_rgb(r: int, g: int, b: int) -> Color;
+extern fn color_hex(hex: int) -> Color;            // 0xRRGGBB
+extern fn color_hexa(hex: int, alpha: int) -> Color;  // 0xRRGGBB + alpha
+
+// Color Manipulation
+extern fn color_lighten(c: Color, amount: float) -> Color;  // 0.0-1.0
+extern fn color_darken(c: Color, amount: float) -> Color;   // 0.0-1.0
+extern fn color_blend(a: Color, b: Color, t: float) -> Color;
+extern fn color_alpha(c: Color, a: int) -> Color;
+extern fn color_invert(c: Color) -> Color;
+extern fn color_grayscale(c: Color) -> Color;
+
+// ============================================================================
+// UI: System Colors (NeolyxOS Theme)
+// ============================================================================
+
+/*
+ * THEME COLORS:
+ * 
+ * PRIMARY    #007AFF (Blue - main actions)
+ * SECONDARY  #5856D6 (Purple - secondary actions)
+ * ACCENT     #FF453A (Red - highlights)
+ * SUCCESS    #34C759 (Green - success states)
+ * WARNING    #FF9500 (Orange - warnings)
+ * ERROR      #FF3B30 (Red - errors)
+ * BACKGROUND #1C1C1E (Dark - main background)
+ * SURFACE    #2C2C2E (Dark gray - cards)
+ * TEXT       #FFFFFF (White - primary text)
+ * TEXT_SEC   #AEAEB2 (Gray - secondary text)
+ */
+
+extern fn color_primary() -> Color;       // #007AFF
+extern fn color_secondary() -> Color;     // #5856D6
+extern fn color_accent() -> Color;        // #FF453A
+extern fn color_success() -> Color;       // #34C759
+extern fn color_warning() -> Color;       // #FF9500
+extern fn color_error() -> Color;         // #FF3B30
+extern fn color_info() -> Color;          // #5AC8FA
+extern fn color_background() -> Color;    // #1C1C1E
+extern fn color_surface() -> Color;       // #2C2C2E
+extern fn color_surface_alt() -> Color;   // #3A3A3C
+extern fn color_text() -> Color;          // #FFFFFF
+extern fn color_text_secondary() -> Color;// #AEAEB2
+extern fn color_text_disabled() -> Color; // #636366
+extern fn color_border() -> Color;        // #48484A
+extern fn color_divider() -> Color;       // #38383A
+extern fn color_overlay() -> Color;       // rgba(0,0,0,0.5)
+extern fn color_clear() -> Color;         // rgba(0,0,0,0)
+extern fn color_white() -> Color;         // #FFFFFF
+extern fn color_black() -> Color;         // #000000
+
+// ============================================================================
+// UI: Geometry
+// ============================================================================
+
+struct Point { x: float, y: float }
+struct Size { w: float, h: float }
+struct Rect { x: float, y: float, w: float, h: float }
+struct EdgeInsets { top: float, right: float, bottom: float, left: float }
+
+extern fn point(x: float, y: float) -> Point;
+extern fn size(w: float, h: float) -> Size;
+extern fn rect(x: float, y: float, w: float, h: float) -> Rect;
+extern fn insets(top: float, right: float, bottom: float, left: float) -> EdgeInsets;
+extern fn insets_all(value: float) -> EdgeInsets;
+extern fn insets_symmetric(v: float, h: float) -> EdgeInsets;
+extern fn insets_only(top: float, right: float, bottom: float, left: float) -> EdgeInsets;
+
+// ============================================================================
+// UI: Border & Shadow
+// ============================================================================
+
+/*
+ * BORDER STYLES:
+ * 0 = none
+ * 1 = solid
+ * 2 = dashed
+ * 3 = dotted
+ */
+struct Border { width: float, color: Color, style: int }
+
+/*
+ * SHADOW: Drop shadow with offset, blur and spread
+ */
+struct Shadow { offset_x: float, offset_y: float, blur: float, spread: float, color: Color }
+
+extern fn border(width: float, c: Color) -> Border;
+extern fn border_style(width: float, c: Color, style: int) -> Border;
+extern fn border_none() -> Border;
+
+extern fn shadow(x: float, y: float, blur: float, c: Color) -> Shadow;
+extern fn shadow_spread(x: float, y: float, blur: float, spread: float, c: Color) -> Shadow;
+extern fn shadow_none() -> Shadow;
+
+// Preset shadows
+extern fn shadow_sm() -> Shadow;   // Small: 0 1 2
+extern fn shadow_md() -> Shadow;   // Medium: 0 4 6
+extern fn shadow_lg() -> Shadow;   // Large: 0 10 15
+extern fn shadow_xl() -> Shadow;   // XLarge: 0 20 25
+
+// ============================================================================
+// UI: View Base
+// ============================================================================
+
+struct View { handle: int }
+
+// Layout Containers
+extern fn vstack(gap: float) -> View;         // Vertical stack
+extern fn hstack(gap: float) -> View;         // Horizontal stack
+extern fn zstack() -> View;                    // Overlay stack
+extern fn scroll_view() -> View;              // Scrollable container
+extern fn list_view() -> View;                // List container
+extern fn grid_view(cols: int, gap: float) -> View;  // Grid layout
+extern fn flex_view() -> View;                // Flexbox container
+extern fn center() -> View;                   // Centers child
+extern fn spacer() -> View;                   // Flexible space
+extern fn divider() -> View;                  // Horizontal line
+
+// Basic Views
+extern fn text_view(text: string) -> View;
+extern fn image_view(source: string) -> View;
+extern fn icon_view(name: string) -> View;
+extern fn avatar_view(source: string) -> View;
+extern fn badge_view(text: string) -> View;
+extern fn progress_view(value: float) -> View;  // 0.0-1.0
+extern fn activity_indicator() -> View;
+
+// ============================================================================
+// UI: Buttons
+// ============================================================================
+
+/*
+ * BUTTON STYLES:
+ * - Primary: Solid color, main action
+ * - Secondary: Outline style
+ * - Tertiary: Text only
+ * - Destructive: Red, dangerous action
+ */
+
+extern fn button_view(label: string) -> View;
+extern fn button_primary(label: string) -> View;
+extern fn button_secondary(label: string) -> View;
+extern fn button_tertiary(label: string) -> View;
+extern fn button_destructive(label: string) -> View;
+extern fn button_icon(icon: string) -> View;
+extern fn button_icon_label(icon: string, label: string) -> View;
+
+extern fn button_set_on_click(v: View, callback_id: int) -> void;
+extern fn button_set_style(v: View, normal: Color, hover: Color, pressed: Color) -> void;
+extern fn button_set_disabled(v: View, disabled: bool) -> void;
+extern fn button_set_loading(v: View, loading: bool) -> void;
+
+// ============================================================================
+// UI: Forms & Inputs
+// ============================================================================
+
+/*
+ * FORM COMPONENTS:
+ * Complete set of input elements for data entry
+ */
+
+// Text Input
+extern fn text_field(placeholder: string) -> View;
+extern fn text_area(placeholder: string) -> View;
+extern fn password_field(placeholder: string) -> View;
+extern fn search_field(placeholder: string) -> View;
+extern fn email_field(placeholder: string) -> View;
+extern fn number_field(placeholder: string) -> View;
+
+// Selection
+extern fn checkbox_view(label: string, checked: bool) -> View;
+extern fn radio_view(label: string, selected: bool) -> View;
+extern fn toggle_view(label: string, on: bool) -> View;
+extern fn switch_view(on: bool) -> View;
+
+// Pickers
+extern fn picker_view(options: string) -> View;    // Options as "a,b,c"
+extern fn date_picker() -> View;
+extern fn time_picker() -> View;
+extern fn date_time_picker() -> View;
+extern fn color_picker() -> View;
+extern fn file_picker() -> View;
+
+// Sliders
+extern fn slider_view(min_val: float, max_val: float, value: float) -> View;
+extern fn range_slider(min_val: float, max_val: float, low: float, high: float) -> View;
+extern fn stepper_view(min_val: int, max_val: int, value: int, step: int) -> View;
+
+// Form Container
+extern fn form_view() -> View;
+extern fn form_field(label: string, input: View) -> View;
+extern fn form_section(title: string) -> View;
+
+// Input Modifiers
+extern fn input_set_value(v: View, value: string) -> void;
+extern fn input_get_value(v: View) -> string;
+extern fn input_set_placeholder(v: View, placeholder: string) -> void;
+extern fn input_set_on_change(v: View, callback_id: int) -> void;
+extern fn input_set_on_submit(v: View, callback_id: int) -> void;
+extern fn input_set_disabled(v: View, disabled: bool) -> void;
+extern fn input_set_error(v: View, error: string) -> void;
+extern fn input_clear_error(v: View) -> void;
+
+// ============================================================================
+// UI: View Modifiers
+// ============================================================================
+
+// Background & Colors
+extern fn view_set_background(v: View, c: Color) -> void;
+extern fn view_set_gradient(v: View, from: Color, to: Color, angle: float) -> void;
+extern fn view_set_foreground(v: View, c: Color) -> void;
+
+// Spacing
+extern fn view_set_padding(v: View, p: EdgeInsets) -> void;
+extern fn view_set_margin(v: View, m: EdgeInsets) -> void;
+
+// Border & Shape
+extern fn view_set_border(v: View, b: Border) -> void;
+extern fn view_set_corner_radius(v: View, r: float) -> void;
+extern fn view_set_corners(v: View, tl: float, tr: float, br: float, bl: float) -> void;
+extern fn view_set_circular(v: View) -> void;
+
+// Shadow
+extern fn view_set_shadow(v: View, s: Shadow) -> void;
+
+// Size & Layout
+extern fn view_set_size(v: View, w: float, h: float) -> void;
+extern fn view_set_width(v: View, w: float) -> void;
+extern fn view_set_height(v: View, h: float) -> void;
+extern fn view_set_min_size(v: View, w: float, h: float) -> void;
+extern fn view_set_max_size(v: View, w: float, h: float) -> void;
+extern fn view_set_flex(v: View, grow: float, shrink: float) -> void;
+
+// Visibility & State
+extern fn view_set_opacity(v: View, alpha: float) -> void;
+extern fn view_set_hidden(v: View, hidden: bool) -> void;
+extern fn view_set_disabled(v: View, disabled: bool) -> void;
+extern fn view_set_focusable(v: View, focusable: bool) -> void;
+
+// Hierarchy
+extern fn view_add_child(parent: View, child: View) -> void;
+extern fn view_remove_child(parent: View, child: View) -> void;
+extern fn view_clear_children(parent: View) -> void;
+
+// ============================================================================
+// UI: Text Modifiers
+// ============================================================================
+
+/*
+ * FONT WEIGHTS:
+ * 100 = Thin
+ * 300 = Light
+ * 400 = Regular
+ * 500 = Medium
+ * 600 = Semibold
+ * 700 = Bold
+ * 900 = Black
+ * 
+ * TEXT ALIGN:
+ * 0 = Left
+ * 1 = Center
+ * 2 = Right
+ * 3 = Justify
+ */
+
+extern fn text_set_text(v: View, text: string) -> void;
+extern fn text_set_color(v: View, c: Color) -> void;
+extern fn text_set_font(v: View, family: string) -> void;
+extern fn text_set_font_size(v: View, size: float) -> void;
+extern fn text_set_font_weight(v: View, weight: int) -> void;
+extern fn text_set_align(v: View, align: int) -> void;
+extern fn text_set_line_height(v: View, height: float) -> void;
+extern fn text_set_letter_spacing(v: View, spacing: float) -> void;
+extern fn text_set_max_lines(v: View, lines: int) -> void;
+extern fn text_set_truncate(v: View, truncate: bool) -> void;
+extern fn text_set_selectable(v: View, selectable: bool) -> void;
+extern fn text_set_underline(v: View, underline: bool) -> void;
+extern fn text_set_strikethrough(v: View, strikethrough: bool) -> void;
+extern fn text_set_italic(v: View, italic: bool) -> void;
+
+// ============================================================================
+// UI: Application & Window
+// ============================================================================
+
+struct App { handle: int }
+struct Window { handle: int }
+
+extern fn app_new(name: string) -> App;
+extern fn app_create_window(app: App, title: string, w: int, h: int) -> Window;
+extern fn app_run(app: App) -> void;
+extern fn app_quit(app: App) -> void;
+
+extern fn window_set_root(win: Window, v: View) -> void;
+extern fn window_set_title(win: Window, title: string) -> void;
+extern fn window_set_size(win: Window, w: int, h: int) -> void;
+extern fn window_set_min_size(win: Window, w: int, h: int) -> void;
+extern fn window_set_max_size(win: Window, w: int, h: int) -> void;
+extern fn window_set_resizable(win: Window, resizable: bool) -> void;
+extern fn window_set_fullscreen(win: Window, fullscreen: bool) -> void;
+extern fn window_center(win: Window) -> void;
+extern fn window_close(win: Window) -> void;
+
+// ============================================================================
+// STATE: Reactive State Management
+// ============================================================================
+
+/*
+ * STATE CONTAINERS:
+ * - Automatic UI updates on change
+ * - Diff-based optimization
+ * - Observer pattern for subscriptions
+ */
+
+struct StateInt { value: int, id: int }
+struct StateFloat { value: float, id: int }
+struct StateString { value: string, id: int }
+struct StateBool { value: bool, id: int }
+
+extern fn state_int(initial: int) -> StateInt;
+extern fn state_float(initial: float) -> StateFloat;
+extern fn state_string(initial: string) -> StateString;
+extern fn state_bool(initial: bool) -> StateBool;
+
+extern fn state_get_int(s: StateInt) -> int;
+extern fn state_set_int(s: StateInt, value: int) -> void;
+extern fn state_get_float(s: StateFloat) -> float;
+extern fn state_set_float(s: StateFloat, value: float) -> void;
+extern fn state_get_string(s: StateString) -> string;
+extern fn state_set_string(s: StateString, value: string) -> void;
+extern fn state_get_bool(s: StateBool) -> bool;
+extern fn state_set_bool(s: StateBool, value: bool) -> void;
+
+// Batch updates (transactions)
+extern fn state_batch_begin() -> void;
+extern fn state_batch_commit() -> void;
+
+// ============================================================================
+// COLLECTIONS: Array & Map
+// ============================================================================
+
+struct Array { handle: int, length: int }
+struct Map { handle: int, size: int }
+
+extern fn array_new() -> Array;
+extern fn array_push(arr: Array, value: int) -> void;
+extern fn array_pop(arr: Array) -> int;
+extern fn array_get(arr: Array, index: int) -> int;
+extern fn array_set(arr: Array, index: int, value: int) -> void;
+extern fn array_length(arr: Array) -> int;
+extern fn array_clear(arr: Array) -> void;
+extern fn array_contains(arr: Array, value: int) -> bool;
+extern fn array_index_of(arr: Array, value: int) -> int;
+extern fn array_remove(arr: Array, index: int) -> void;
+
+extern fn map_new() -> Map;
+extern fn map_set(m: Map, key: string, value: string) -> void;
+extern fn map_get(m: Map, key: string) -> string;
+extern fn map_has(m: Map, key: string) -> bool;
+extern fn map_remove(m: Map, key: string) -> void;
+extern fn map_size(m: Map) -> int;
+extern fn map_clear(m: Map) -> void;
+extern fn map_keys(m: Map) -> Array;
+
+// ============================================================================
+// TIMER & ASYNC
+// ============================================================================
+
+extern fn set_timeout(callback_id: int, delay_ms: int) -> int;
+extern fn set_interval(callback_id: int, interval_ms: int) -> int;
+extern fn clear_timeout(timer_id: int) -> void;
+extern fn clear_interval(timer_id: int) -> void;
+extern fn request_animation_frame(callback_id: int) -> int;
+
+// ============================================================================
+// PLATFORM
+// ============================================================================
+
+extern fn platform_name() -> string;
+extern fn platform_version() -> string;
+extern fn screen_width() -> int;
+extern fn screen_height() -> int;
+extern fn screen_scale() -> float;
+extern fn is_dark_mode() -> bool;
+extern fn locale() -> string;
+extern fn timezone() -> string;
+
+// ============================================================================
+// DEBUG: Skip & Ignore (Development Helpers)
+// ============================================================================
+
+/*
+ * SKIP: Mark code to be skipped during compilation
+ * IGNORE: Mark unused variables to suppress warnings
+ * DEBUG: Print debug information
+ */
+
+/// Skip this view in layout (development)
+extern fn skip_view(v: View) -> void;
+
+/// Mark variable as intentionally unused
+extern fn ignore(value: int) -> void;
+
+/// Debug print with file:line info
+extern fn debug(message: string) -> void;
+
+/// Assert condition is true
+extern fn assert(condition: bool, message: string) -> void;
+
+/// Log with level (0=debug, 1=info, 2=warn, 3=error)
+extern fn log(level: int, message: string) -> void;

@@ -1,0 +1,66 @@
+# Path.app Light Theme
+# NeolyxOS Theme Format
+
+[theme]
+name = "light"
+variant = "light"
+author = "KetiveeAI"
+
+[window]
+background = #EFF1F5
+titlebar = #DCE0E8
+border = #9CA0B0
+
+[toolbar]
+background = #E6E9EF
+border = #CCD0DA
+button = #DCE0E8
+button_hover = #BCC0CC
+button_active = #ACB0BE
+button_disabled = #EFF1F5
+
+[sidebar]
+background = #E6E9EF
+section_header = #6C6F85
+item = #4C4F69
+item_hover = #DCE0E8
+item_active = #CCD0DA
+
+[file_view]
+background = #EFF1F5
+selected = #CCD0DA
+hover = #DCE0E8
+text = #4C4F69
+text_dim = #6C6F85
+
+[tab_bar]
+background = #DCE0E8
+tab = #DCE0E8
+tab_active = #EFF1F5
+tab_hover = #CCD0DA
+tab_border = #9CA0B0
+
+[context_menu]
+background = #EFF1F5
+border = #9CA0B0
+item_hover = #DCE0E8
+separator = #CCD0DA
+
+[icons]
+folder = #1E66F5
+file = #EA76CB
+image = #40A02B
+video = #D20F39
+audio = #FE640B
+text = #4C4F69
+code = #179299
+archive = #E64553
+
+[text]
+primary = #4C4F69
+secondary = #5C5F77
+dim = #6C6F85
+accent = #1E66F5
+error = #D20F39
+success = #40A02B
+warning = #DF8E1D

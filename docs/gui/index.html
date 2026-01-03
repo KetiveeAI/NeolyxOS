@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GUI Documentation | NeolyxOS</title>
+    
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="nav">
+        <a href="../index.html">← NeolyxOS Documentation</a>
+    </div>
+
+    <div class="container">
+        <h1>GUI Documentation</h1>
+        <p>NXRender is NeolyxOS's native GUI framework. Pure C, zero dependencies, designed for kernel integration.</p>
+
+        <div class="doc-list">
+            <div class="doc-item">
+                <a href="nxrender.html">
+                    <h3>NXRender Overview</h3>
+                    <p>Architecture, quick start, modules, and API reference for the complete GUI framework.</p>
+                </a>
+            </div>
+
+            <div class="doc-item">
+                <a href="animation.html">
+                    <h3>Animation System</h3>
+                    <p>Spring physics, cubic bezier easing, keyframe animations, timelines, and precision timing.</p>
+                </a>
+            </div>
+
+            <div class="doc-item">
+                <a href="lighting.html">
+                    <h3>3D Lighting</h3>
+                    <p>Physically-based lighting with Blinn-Phong shading, reflections, Fresnel effect, and materials.
+                    </p>
+                </a>
+            </div>
+
+            <div class="doc-item">
+                <a href="gpu_driver.html">
+                    <h3>GPU Driver Interface</h3>
+                    <p>Command buffers, texture management, VSync, and kernel GPU integration.</p>
+                </a>
+            </div>
+        </div>
+
+        <h2 style="font-size: 1.5rem; margin: 40px 0 20px; color: var(--text-primary);">Quick Stats</h2>
+        <table style="width: 100%; border-collapse: collapse;">
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 12px; color: var(--text-secondary);">Total Lines of C</td>
+                <td style="padding: 12px; font-weight: bold;">4,747</td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 12px; color: var(--text-secondary);">Library Size</td>
+                <td style="padding: 12px; font-weight: bold;">397 KB</td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 12px; color: var(--text-secondary);">Source Files</td>
+                <td style="padding: 12px; font-weight: bold;">32</td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 12px; color: var(--text-secondary);">External Dependencies</td>
+                <td style="padding: 12px; font-weight: bold;">0 (only libc + libm)</td>
+            </tr>
+            <tr>
+                <td style="padding: 12px; color: var(--text-secondary);">Location</td>
+                <td style="padding: 12px; font-family: monospace;">gui/nxrender_c/</td>
+            </tr>
+        </table>
+    </div>
+</body>
+
+</html>

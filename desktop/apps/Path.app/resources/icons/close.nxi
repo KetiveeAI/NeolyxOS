@@ -1,0 +1,47 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Window Close Button
+
+[nxi]
+version = 1.0
+name = close
+size = 12
+author = KetiveeAI
+category = window-control
+viewbox = 0 0 12 12
+
+[canvas]
+width = 12
+height = 12
+background = transparent
+
+[colors]
+bg_start = #ff6b6b
+bg_end = #ee5a5a
+stroke = #d63031
+symbol = #7a1f1f
+
+[gradients]
+closeGrad = linear 0,0 12,12 bg_start bg_end
+
+[shapes]
+# Background circle
+circle center=6,6 radius=5.5 fill=closeGrad stroke=stroke stroke-width=0.5
+
+[paths]
+# X symbol - two crossing lines
+line1 = M4,4 L8,8
+line2 = M8,4 L4,8
+
+[style]
+line1.stroke = symbol
+line1.stroke-width = 1.5
+line1.stroke-linecap = round
+line2.stroke = symbol
+line2.stroke-width = 1.5
+line2.stroke-linecap = round
+
+[style.dark]
+bg_start = #BF616A
+bg_end = #A54242
+stroke = #8C3333
+symbol = #1E1E2E

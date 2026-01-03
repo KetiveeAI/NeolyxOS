@@ -1,0 +1,150 @@
+// REOX Demo - NeolyxOS Display Utility
+// Native UI using REOX's SwiftUI-like declarative syntax
+
+// UI Type definitions
+struct Color { r: int, g: int, b: int, a: int }
+struct EdgeInsets { top: float, right: float, bottom: float, left: float }
+struct Border { width: float, color: Color, style: int }
+struct Shadow { offset_x: float, offset_y: float, blur: float, color: Color }
+struct View { handle: int }
+struct App { handle: int }
+struct Window { handle: int }
+
+// Print functions
+extern fn println(s: string) -> void;
+extern fn print(s: string) -> void;
+extern fn print_int(n: int) -> void;
+
+// Color constructors
+extern fn color_background() -> Color;
+extern fn color_surface() -> Color;
+extern fn color_text() -> Color;
+extern fn color_primary() -> Color;
+extern fn color_accent() -> Color;
+extern fn color_rgba(r: int, g: int, b: int, a: int) -> Color;
+extern fn color_lighten(c: Color, amount: float) -> Color;
+extern fn color_darken(c: Color, amount: float) -> Color;
+
+// Geometry
+extern fn insets_all(value: float) -> EdgeInsets;
+extern fn insets_symmetric(v: float, h: float) -> EdgeInsets;
+
+// Border & Shadow
+extern fn border(width: float, color: Color) -> Border;
+extern fn shadow(x: float, y: float, blur: float, color: Color) -> Shadow;
+
+// Layout containers
+extern fn vstack(gap: float) -> View;
+extern fn hstack(gap: float) -> View;
+
+// Views
+extern fn text_view(text: string) -> View;
+extern fn button_view(label: string) -> View;
+
+// View modifiers
+extern fn view_set_background(v: View, c: Color) -> void;
+extern fn view_set_padding(v: View, p: EdgeInsets) -> void;
+extern fn view_set_corner_radius(v: View, r: float) -> void;
+extern fn view_set_shadow(v: View, s: Shadow) -> void;
+extern fn view_set_border(v: View, b: Border) -> void;
+extern fn view_add_child(parent: View, child: View) -> void;
+
+// Text modifiers
+extern fn text_set_font_size(v: View, size: float) -> void;
+extern fn text_set_font_weight(v: View, weight: int) -> void;
+extern fn text_set_color(v: View, c: Color) -> void;
+
+// Button modifiers
+extern fn button_set_style(v: View, normal: Color, hover: Color, pressed: Color) -> void;
+
+// App & Window
+extern fn app_new(name: string) -> App;
+extern fn app_create_window(a: App, title: string, w: int, h: int) -> Window;
+extern fn app_run(a: App) -> void;
+extern fn window_set_root(win: Window, v: View) -> void;
+
+fn main() -> int {
+    println("Building NeolyxOS Display Settings UI...");
+    
+    // Create application
+    let app: App = app_new("NeolyxOS Settings");
+    let window: Window = app_create_window(app, "Display Settings", 800, 600);
+    
+    // Build UI root
+    let root: View = vstack(16.0);
+    view_set_background(root, color_background());
+    view_set_padding(root, insets_all(24.0));
+    
+    // Header
+    let header: View = text_view("Display Settings");
+    text_set_font_size(header, 28.0);
+    text_set_font_weight(header, 700);
+    text_set_color(header, color_text());
+    view_add_child(root, header);
+    
+    // Resolution card
+    let resolution_card: View = vstack(12.0);
+    view_set_background(resolution_card, color_surface());
+    view_set_padding(resolution_card, insets_all(16.0));
+    view_set_corner_radius(resolution_card, 12.0);
+    view_set_shadow(resolution_card, shadow(0.0, 4.0, 16.0, color_rgba(0, 0, 0, 80)));
+    
+    let res_title: View = text_view("Resolution");
+    text_set_font_size(res_title, 18.0);
+    text_set_font_weight(res_title, 600);
+    view_add_child(resolution_card, res_title);
+    
+    let res_value: View = text_view("3840 x 2160 @ 144Hz");
+    text_set_color(res_value, color_primary());
+    view_add_child(resolution_card, res_value);
+    
+    view_add_child(root, resolution_card);
+    
+    // Brightness card with border
+    let brightness_card: View = vstack(12.0);
+    view_set_background(brightness_card, color_surface());
+    view_set_padding(brightness_card, insets_all(16.0));
+    view_set_corner_radius(brightness_card, 12.0);
+    view_set_border(brightness_card, border(1.0, color_rgba(255, 255, 255, 30)));
+    
+    let bright_title: View = text_view("Brightness");
+    text_set_font_size(bright_title, 18.0);
+    text_set_font_weight(bright_title, 600);
+    view_add_child(brightness_card, bright_title);
+    
+    let bright_value: View = text_view("80%");
+    text_set_color(bright_value, color_text());
+    view_add_child(brightness_card, bright_value);
+    
+    view_add_child(root, brightness_card);
+    
+    // Color profile buttons (HStack)
+    let color_card: View = hstack(16.0);
+    view_set_background(color_card, color_surface());
+    view_set_padding(color_card, insets_all(16.0));
+    view_set_corner_radius(color_card, 12.0);
+    
+    let srgb_btn: View = button_view("sRGB");
+    let p3_btn: View = button_view("Display P3");
+    let hdr_btn: View = button_view("HDR");
+    
+    view_add_child(color_card, srgb_btn);
+    view_add_child(color_card, p3_btn);
+    view_add_child(color_card, hdr_btn);
+    view_add_child(root, color_card);
+    
+    // Apply button with accent color
+    let apply_btn: View = button_view("Apply Changes");
+    button_set_style(apply_btn, color_accent(), color_lighten(color_accent(), 0.15), color_darken(color_accent(), 0.15));
+    view_add_child(root, apply_btn);
+    
+    // Set root view and run app
+    window_set_root(window, root);
+    
+    println("UI built successfully!");
+    println("Launching app...");
+    app_run(app);
+    
+    println("Display Settings closed.");
+    return 0;
+}

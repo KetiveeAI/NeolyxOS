@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interrupts - NeolyxOS Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-code: #1c2128;
+            --text-primary: #c9d1d9;
+            --accent: #58a6ff;
+            --border: #30363d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        nav {
+            margin-bottom: 2rem;
+        }
+
+        nav a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin: 2rem 0 1rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            margin: 1.5rem 0 0.5rem;
+            color: var(--accent);
+        }
+
+        p {
+            margin-bottom: 1rem;
+        }
+
+        code {
+            background: var(--bg-code);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Consolas', monospace;
+        }
+
+        pre {
+            background: var(--bg-code);
+            padding: 1rem;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            padding: 0.5rem;
+            border: 1px solid var(--border);
+            text-align: left;
+            font-size: 0.9em;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        ul {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status.complete {
+            background: #238636;
+            color: white;
+        }
+
+        .file-ref {
+            font-size: 0.9em;
+            color: var(--accent);
+            border-top: 1px solid var(--border);
+            padding-top: 1rem;
+            margin-top: 2rem;
+        }
+    </style>
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        
+
+        <h1>⚡ Interrupts & Exceptions <span class="status complete">Complete</span></h1>
+        <p>x86_64 IDT setup, PIC remapping, and interrupt handling.</p>
+
+        <h2>Files</h2>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><code>kernel/src/arch/x86_64/idt.c</code></td>
+                <td>IDT setup, PIC init</td>
+            </tr>
+            <tr>
+                <td><code>kernel/src/arch/x86_64/isr.S</code></td>
+                <td>ISR stubs (assembly)</td>
+            </tr>
+            <tr>
+                <td><code>kernel/include/arch/x86_64/idt.h</code></td>
+                <td>IDT structures</td>
+            </tr>
+        </table>
+
+        <h2>Vector Layout</h2>
+        <table>
+            <tr>
+                <th>Vector</th>
+                <th>Type</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td>0-31</td>
+                <td>Exceptions</td>
+                <td>CPU exceptions (fault/trap/abort)</td>
+            </tr>
+            <tr>
+                <td>32-47</td>
+                <td>IRQs</td>
+                <td>Hardware interrupts (PIC remapped)</td>
+            </tr>
+            <tr>
+                <td>48-255</td>
+                <td>User</td>
+                <td>Software/APIC interrupts</td>
+            </tr>
+        </table>
+
+        <h2>CPU Exceptions (0-31)</h2>
+        <table>
+            <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Type</th>
+            </tr>
+            <tr>
+                <td>0</td>
+                <td>Division Error</td>
+                <td>Fault</td>
+            </tr>
+            <tr>
+                <td>1</td>
+                <td>Debug</td>
+                <td>Fault/Trap</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>NMI</td>
+                <td>Interrupt</td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td>Breakpoint</td>
+                <td>Trap</td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td>Invalid Opcode</td>
+                <td>Fault</td>
+            </tr>
+            <tr>
+                <td>8</td>
+                <td>Double Fault</td>
+                <td>Abort</td>
+            </tr>
+            <tr>
+                <td>13</td>
+                <td>General Protection</td>
+                <td>Fault</td>
+            </tr>
+            <tr>
+                <td>14</td>
+                <td>Page Fault</td>
+                <td>Fault</td>
+            </tr>
+        </table>
+
+        <h2>Hardware IRQs (PIC)</h2>
+        <table>
+            <tr>
+                <th>IRQ</th>
+                <th>Vector</th>
+                <th>Device</th>
+            </tr>
+            <tr>
+                <td>0</td>
+                <td>32</td>
+                <td>PIT Timer (1000 Hz)</td>
+            </tr>
+            <tr>
+                <td>1</td>
+                <td>33</td>
+                <td>PS/2 Keyboard</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>34</td>
+                <td>Cascade (PIC2)</td>
+            </tr>
+            <tr>
+                <td>8</td>
+                <td>40</td>
+                <td>RTC</td>
+            </tr>
+            <tr>
+                <td>12</td>
+                <td>44</td>
+                <td>PS/2 Mouse</td>
+            </tr>
+            <tr>
+                <td>14</td>
+                <td>46</td>
+                <td>Primary ATA</td>
+            </tr>
+            <tr>
+                <td>15</td>
+                <td>47</td>
+                <td>Secondary ATA</td>
+            </tr>
+        </table>
+
+        <h2>IDT Entry Structure</h2>
+        <pre><code>typedef struct {
+    uint16_t offset_low;     // Handler address [15:0]
+    uint16_t selector;       // Code segment selector
+    uint8_t  ist;            // Interrupt Stack Table
+    uint8_t  type_attr;      // Type and attributes
+    uint16_t offset_mid;     // Handler address [31:16]
+    uint32_t offset_high;    // Handler address [63:32]
+    uint32_t reserved;
+} __attribute__((packed)) idt_entry_t;</code></pre>
+
+        <h2>API</h2>
+        <pre><code>// Initialize IDT and PIC
+void idt_init(void);
+
+// Register custom handler
+void idt_register_handler(uint8_t vector, interrupt_handler_t handler);
+
+// PIC control
+void pic_send_eoi(uint8_t irq);
+void pic_mask_irq(uint8_t irq);
+void pic_unmask_irq(uint8_t irq);
+
+// Interrupt control
+void interrupts_enable(void);   // STI
+void interrupts_disable(void);  // CLI
+int interrupts_enabled(void);</code></pre>
+
+        <h2>ISR Stub (Assembly)</h2>
+        <pre><code>; ISR stub saves all registers, calls C handler
+isr_stub_N:
+    push 0              ; Error code (if none)
+    push N              ; Vector number
+    jmp isr_common
+
+isr_common:
+    push rax, rbx, rcx, rdx, rsi, rdi, rbp, r8-r15
+    mov rdi, rsp        ; Pointer to interrupt frame
+    call interrupt_handler
+    pop r15-r8, rbp, rdi, rsi, rdx, rcx, rbx, rax
+    add rsp, 16         ; Pop error code + vector
+    iretq</code></pre>
+
+        <h2>Registering a Handler</h2>
+        <pre><code>void my_keyboard_handler(void *ctx) {
+    uint8_t scancode = inb(0x60);
+    // Process key...
+    pic_send_eoi(1);  // IRQ1
+}
+
+// In init:
+idt_register_handler(33, my_keyboard_handler);
+pic_unmask_irq(1);</code></pre>
+
+        <div class="file-ref">
+            <strong>Source:</strong> <a href="../../kernel/src/arch/x86_64/idt.c">kernel/src/arch/x86_64/idt.c</a>
+        </div>
+    </div>
+</body>
+
+</html>

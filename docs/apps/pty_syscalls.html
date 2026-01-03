@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PTY Syscalls - NeolyxOS Documentation</title>
+    
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        
+
+        <h1>PTY Syscalls</h1>
+        <p><strong>NeolyxOS Pseudo-Terminal Subsystem</strong></p>
+
+        <h2>Overview</h2>
+        <p>The PTY subsystem provides terminal multiplexing for graphical terminal emulators like Terminal.app. It
+            creates master/slave fd pairs with ring buffers for bidirectional I/O.</p>
+
+        <h2>Syscall Numbers</h2>
+        <table>
+            <tr>
+                <th>Number</th>
+                <th>Syscall</th>
+                <th>Signature</th>
+            </tr>
+            <tr>
+                <td>60</td>
+                <td><code>SYS_PTY_OPEN</code></td>
+                <td><code>int pty_open(int* master, int* slave)</code></td>
+            </tr>
+            <tr>
+                <td>61</td>
+                <td><code>SYS_PTY_READ</code></td>
+                <td><code>ssize_t pty_read(int fd, void* buf, size_t count)</code></td>
+            </tr>
+            <tr>
+                <td>62</td>
+                <td><code>SYS_PTY_WRITE</code></td>
+                <td><code>ssize_t pty_write(int fd, void* buf, size_t count)</code></td>
+            </tr>
+            <tr>
+                <td>63</td>
+                <td><code>SYS_PTY_CLOSE</code></td>
+                <td><code>int pty_close(int fd)</code></td>
+            </tr>
+            <tr>
+                <td>64</td>
+                <td><code>SYS_PTY_RESIZE</code></td>
+                <td><code>int pty_resize(int fd, int cols, int rows)</code></td>
+            </tr>
+            <tr>
+                <td>65</td>
+                <td><code>SYS_PTY_IOCTL</code></td>
+                <td><code>int pty_ioctl(int fd, int cmd, void* arg)</code></td>
+            </tr>
+            <tr>
+                <td>66</td>
+                <td><code>SYS_SPAWN_SHELL</code></td>
+                <td><code>int pty_spawn_shell(int slave_fd, const char* shell)</code></td>
+            </tr>
+            <tr>
+                <td>67</td>
+                <td><code>SYS_PTY_POLL</code></td>
+                <td><code>int pty_poll(int fd, int timeout_ms)</code></td>
+            </tr>
+        </table>
+
+        <h2>Data Flow</h2>
+        <pre><code>Terminal.app (Userspace)
+      │
+      │ pty_write(master_fd, input)
+      ↓
+┌─────────────────────┐
+│   Master Buffer     │ → Ring buffer (4KB)
+└─────────────────────┘
+      ↓
+┌─────────────────────┐
+│   Shell Process     │ (reads from slave_fd)
+│    (/bin/nxsh)      │
+└─────────────────────┘
+      ↓
+┌─────────────────────┐
+│   Slave Buffer      │ → Ring buffer (4KB)
+└─────────────────────┘
+      ↓
+      │ pty_read(master_fd, output)
+Terminal.app (Userspace)</code></pre>
+
+        <h2>IOCTL Commands</h2>
+        <table>
+            <tr>
+                <th>Command</th>
+                <th>Value</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td><code>PTY_IOCTL_GET_SIZE</code></td>
+                <td>1</td>
+                <td>Get terminal size (rows, cols)</td>
+            </tr>
+            <tr>
+                <td><code>PTY_IOCTL_SET_SIZE</code></td>
+                <td>2</td>
+                <td>Set terminal size</td>
+            </tr>
+            <tr>
+                <td><code>PTY_IOCTL_GET_OWNER</code></td>
+                <td>3</td>
+                <td>Get owning process PID</td>
+            </tr>
+            <tr>
+                <td><code>PTY_IOCTL_SET_ECHO</code></td>
+                <td>4</td>
+                <td>Enable/disable echo</td>
+            </tr>
+            <tr>
+                <td><code>PTY_IOCTL_SET_RAW</code></td>
+                <td>5</td>
+                <td>Set raw mode</td>
+            </tr>
+            <tr>
+                <td><code>PTY_IOCTL_FLUSH</code></td>
+                <td>6</td>
+                <td>Flush buffers</td>
+            </tr>
+        </table>
+
+        <h2>Flags</h2>
+        <table>
+            <tr>
+                <th>Flag</th>
+                <th>Value</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td><code>PTY_FLAG_ECHO</code></td>
+                <td>0x01</td>
+                <td>Echo input back</td>
+            </tr>
+            <tr>
+                <td><code>PTY_FLAG_RAW</code></td>
+                <td>0x02</td>
+                <td>Raw mode (no line buffering)</td>
+            </tr>
+            <tr>
+                <td><code>PTY_FLAG_CRLF</code></td>
+                <td>0x04</td>
+                <td>Convert \n to \r\n</td>
+            </tr>
+            <tr>
+                <td><code>PTY_FLAG_CTRLC</code></td>
+                <td>0x08</td>
+                <td>Handle Ctrl+C as SIGINT</td>
+            </tr>
+        </table>
+
+        <h2>Example Usage</h2>
+        <pre><code>#include "io/pty.h"
+
+int master_fd, slave_fd;
+
+// Create PTY pair
+if (pty_open(&master_fd, &slave_fd) < 0) {
+    return -1;
+}
+
+// Spawn shell
+int shell_pid = pty_spawn_shell(slave_fd, "/bin/nxsh");
+
+// Set terminal size
+pty_resize(master_fd, 80, 24);
+
+// Write to shell
+const char *cmd = "ls -la\n";
+pty_write(master_fd, cmd, strlen(cmd));
+
+// Read shell output
+char buffer[4096];
+ssize_t n = pty_read(master_fd, buffer, sizeof(buffer));
+
+// Cleanup
+pty_close(master_fd);
+pty_close(slave_fd);</code></pre>
+
+        <h2>Limits</h2>
+        <table>
+            <tr>
+                <th>Limit</th>
+                <th>Value</th>
+            </tr>
+            <tr>
+                <td>Max PTY pairs</td>
+                <td>32</td>
+            </tr>
+            <tr>
+                <td>Buffer size</td>
+                <td>4096 bytes</td>
+            </tr>
+            <tr>
+                <td>Device name max</td>
+                <td>16 chars</td>
+            </tr>
+        </table>
+
+        <h2>Source Files</h2>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><code>kernel/include/io/pty.h</code></td>
+                <td>PTY header</td>
+            </tr>
+            <tr>
+                <td><code>kernel/src/io/pty.c</code></td>
+                <td>Implementation</td>
+            </tr>
+            <tr>
+                <td><code>kernel/include/core/syscall.h</code></td>
+                <td>Syscall definitions</td>
+            </tr>
+        </table>
+
+        <footer
+            style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--primary); color: var(--text-dim);">
+            Copyright © 2025 KetiveeAI
+        </footer>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS Apps - Documentation</title>
+    
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    
+
+    <div class="container">
+        <h1>NeolyxOS Applications</h1>
+        <p>Native applications for the NeolyxOS desktop environment.</p>
+
+        <h2>Interactive Demos</h2>
+        <div class="grid">
+            <div class="card">
+                <h3>📁 Path.app Demo <span class="badge badge-demo">Interactive</span></h3>
+                <p>Try the file manager UI with tabs, sidebar, file grid, and context menu.</p>
+                <a href="path.app.html" class="demo-link">Launch Demo →</a>
+            </div>
+        </div>
+
+        <h2>Application Directory Structure</h2>
+        <pre><code>/apps/&lt;AppName&gt;.app/
+├── bin/
+│   └── &lt;binary&gt;            # Main executable
+├── lib/
+│   └── lib&lt;name&gt;.so        # Shared library
+├── resources/
+│   ├── icons/              # File type icons (NXI format)
+│   ├── themes/             # Theme files (.theme)
+│   └── &lt;app&gt;.nxi           # App icon
+├── manifest.npa            # App manifest (JSON)
+├── Makefile
+└── README.md</code></pre>
+
+        <h2>Applications</h2>
+        <div class="grid">
+            <div class="card">
+                <h3>🖥️ Terminal.app <span class="badge badge-complete">Complete</span></h3>
+                <p>Tabbed terminal emulator with full PTY support.</p>
+                <ul>
+                    <li>Multiple tabs</li>
+                    <li>ANSI 256 colors</li>
+                    <li>PTY syscalls 60-67</li>
+                    <li>Dark/Light themes</li>
+                </ul>
+                <p><a href="terminal.html">Documentation →</a></p>
+            </div>
+
+            <div class="card">
+                <h3>📁 Path.app <span class="badge badge-complete">Complete</span></h3>
+                <p>Finder-like file manager with tabs and Quick Look.</p>
+                <ul>
+                    <li>Multiple tabs</li>
+                    <li>4 view modes</li>
+                    <li>Quick Look (Space)</li>
+                    <li>Get Info (Cmd+I)</li>
+                </ul>
+                <p><a href="path.html">Documentation →</a> | <a href="path.app.html">Demo →</a></p>
+            </div>
+
+            <div class="card">
+                <h3>⚙️ Settings.app <span class="badge badge-planned">Planned</span></h3>
+                <p>System preferences and configuration.</p>
+                <ul>
+                    <li>Display settings</li>
+                    <li>Network config</li>
+                    <li>User accounts</li>
+                    <li>Security options</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>Manifest Format (manifest.npa)</h2>
+        <pre><code>{
+    "name": "AppName",
+    "version": "1.0.0",
+    "bundle_id": "com.neolyx.appname",
+    "category": "Utilities",
+    "description": "App description",
+    
+    "binary": "bin/appname",
+    "library": "lib/libappname.so",
+    "icon": "resources/appname.nxi",
+    
+    "permissions": [
+        "filesystem.read",
+        "filesystem.write"
+    ],
+    
+    "menu": {
+        "file": [...],
+        "edit": [...],
+        "view": [...]
+    }
+}</code></pre>
+
+        <h2>Icon Format (NXI)</h2>
+        <pre><code># NeolyxOS NXI Vector Icon Format
+
+[icon]
+name = "appname"
+size = 64
+
+[colors]
+primary = #89B4FA
+secondary = #CDD6F4
+
+[paths]
+shape = "M0,0 L64,0 L64,64 L0,64 Z"
+shape_fill = primary</code></pre>
+
+        <h2>Theme Format (.theme)</h2>
+        <pre><code># NeolyxOS Theme Format
+
+[theme]
+name = "dark"
+variant = "dark"
+
+[window]
+background = #1E1E2E
+titlebar = #181825
+
+[text]
+primary = #CDD6F4
+dim = #6C7086</code></pre>
+
+        <footer>
+            Copyright © 2025 KetiveeAI | NeolyxOS Documentation
+        </footer>
+    </div>
+</body>
+
+</html>

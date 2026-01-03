@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boot Manager Guide - NeolyxOS</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --border: #30363d;
+            --success: #238636;
+            --warning: #9e6a03;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            padding: 2rem 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            font-size: 2rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        h2 {
+            font-size: 1.4rem;
+            margin: 2rem 0 1rem;
+            color: var(--accent);
+        }
+
+        h3 {
+            font-size: 1.1rem;
+            margin: 1.5rem 0 0.8rem;
+        }
+
+        .back-link {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .menu-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        .menu-table th,
+        .menu-table td {
+            padding: 0.8rem;
+            text-align: left;
+            border: 1px solid var(--border);
+        }
+
+        .menu-table th {
+            background: var(--bg-secondary);
+        }
+
+        .menu-table tr:nth-child(even) {
+            background: var(--bg-secondary);
+        }
+
+        .key {
+            background: var(--bg-secondary);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-family: monospace;
+            border: 1px solid var(--border);
+        }
+
+        code {
+            background: var(--bg-secondary);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        pre {
+            background: var(--bg-secondary);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .file-list {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+
+        .file-list dt {
+            color: var(--accent);
+            font-weight: bold;
+            margin-top: 0.5rem;
+        }
+
+        .file-list dd {
+            margin-left: 1rem;
+            color: var(--text-secondary);
+        }
+
+        .tip {
+            background: #1a4b2a;
+            border-left: 4px solid var(--success);
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .warning {
+            background: #3d2e1a;
+            border-left: 4px solid var(--warning);
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+            border-top: 1px solid var(--border);
+            margin-top: 2rem;
+        }
+    </style>
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <a href="index.html" class="back-link">← Back to Documentation</a>
+            <h1>🖥️ NeolyxOS Boot Manager Guide</h1>
+            <p>Graphical boot menu system and kernel architecture</p>
+        </header>
+
+        <h2>Overview</h2>
+        <p>NeolyxOS uses a two-stage boot system:</p>
+        <ol>
+            <li><strong>UEFI Bootloader</strong> (<code>BOOTX64.EFI</code>) - Loads kernel.bin into memory</li>
+            <li><strong>Boot Manager</strong> (<code>minimal_main.c</code>) - Shows graphical menu</li>
+            <li><strong>Full Kernel</strong> (<code>main.c</code>) - Initializes all subsystems</li>
+        </ol>
+
+        <h2>Boot Menu Options</h2>
+
+        <h3>Main Panel (Left)</h3>
+        <table class="menu-table">
+            <tr>
+                <th>Option</th>
+                <th>Description</th>
+                <th>Action</th>
+            </tr>
+            <tr>
+                <td>Boot NeolyxOS</td>
+                <td>Start the full operating system</td>
+                <td>Calls <code>nx_kernel_start()</code></td>
+            </tr>
+            <tr>
+                <td>Install NeolyxOS</td>
+                <td>Run installation wizard</td>
+                <td>Launches installer UI</td>
+            </tr>
+            <tr>
+                <td>Restore System</td>
+                <td>Enter recovery mode</td>
+                <td>Recovery options</td>
+            </tr>
+            <tr>
+                <td>Disk Tools</td>
+                <td>Partition manager</td>
+                <td>Disk management</td>
+            </tr>
+        </table>
+
+        <h3>Sidebar (Right)</h3>
+        <table class="menu-table">
+            <tr>
+                <th>Option</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td>Exit NeolyxOS</td>
+                <td>Power off or return to firmware</td>
+            </tr>
+            <tr>
+                <td>UEFI Settings</td>
+                <td>Access UEFI firmware settings</td>
+            </tr>
+            <tr>
+                <td>Terminal</td>
+                <td>Command-line interface</td>
+            </tr>
+            <tr>
+                <td>Support/Docs</td>
+                <td>Built-in help documentation</td>
+            </tr>
+            <tr>
+                <td>Recovery Shell</td>
+                <td>Emergency terminal access</td>
+            </tr>
+            <tr>
+                <td>Zepra Browser</td>
+                <td>Launch web browser</td>
+            </tr>
+            <tr>
+                <td>About</td>
+                <td>System information</td>
+            </tr>
+        </table>
+
+        <h2>Keyboard Navigation</h2>
+        <table class="menu-table">
+            <tr>
+                <th>Key</th>
+                <th>Action</th>
+            </tr>
+            <tr>
+                <td><span class="key">↑</span> <span class="key">↓</span></td>
+                <td>Move selection up/down</td>
+            </tr>
+            <tr>
+                <td><span class="key">←</span> <span class="key">→</span></td>
+                <td>Switch between main panel and sidebar</td>
+            </tr>
+            <tr>
+                <td><span class="key">Enter</span></td>
+                <td>Select current option</td>
+            </tr>
+            <tr>
+                <td><span class="key">Esc</span></td>
+                <td>Go back / Exit</td>
+            </tr>
+        </table>
+
+        <div class="tip">
+            <strong>Mouse Support:</strong> The Boot Manager supports PS/2 mouse. Click to select menu items.
+            In QEMU, press <span class="key">Ctrl</span>+<span class="key">Alt</span>+<span class="key">G</span> to
+            release mouse capture.
+        </div>
+
+        <h2>Source Files</h2>
+        <dl class="file-list">
+            <dt>kernel/minimal_main.c</dt>
+            <dd>Boot Manager UI (1400+ lines) - Provides <code>kernel_main()</code> entry point</dd>
+
+            <dt>kernel/src/core/main.c</dt>
+            <dd>Full Kernel - Provides <code>nx_kernel_start()</code> for OS initialization</dd>
+
+            <dt>kernel/src/arch/x86_64/startup.S</dt>
+            <dd>64-bit assembly startup - Calls <code>kernel_main()</code></dd>
+
+            <dt>kernel/include/ui/disk_icons.h</dt>
+            <dd>16x16 bitmap icons for boot menu</dd>
+
+            <dt>boot/main.c</dt>
+            <dd>UEFI Bootloader - Loads kernel.bin from EFI partition</dd>
+        </dl>
+
+        <h2>Boot Architecture</h2>
+        <pre>
+┌─────────────────────────────────────────────────────────┐
+│  UEFI Firmware                                          │
+└───────────────────────┬─────────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────┐
+│  BOOTX64.EFI (boot/main.c)                              │
+│  • Initialize graphics (GOP)                            │
+│  • Load kernel.bin to 0x100000                          │
+│  • Pass boot_info pointer in RDI                        │
+│  • Exit boot services                                   │
+│  • Jump to kernel entry                                 │
+└───────────────────────┬─────────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────┐
+│  startup.S                                              │
+│  • Set up stack                                         │
+│  • Clear BSS section                                    │
+│  • Call kernel_main(boot_info)                          │
+└───────────────────────┬─────────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────┐
+│  kernel_main() - Boot Manager (minimal_main.c)          │
+│  • Initialize framebuffer                               │
+│  • Initialize mouse                                     │
+│  • Show graphical boot menu                             │
+│  • Handle user input                                    │
+└───────────────────────┬─────────────────────────────────┘
+         User selects   │  "Boot NeolyxOS"
+                        ▼
+┌─────────────────────────────────────────────────────────┐
+│  nx_kernel_start() - Full Kernel (main.c)               │
+│  • Initialize video, GDT, IDT, paging                   │
+│  • Initialize heap, drivers, filesystem                 │
+│  • Start process manager                                │
+│  • Enter shell/desktop                                  │
+└─────────────────────────────────────────────────────────┘
+        </pre>
+
+        <div class="warning">
+            <strong>Important:</strong> Do not rename <code>kernel_main()</code> or <code>nx_kernel_start()</code>.
+            These are called by startup.S and the Boot Manager respectively.
+        </div>
+
+        <h2>Building</h2>
+        <pre>
+# Build kernel with Boot Manager
+cd neolyx-os/kernel
+make clean && make
+
+# Update boot image
+sudo mount -o loop neolyx.img /tmp/neolyx_mount
+sudo cp kernel.bin /tmp/neolyx_mount/EFI/BOOT/kernel.bin
+sudo umount /tmp/neolyx_mount
+
+# Test in QEMU
+qemu-system-x86_64 -bios /usr/share/ovmf/OVMF.fd \
+    -drive file=neolyx.img,format=raw -m 512M -serial stdio
+        </pre>
+
+        <footer>
+            <p>NeolyxOS Boot Manager Documentation © 2025 KetiveeAI</p>
+        </footer>
+    </div>
+</body>
+
+</html>

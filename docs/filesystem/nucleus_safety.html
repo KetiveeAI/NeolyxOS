@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NUCLEUS Safety Features - NeolyxOS Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --border: #30363d;
+            --success: #238636;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1,
+        h2,
+        h3 {
+            color: var(--accent);
+        }
+
+        h1 {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        pre {
+            background: #1f2428;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+
+        code {
+            background: #1f2428;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+    </style>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <a href="../index.html" class="back-link">← Back to Documentation</a>
+
+        <h1>NUCLEUS Disk Safety Features</h1>
+        <p>All critical safety features have been successfully implemented to prevent accidental data loss during disk
+            formatting operations.</p>
+
+        <h2>🛡️ Safety Features Implemented</h2>
+
+        <h3>1. Boot Disk Protection</h3>
+        <p><strong>Purpose:</strong> Prevents formatting the disk the system is currently booted from.</p>
+        <p><strong>Implementation:</strong> Checks <code>is_boot_disk</code> flag and blocks format immediately with
+            error dialog.</p>
+
+        <h3>2. Dynamic Disk Size Detection</h3>
+        <p><strong>Purpose:</strong> Warns user with ACTUAL detected disk size, not hardcoded values.</p>
+        <pre><code>Disk 1: Data Drive 1 50 GB - ALL DATA WILL BE LOST!</code></pre>
+
+        <h3>3. Confirmation Dialog System</h3>
+        <p><strong>Purpose:</strong> Requires explicit user confirmation before ANY destructive operation.</p>
+        <ul>
+            <li><strong>Cancel Button / Esc:</strong> Abort operation</li>
+            <li><strong>Continue Button / Enter:</strong> Proceed with format</li>
+            <li>Clicking outside dialog is ignored to prevent accidents.</li>
+        </ul>
+
+        <h3>4. Dry-Run Mode</h3>
+        <p><strong>Purpose:</strong> Simulate operations without writing to disk (safety net).</p>
+        <p>By default, <code>static int dry_run_mode = 1;</code> prevents any actual writes. Set to 0 only for
+            production builds.</p>
+
+        <h2>🧪 Testing Results</h2>
+        <p><strong>Status:</strong> ✅ ALL SAFETY TESTS PASSED</p>
+        <ol>
+            <li>✅ Boot Risk Protection: Blocked immediately.</li>
+            <li>✅ Dynamic Size: Shows correct size (e.g., 50GB).</li>
+            <li>✅ Cancellation: Cancel button and Esc key work.</li>
+            <li>✅ Confirmation: Continue button and Enter key work.</li>
+            <li>✅ Dry-Run: No disk writes occurred when enabled.</li>
+        </ol>
+
+    </div>
+</body>
+
+</html>

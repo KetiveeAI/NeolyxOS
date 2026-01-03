@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Process Management - NeolyxOS Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-code: #1c2128;
+            --text-primary: #c9d1d9;
+            --accent: #58a6ff;
+            --border: #30363d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        nav {
+            margin-bottom: 2rem;
+        }
+
+        nav a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin: 2rem 0 1rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            margin: 1.5rem 0 0.5rem;
+            color: var(--accent);
+        }
+
+        p {
+            margin-bottom: 1rem;
+        }
+
+        code {
+            background: var(--bg-code);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Consolas', monospace;
+        }
+
+        pre {
+            background: var(--bg-code);
+            padding: 1rem;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        ul {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status.complete {
+            background: #238636;
+            color: white;
+        }
+    </style>
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        
+
+        <h1>⚙️ Process Management <span class="status complete">Complete</span></h1>
+        <p>Process creation, scheduling, and context switching.</p>
+
+        <h2>Files</h2>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><code>kernel/src/core/process.c</code></td>
+                <td>Process management</td>
+            </tr>
+            <tr>
+                <td><code>kernel/include/core/process.h</code></td>
+                <td>PCB and API definitions</td>
+            </tr>
+            <tr>
+                <td><code>kernel/src/arch/x86_64/arch.S</code></td>
+                <td>Context switch assembly</td>
+            </tr>
+        </table>
+
+        <h2>Process Control Block (PCB)</h2>
+        <pre><code>typedef struct process {
+    uint32_t pid;
+    char name[64];
+    process_state_t state;      // READY, RUNNING, BLOCKED, ZOMBIE
+    
+    // CPU context
+    cpu_context_t context;      // All registers
+    uint64_t kernel_stack;
+    uint64_t user_stack;
+    
+    // Memory
+    uint64_t page_table;        // CR3 value
+    uint64_t heap_start;
+    uint64_t heap_end;
+    
+    // Scheduling
+    uint8_t priority;
+    uint64_t time_slice;
+    uint64_t cpu_time;
+    
+    // Links
+    struct process *parent;
+    struct process *next;
+} process_t;</code></pre>
+
+        <h2>Process States</h2>
+        <table>
+            <tr>
+                <th>State</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td>PROCESS_READY</td>
+                <td>Waiting to be scheduled</td>
+            </tr>
+            <tr>
+                <td>PROCESS_RUNNING</td>
+                <td>Currently executing</td>
+            </tr>
+            <tr>
+                <td>PROCESS_BLOCKED</td>
+                <td>Waiting for I/O or event</td>
+            </tr>
+            <tr>
+                <td>PROCESS_ZOMBIE</td>
+                <td>Exited, waiting for parent</td>
+            </tr>
+        </table>
+
+        <h2>API</h2>
+
+        <h3>Process Creation</h3>
+        <pre><code>// Create new process
+process_t *process_create(const char *name, void (*entry)(void), uint8_t priority);
+
+// Execute ELF binary
+int process_exec(const char *path, char *const argv[], char *const envp[]);
+
+// Fork current process (planned)
+pid_t process_fork(void);</code></pre>
+
+        <h3>Process Control</h3>
+        <pre><code>// Exit current process
+void process_exit(int status);
+
+// Get current process
+process_t *process_current(void);
+
+// Get process by PID
+process_t *process_get(uint32_t pid);
+
+// Block current process
+void process_block(process_state_t new_state);
+
+// Unblock process
+void process_unblock(process_t *proc);</code></pre>
+
+        <h3>Scheduler</h3>
+        <pre><code>// Initialize scheduler
+void scheduler_init(void);
+
+// Add process to ready queue
+void schedule_add(process_t *proc);
+
+// Remove from ready queue
+void schedule_remove(process_t *proc);
+
+// Yield to next process
+void schedule_yield(void);
+
+// Timer callback (preemption)
+void schedule_tick(void);</code></pre>
+
+        <h2>Context Switch</h2>
+        <p>Implemented in <code>arch.S</code> - saves all registers to old PCB and loads from new PCB.</p>
+        <pre><code>; context_switch(old, new)
+; RDI = old context pointer
+; RSI = new context pointer
+context_switch:
+    ; Save callee-saved registers to old context
+    mov [rdi + 0x00], rbx
+    mov [rdi + 0x08], rbp
+    mov [rdi + 0x10], r12
+    ...
+    ; Load callee-saved registers from new context
+    mov rbx, [rsi + 0x00]
+    ...
+    ret</code></pre>
+
+        <h2>Scheduler Algorithm</h2>
+        <p>Round-robin with priority levels:</p>
+        <ul>
+            <li>High priority: 1ms time slice</li>
+            <li>Normal priority: 10ms time slice</li>
+            <li>Low priority: 50ms time slice</li>
+        </ul>
+
+        <h2>How to Edit</h2>
+        <ol>
+            <li>PCB changes: <code>kernel/include/core/process.h</code></li>
+            <li>Process logic: <code>kernel/src/core/process.c</code></li>
+            <li>Context switch: <code>kernel/src/arch/x86_64/arch.S</code></li>
+            <li>Add syscalls: <code>kernel/src/core/syscall.c</code></li>
+        </ol>
+
+    </div>
+</body>
+
+</html>

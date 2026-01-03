@@ -1,0 +1,36 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Accounts Panel Icon - Cyan gradient tile with user
+
+[nxi]
+version = 1.0
+name = accounts
+size = 64
+author = KetiveeAI
+category = settings
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+tile_start = #5AC8FA
+tile_end = #32A0C8
+icon_color = #FFFFFF
+
+[gradients]
+tileGrad = linear 0,0 64,64 tile_start tile_end
+
+[shapes]
+# Rounded square tile background
+rect x=0 y=0 width=64 height=64 rx=12 fill=tileGrad
+
+# User head
+circle center=32 y=24 radius=10 fill=icon_color
+# User body
+ellipse cx=32 cy=52 rx=16 ry=12 fill=icon_color
+
+[style.dark]
+tile_start = #64D2FF
+tile_end = #32A0C8

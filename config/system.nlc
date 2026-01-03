@@ -1,0 +1,88 @@
+# NeolyxOS System Configuration (.nlc)
+# Core system settings - Protected by SIP
+# Located at: /System/Config/system.nlc
+# Read-only after installation
+#
+# Copyright (c) 2025 KetiveeAI
+
+[system]
+# Core system info
+name = "NeolyxOS"
+version = "1.0.0"
+codename = "Vasudha"
+architecture = "x86_64"
+kernel = "neolyx_kernel"
+bootloader = "neolyx_boot"
+
+[kernel]
+# Kernel configuration
+preemptive = "true"
+scheduler = "round_robin"
+timer_hz = "100"
+stack_size = "8192"
+heap_size = "16777216"
+
+[memory]
+# Memory management
+pmm_enabled = "true"
+vmm_enabled = "true"
+page_size = "4096"
+heap_initial = "1048576"
+heap_max = "16777216"
+
+[drivers]
+# Driver configuration
+ahci_enabled = "true"
+nvme_enabled = "true"
+usb_enabled = "true"
+network_enabled = "true"
+audio_enabled = "true"
+gpu_enabled = "true"
+
+[filesystem]
+# Filesystem settings
+root_fs = "nxfs"
+vfs_enabled = "true"
+fat32_support = "true"
+nxfs_encryption = "aes256"
+cache_size = "4194304"
+
+[network]
+# Network defaults
+dhcp_enabled = "true"
+dns_servers = "8.8.8.8,8.8.4.4,1.1.1.1"
+ipv6_enabled = "false"
+firewall_enabled = "true"
+
+[security]
+# Security settings
+sip_enabled = "true"
+secure_boot = "false"
+sandbox_default = "strict"
+audit_enabled = "true"
+encryption_default = "aes256"
+
+[services]
+# System services
+scheduler_enabled = "true"
+network_enabled = "true"
+audio_enabled = "true"
+gui_enabled = "true"
+terminal_enabled = "true"
+
+[performance]
+# Performance settings
+cpu_governor = "performance"
+memory_compression = "false"
+swap_enabled = "false"
+cache_writeback = "true"
+
+[paths]
+# System paths
+system_root = "/System"
+library_root = "/Library"
+users_root = "/Users"
+applications = "/Applications"
+kernel_path = "/System/Kernel"
+drivers_path = "/System/Drivers"
+config_path = "/System/Config"

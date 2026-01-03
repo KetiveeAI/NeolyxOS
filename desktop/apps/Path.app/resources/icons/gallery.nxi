@@ -1,0 +1,58 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Gallery/Photos Icon
+# Flower-like radial pattern with petals
+
+[nxi]
+version = 1.0
+name = gallery
+size = 40
+author = KetiveeAI
+category = app
+viewbox = 0 0 40 40
+
+[canvas]
+width = 40
+height = 40
+background = transparent
+
+[colors]
+petal_outer = #AAA4E8
+petal_inner = rgba(255,0,94,0.32)
+center = #FFFFFF
+
+[gradients]
+petal = linear 0,0 40,40 petal_outer petal_inner
+
+[paths]
+# Radial flower petals (12 petals around center)
+# Left petal
+petal_l = M20,20 C12,24 8,23 0,20 C7,15 12,16 20,20 Z
+# Right petal
+petal_r = M20,20 C28,24 32,23 40,20 C33,15 28,16 20,20 Z
+# Top petal
+petal_t = M20,20 C16,12 17,8 20,0 C25,7 24,12 20,20 Z
+# Bottom petal
+petal_b = M20,20 C24,28 23,32 20,40 C15,33 16,28 20,20 Z
+# Diagonal petals (4)
+petal_tl = M20,20 C11,19 8,16 4,9 C12,9 16,12 20,20 Z
+petal_tr = M20,20 C29,19 32,16 36,9 C28,9 24,12 20,20 Z
+petal_bl = M20,20 C15,28 11,29 3,30 C7,22 11,20 20,20 Z
+petal_br = M20,20 C25,28 29,29 37,30 C33,22 29,20 20,20 Z
+
+# Center dot
+center = M18,20 A2,2 0 1,1 22,20 A2,2 0 1,1 18,20 Z
+
+[style]
+petal_l.fill = petal
+petal_r.fill = petal
+petal_t.fill = petal
+petal_b.fill = petal
+petal_tl.fill = petal
+petal_tr.fill = petal
+petal_bl.fill = petal
+petal_br.fill = petal
+center.fill = center
+
+[style.dark]
+petal_outer = #8A84C8
+petal_inner = rgba(200,0,74,0.4)

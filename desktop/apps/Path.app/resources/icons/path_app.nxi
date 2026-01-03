@@ -1,0 +1,62 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Path.app Application Icon
+# Converted from icon.svg - flowing path design
+
+[nxi]
+version = 1.0
+name = path_app
+size = 64
+author = KetiveeAI
+category = app
+viewbox = 0 0 78 56
+
+[canvas]
+width = 78
+height = 56
+background = transparent
+
+[colors]
+# Main gradient colors from original
+purple_light = #ECBEFC
+purple_mid = #9A71F6
+purple_dark = #5837CE
+purple_deep = #290DB4
+lavender = #CBB0FD
+violet = #744FE8
+periwinkle = #A9A4FC
+white_soft = rgba(253,253,253,0.57)
+
+[gradients]
+# Top wave gradient
+wave_top = linear 0,0 78,56 purple_light purple_mid
+# Mid section
+wave_mid = linear 0,0 78,56 lavender violet
+# Bottom flow
+wave_bottom = linear 0,0 78,56 purple_mid purple_dark
+# Deep shadow
+deep_shade = linear 0,20 78,58 purple_deep violet
+
+[paths]
+# Simplified flowing wave shapes representing the Path logo
+# Top wave (main flowing curve)
+wave1 = M16,30 Q8,24 7,8 Q7,7 7,8 C8,9 11,12 16,11 C22,10 28,1 35,0 C41,-1 47,9 56,14 C63,18 74,16 78,15 Q78,15 78,15 C75,18 74,20 71,24 C70,23 65,21 62,22 C57,23 44,32 42,33 C40,35 31,42 16,30 Z
+
+# Middle wave
+wave2 = M29,39 Q18,38 10,31 L6,28 Q7,28 18,25 C26,26 35,27 44,35 Q39,36 29,39 Z
+
+# Lower section
+wave3 = M68,28 C64,28 52,25 42,16 C31,8 22,14 20,16 C18,17 15,18 10,20 Q6,21 1,16 Q0,16 0,16 Q0,17 3,26 L6,29 Q7,28 23,23 C32,27 43,36 48,38 Q52,41 57,39 L68,28 Z
+
+# Top highlight
+highlight = M56,14 C66,7 75,11 78,15 Q78,15 78,16 C75,18 70,26 65,32 C64,34 63,35 61,36 Q51,48 29,49 Q20,45 17,39 L16,39 Q7,29 22,30 Q35,30 44,24 C50,19 56,14 56,14 Z
+
+[style]
+wave1.fill = wave_top
+wave2.fill = wave_mid
+wave3.fill = wave_mid
+highlight.fill = wave_bottom
+
+[style.dark]
+purple_light = #B58CCC
+purple_mid = #7A51C6
+purple_dark = #4A27AE

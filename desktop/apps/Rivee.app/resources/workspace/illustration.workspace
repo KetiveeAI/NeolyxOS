@@ -1,0 +1,81 @@
+{
+    "name": "Illustration Workspace",
+    "version": "1.0",
+    "description": "Optimized for drawing and illustration work with maximized canvas",
+    
+    "window": {
+        "width": 1920,
+        "height": 1080,
+        "maximized": true,
+        "fullscreen": false
+    },
+    
+    "panels": {
+        "toolbox": {
+            "visible": true,
+            "dock": "left",
+            "width": 48
+        },
+        "brushes": {
+            "visible": true,
+            "dock": "left",
+            "width": 200
+        },
+        "properties": {
+            "visible": true,
+            "dock": "right",
+            "width": 280,
+            "collapsed": false
+        },
+        "layers": {
+            "visible": true,
+            "dock": "right",
+            "width": 280
+        },
+        "color": {
+            "visible": true,
+            "dock": "right",
+            "width": 280
+        },
+        "symbols": {
+            "visible": false,
+            "dock": "floating"
+        },
+        "styles": {
+            "visible": true,
+            "dock": "right",
+            "width": 280,
+            "tab_group": 1
+        }
+    },
+    
+    "toolbars": {
+        "standard": {
+            "visible": true,
+            "dock": "top",
+            "position": 0
+        },
+        "property_bar": {
+            "visible": true,
+            "dock": "top",
+            "position": 1
+        },
+        "brush_bar": {
+            "visible": true,
+            "dock": "top",
+            "position": 2
+        }
+    },
+    
+    "canvas": {
+        "zoom": 100,
+        "rulers_visible": true,
+        "guides_visible": true,
+        "grid_visible": false
+    },
+    
+    "theme": {
+        "dark_mode": true,
+        "accent_color": "#FF9500"
+    }
+}

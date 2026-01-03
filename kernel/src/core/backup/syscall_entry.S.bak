@@ -1,0 +1,176 @@
+/*
+ * NeolyxOS SYSCALL/SYSRET Entry Point
+ * 
+ * x86_64 SYSCALL instruction entry and exit.
+ * 
+ * User space convention:
+ *   RAX = syscall number
+ *   RDI, RSI, RDX, R10, R8, R9 = arguments
+ *   RAX = return value
+ * 
+ * SYSCALL clobbers RCX and R11:
+ *   RCX = return RIP
+ *   R11 = saved RFLAGS
+ * 
+ * Copyright (c) 2025 KetiveeAI.
+ */
+
+.section .text
+.code64
+
+/* ============ SYSCALL Entry ============ */
+
+.global syscall_entry
+syscall_entry:
+    /* 
+     * On entry from SYSCALL:
+     * RCX = user RIP (return address)
+     * R11 = user RFLAGS
+     * RSP = still user stack (we need to switch!)
+     */
+    
+    /* Swap to kernel stack */
+    /* Save user RSP in scratch register */
+    mov %rsp, %r12
+    
+    /* Load kernel stack from per-CPU area (simplified: use fixed location) */
+    mov $kernel_stack_top, %rsp
+    
+    /* Push user context for potential signal handling or debugging */
+    push %r12       /* User RSP */
+    push %rcx       /* User RIP */
+    push %r11       /* User RFLAGS */
+    
+    /* Save callee-saved registers (ABI requirement) */
+    push %rbx
+    push %rbp
+    push %r12
+    push %r13
+    push %r14
+    push %r15
+    
+    /* R10 holds arg4 (RCX is clobbered by SYSCALL) */
+    mov %r10, %rcx
+    
+    /* Call C handler: syscall_handler(num, arg1, arg2, arg3, arg4, arg5) */
+    /* Arguments already in: RAX, RDI, RSI, RDX, RCX(from R10), R8, R9 */
+    push %r9        /* arg6 on stack */
+    push %r8        /* arg5 on stack */
+    
+    /* Shift args for C calling convention */
+    mov %rcx, %r9   /* arg5 = old arg4 */
+    mov %rdx, %r8   /* arg4 = old arg3 */
+    mov %rsi, %rcx  /* arg3 = old arg2 */
+    mov %rdi, %rdx  /* arg2 = old arg1 */
+    mov %rax, %rsi  /* arg1 = syscall number */
+    /* RDI will be set separately if needed */
+    
+    /* Actually, simpler approach - keep args in place, adjust call */
+    /* Reset and use proper convention */
+    pop %r8
+    pop %r9
+    
+    /* RAX = syscall number, RDI-R9 = args */
+    /* Move to C convention: RDI=num, RSI=arg1, RDX=arg2, RCX=arg3, R8=arg4, R9=arg5 */
+    mov %rax, %rdi  /* syscall number */
+    /* RSI, RDX already have arg1, arg2 */
+    /* But wait - user passed: RDI=arg1, RSI=arg2, RDX=arg3, R10=arg4, R8=arg5, R9=arg6 */
+    /* Rearrange: */
+    mov %rsi, %r13  /* save arg2 */
+    mov %rdi, %rsi  /* arg1 */
+    mov %r13, %rdx  /* arg2 */
+    /* RDX was arg3, need to save it first */
+    /* This is getting messy - use a cleaner approach */
+    
+    /* Clean register setup */
+    /* At entry: RAX=num, RDI=a1, RSI=a2, RDX=a3, R10=a4, R8=a5, R9=a6 */
+    /* For C call: RDI=num, RSI=a1, RDX=a2, RCX=a3, R8=a4, R9=a5 */
+    push %rax
+    push %rdi
+    push %rsi
+    push %rdx
+    push %r10
+    push %r8
+    
+    pop %r9         /* a5 (was R8) */
+    pop %r8         /* a4 (was R10) */
+    pop %rcx        /* a3 (was RDX) */
+    pop %rdx        /* a2 (was RSI) */
+    pop %rsi        /* a1 (was RDI) */
+    pop %rdi        /* num (was RAX) */
+    
+    call syscall_handler
+    
+    /* Return value in RAX */
+    
+    /* Restore callee-saved registers */
+    pop %r15
+    pop %r14
+    pop %r13
+    pop %r12
+    pop %rbp
+    pop %rbx
+    
+    /* Restore user context */
+    pop %r11        /* User RFLAGS */
+    pop %rcx        /* User RIP */
+    pop %rsp        /* User RSP */
+    
+    /* Return to user mode */
+    sysretq
+
+/* ============ Kernel Stack ============ */
+
+.section .bss
+.align 16
+kernel_stack:
+    .skip 16384     /* 16 KB kernel stack */
+kernel_stack_top:
+
+/* ============ SYSCALL MSR Setup ============ */
+
+.section .text
+
+/* 
+ * void syscall_msr_init(void)
+ * 
+ * Set up MSRs for SYSCALL/SYSRET.
+ */
+.global syscall_msr_init
+syscall_msr_init:
+    /* IA32_STAR (0xC0000081) */
+    /* Bits 32-47: SYSCALL CS and SS (kernel segments) */
+    /* Bits 48-63: SYSRET CS and SS (user segments) */
+    /* Kernel: CS = 0x08, SS = 0x10 */
+    /* User: CS = 0x1B (0x18 | 3), SS = 0x23 (0x20 | 3) */
+    mov $0xC0000081, %ecx
+    xor %eax, %eax          /* Low 32 bits = 0 */
+    mov $0x00180008, %edx   /* High 32: user_cs_base=0x18, kernel_cs=0x08 */
+    wrmsr
+    
+    /* IA32_LSTAR (0xC0000082) = SYSCALL entry point */
+    mov $0xC0000082, %ecx
+    lea syscall_entry(%rip), %rax
+    mov %rax, %rdx
+    shr $32, %rdx
+    wrmsr
+    
+    /* IA32_FMASK (0xC0000084) = RFLAGS mask */
+    /* Clear IF, TF, DF on syscall entry */
+    mov $0xC0000084, %ecx
+    mov $0x0700, %eax       /* Mask IF, TF, DF */
+    xor %edx, %edx
+    wrmsr
+    
+    ret
+
+/* ============ Enable SYSCALL ============ */
+
+.global syscall_enable
+syscall_enable:
+    /* Set SCE bit in IA32_EFER (0xC0000080) */
+    mov $0xC0000080, %ecx
+    rdmsr
+    or $1, %eax             /* SCE = bit 0 */
+    wrmsr
+    ret

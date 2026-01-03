@@ -1,0 +1,52 @@
+# NeolyxOS Host Configuration (.nlc)
+# System identity and hardware information
+# Located at: /System/Config/host.nlc
+# Protected by SIP - Admin can modify hostname only
+#
+# Copyright (c) 2025 KetiveeAI
+
+[identity]
+# Host identity
+hostname = "neolyx"
+computer_name = "NeolyxOS Computer"
+domain = "local"
+workgroup = "WORKGROUP"
+
+[hardware]
+# Hardware identifiers
+serial_number = ""
+hardware_uuid = ""
+board_serial = ""
+product_name = ""
+manufacturer = ""
+
+[network]
+# Network identity
+mac_address = ""
+first_interface = "eth0"
+bonjour_name = "neolyx.local"
+
+[locale]
+# Regional settings
+timezone = "UTC"
+language = "en_US"
+keyboard_layout = "us"
+date_format = "YYYY-MM-DD"
+time_format = "24h"
+
+[users]
+# User configuration
+default_user = ""
+auto_login = "false"
+guest_enabled = "false"
+admin_created = "false"
+
+[hardware_detection]
+# Detected hardware (populated at boot)
+cpu_vendor = ""
+cpu_model = ""
+cpu_cores = "0"
+memory_total = "0"
+gpu_vendor = ""
+gpu_model = ""
+display_count = "0"

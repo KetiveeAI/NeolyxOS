@@ -1,0 +1,395 @@
+/* NeolyxOS Documentation - Shared Navbar Styles */
+
+.nx-navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 1.5rem;
+    z-index: 1000;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+
+.nx-navbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #58a6ff;
+    text-decoration: none;
+}
+
+.nx-navbar-links {
+    display: flex;
+    gap: 1.2rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.nx-navbar-links a {
+    color: #8b949e;
+    text-decoration: none;
+    font-size: 0.85rem;
+    transition: color 0.2s;
+}
+
+.nx-navbar-links a:hover,
+.nx-navbar-links a.active {
+    color: #58a6ff;
+}
+
+.nx-search-container {
+    position: relative;
+}
+
+.nx-search-input {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 0.4rem 0.8rem 0.4rem 2.2rem;
+    color: #c9d1d9;
+    font-size: 0.85rem;
+    width: 200px;
+    transition: border-color 0.2s, width 0.2s;
+}
+
+.nx-search-input:focus {
+    outline: none;
+    border-color: #58a6ff;
+    width: 260px;
+}
+
+.nx-search-input::placeholder {
+    color: #6e7681;
+}
+
+.nx-search-icon {
+    position: absolute;
+    left: 0.6rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 14px;
+}
+
+.nx-search-icon path {
+    fill: #6e7681;
+}
+
+.nx-search-results {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    width: 320px;
+    max-height: 350px;
+    overflow-y: auto;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    margin-top: 0.4rem;
+    display: none;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.nx-search-results.active {
+    display: block;
+}
+
+.nx-search-result-item {
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid #21262d;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.nx-search-result-item:hover {
+    background: #0d1117;
+}
+
+.nx-search-result-item:last-child {
+    border-bottom: none;
+}
+
+.nx-search-result-title {
+    color: #58a6ff;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.nx-search-result-desc {
+    color: #8b949e;
+    font-size: 0.75rem;
+    margin-top: 2px;
+}
+
+.nx-no-results {
+    padding: 1rem;
+    color: #8b949e;
+    text-align: center;
+    font-size: 0.85rem;
+}
+
+/* Page body offset for fixed navbar */
+body.nx-has-navbar {
+    padding-top: 56px;
+}
+
+@media (max-width: 768px) {
+    .nx-navbar-links {
+        display: none;
+    }
+
+    .nx-search-input {
+        width: 150px;
+    }
+
+    .nx-search-input:focus {
+        width: 180px;
+    }
+}
+
+/* --- NeolyxOS Design System --- */
+
+:root {
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --text-primary: #c9d1d9;
+    --text-secondary: #8b949e;
+    --accent: #58a6ff;
+    --border: #30363d;
+    --success: #238636;
+    --warning: #9e6a03;
+}
+
+body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    margin: 0;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+/* Cards & Grid */
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+    transition: border-color 0.2s;
+}
+
+.card:hover {
+    border-color: var(--accent);
+}
+
+.card h2 {
+    margin-top: 0;
+    font-size: 1.2rem;
+    color: var(--accent);
+}
+
+.card p {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 0;
+}
+
+/* Headings */
+h1 {
+    font-size: 2.5rem;
+    color: var(--accent);
+    margin-bottom: 1rem;
+}
+
+h2 {
+    font-size: 1.8rem;
+    margin: 2.5rem 0 1rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+h3 {
+    font-size: 1.4rem;
+    margin: 1.5rem 0 1rem;
+    color: var(--text-primary);
+}
+
+/* Tables */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.5rem 0;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+th,
+td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+th {
+    background: #21262d;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+}
+
+tr:last-child td {
+    border-bottom: none;
+}
+
+tr:hover {
+    background: rgba(56, 139, 253, 0.05);
+}
+
+/* Code */
+pre,
+code {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.9em;
+}
+
+code {
+    background: rgba(110, 118, 129, 0.4);
+    padding: 0.2em 0.4em;
+    border-radius: 6px;
+    color: #e6edf3;
+}
+
+pre {
+    background: #161b22;
+    padding: 1rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    margin: 1.5rem 0;
+}
+
+pre code {
+    background: none;
+    padding: 0;
+    color: inherit;
+    border-radius: 0;
+}
+
+/* Diagrams */
+.diagram {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    white-space: pre;
+    overflow-x: auto;
+    background: #161b22;
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    margin: 1.5rem 0;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+/* Badges */
+.badge {
+    display: inline-block;
+    padding: 0.2em 0.6em;
+    font-size: 0.75em;
+    font-weight: 600;
+    line-height: 1;
+    border-radius: 2em;
+    margin-left: 0.5em;
+    vertical-align: middle;
+    border: 1px solid transparent;
+}
+
+.badge.process {
+    background: rgba(56, 139, 253, 0.15);
+    color: #58a6ff;
+    border-color: rgba(56, 139, 253, 0.4);
+}
+
+.badge.memory {
+    background: rgba(210, 153, 34, 0.15);
+    color: #d29922;
+    border-color: rgba(210, 153, 34, 0.4);
+}
+
+.badge.file {
+    background: rgba(63, 185, 80, 0.15);
+    color: #3fb950;
+    border-color: rgba(63, 185, 80, 0.4);
+}
+
+.badge.complete {
+    background: #238636;
+    color: white;
+}
+
+.badge.new {
+    background: #2f81f7;
+    color: white;
+}
+
+/* Lists */
+.guarantee-list {
+    list-style: none;
+    padding: 0;
+}
+
+.guarantee-list li {
+    padding: 0.8rem 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+
+.guarantee-list li strong {
+    color: var(--text-primary);
+}
+
+.guarantee-list li:last-child {
+    border-bottom: none;
+}
+
+footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}

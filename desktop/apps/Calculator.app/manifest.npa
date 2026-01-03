@@ -1,0 +1,43 @@
+{
+    "name": "Calculator",
+    "version": "1.0.0",
+    "bundle_id": "com.neolyx.calculator",
+    "category": "Utilities",
+    "description": "NeolyxOS Calculator",
+    
+    "binary": "bin/calculator",
+    "library": "lib/libcalculator.so",
+    "icon": "resources/calculator.nxi",
+    
+    "permissions": [],
+    
+    "menu": {
+        "edit": [
+            { "label": "Copy", "action": "copy", "shortcut": "Cmd+C" },
+            { "label": "Paste", "action": "paste", "shortcut": "Cmd+V" }
+        ],
+        "view": [
+            { "label": "Basic", "action": "view_basic", "shortcut": "Cmd+1" },
+            { "label": "Scientific", "action": "view_scientific", "shortcut": "Cmd+2" },
+            { "label": "Programmer", "action": "view_programmer", "shortcut": "Cmd+3" }
+        ],
+        "convert": [
+            { "label": "Currency", "action": "convert_currency" },
+            { "label": "Length", "action": "convert_length" },
+            { "label": "Area", "action": "convert_area" },
+            { "label": "Volume", "action": "convert_volume" },
+            { "label": "Temperature", "action": "convert_temperature" },
+            { "label": "Mass", "action": "convert_mass" },
+            { "label": "Time", "action": "convert_time" }
+        ]
+    },
+    
+    "requirements": {
+        "os_version": "1.0.0",
+        "drivers": ["nxgfx"]
+    },
+    
+    "author": "KetiveeAI",
+    "copyright": "Copyright (c) 2025 KetiveeAI",
+    "license": "Proprietary"
+}

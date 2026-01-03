@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS - Application Architecture</title>
+    
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    
+
+    <div class="container">
+        <h1>📦 Application Architecture</h1>
+        <p style="color: var(--text-secondary);">App bundles, installation paths, and permissions.</p>
+
+        <h2>Application Locations</h2>
+        <div class="card">
+            <table>
+                <tr>
+                    <th>Path</th>
+                    <th>Purpose</th>
+                    <th>Who Can Install</th>
+                </tr>
+                <tr>
+                    <td><code>/Applications/</code></td>
+                    <td>System-wide apps</td>
+                    <td>Admin users</td>
+                </tr>
+                <tr>
+                    <td><code>/Users/{user}/Applications/</code></td>
+                    <td>Per-user apps</td>
+                    <td>Current user</td>
+                </tr>
+                <tr>
+                    <td><code>/System/Applications/</code></td>
+                    <td>Core OS apps</td>
+                    <td>OS updates only</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>App Bundle Structure (.nxapp)</h2>
+        <div class="card">
+            <div class="tree">
+                <span style="color:var(--accent-blue)">MyApp.nxapp/</span>
+                ├── Contents/
+                │ ├── Info.plist <i style="color:var(--text-secondary);">— App metadata</i>
+                │ ├── Binaries/ <i style="color:var(--text-secondary);">— Executable binaries</i>
+                │ │ └── MyApp <i style="color:var(--text-secondary);">— Main executable</i>
+                │ ├── Resources/ <i style="color:var(--text-secondary);">— Assets, icons, localization</i>
+                │ │ ├── AppIcon.png
+                │ │ └── en.lproj/
+                │ ├── Frameworks/ <i style="color:var(--text-secondary);">— Bundled frameworks</i>
+                │ └── Plugins/ <i style="color:var(--text-secondary);">— Optional plugins</i>
+                └── Signature <i style="color:var(--text-secondary);">— Code signature</i>
+            </div>
+        </div>
+
+        <h2>Info.plist (App Manifest)</h2>
+        <div class="card">
+            <pre><code>{
+    "NXBundleIdentifier": "com.example.myapp",
+    "NXBundleName": "MyApp",
+    "NXBundleVersion": "1.0.0",
+    "NXExecutable": "MyApp",
+    "NXMinimumOSVersion": "1.0",
+    
+    "NXCapabilities": [
+        "network",
+        "filesystem.user",
+        "camera"
+    ],
+    
+    "NXURLSchemes": ["myapp"],
+    "NXFileTypes": [".myf", ".example"]
+}</code></pre>
+        </div>
+
+        <h2>App Capabilities</h2>
+        <div class="card">
+            <table>
+                <tr>
+                    <th>Capability</th>
+                    <th>Description</th>
+                    <th>Requires Prompt</th>
+                </tr>
+                <tr>
+                    <td><code>network</code></td>
+                    <td>Internet access</td>
+                    <td>No</td>
+                </tr>
+                <tr>
+                    <td><code>filesystem.user</code></td>
+                    <td>Read/write user files</td>
+                    <td>Yes</td>
+                </tr>
+                <tr>
+                    <td><code>filesystem.full</code></td>
+                    <td>Full disk access</td>
+                    <td>Yes (Admin)</td>
+                </tr>
+                <tr>
+                    <td><code>camera</code></td>
+                    <td>Camera access</td>
+                    <td>Yes</td>
+                </tr>
+                <tr>
+                    <td><code>microphone</code></td>
+                    <td>Microphone access</td>
+                    <td>Yes</td>
+                </tr>
+                <tr>
+                    <td><code>location</code></td>
+                    <td>Location services</td>
+                    <td>Yes</td>
+                </tr>
+                <tr>
+                    <td><code>nxgame.exclusive</code></td>
+                    <td>NXGame exclusive mode</td>
+                    <td>No</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>Installing Applications</h2>
+        <div class="card">
+            <pre><code># Drag .nxapp to /Applications (GUI)
+
+# Command line install (system-wide)
+sudo nxinstall MyApp.nxapp
+
+# User-only install
+nxinstall --user MyApp.nxapp
+→ Installed to /Users/alice/Applications/
+
+# Run app
+open /Applications/MyApp.nxapp
+# or
+MyApp  # if in PATH</code></pre>
+        </div>
+
+        <h2>App Sandboxing</h2>
+        <div class="card">
+            <p>All apps run in a sandbox by default:</p>
+            <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                <li><strong>Container:</strong> <code>~/Library/Containers/{bundle-id}/</code></li>
+                <li><strong>Temp files:</strong> Inside container only</li>
+                <li><strong>User files:</strong> Only with <code>filesystem.user</code> capability</li>
+                <li><strong>Network:</strong> Only with <code>network</code> capability</li>
+            </ul>
+        </div>
+
+        <footer
+            style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-secondary); text-align: center;">
+            NeolyxOS © 2025 KetiveeAI | Application Architecture
+        </footer>
+    </div>
+</body>
+
+</html>

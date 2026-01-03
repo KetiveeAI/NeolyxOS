@@ -1,0 +1,39 @@
+struct Token {
+}
+
+struct Ast {
+}
+
+struct IrModule {
+}
+
+extern fn os_args() -> [string];
+extern fn file_read(path: string) -> string;
+extern fn file_write(path: string, data: [u8]);
+extern fn print(text: string);
+extern fn lexer_tokenize(source: string) -> [Token];
+extern fn parser_parse(tokens: [Token]) -> Ast;
+extern fn typechecker_check(ast: Ast) -> Ast;
+extern fn codegen_generate(ast: Ast) -> IrModule;
+extern fn linker_link(ir: IrModule) -> [u8];
+
+fn main() {
+    let args: [string] = os_args();
+
+    if args.len() < 2 {
+        print("Usage: reoxc <file.reox>");
+        return;
+    }
+
+    let source_file: string = args[1];
+    let source: string = file_read(source_file);
+
+    let tokens: [Token] = lexer_tokenize(source);
+    let ast: Ast = parser_parse(tokens);
+    let checked_ast: Ast = typechecker_check(ast);
+    let ir: IrModule = codegen_generate(checked_ast);
+    let output: [u8] = linker_link(ir);
+
+    file_write("output.elf", output);
+    print("Compilation successful!");
+}

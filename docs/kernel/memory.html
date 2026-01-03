@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Management - NeolyxOS Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-code: #1c2128;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --border: #30363d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        nav {
+            margin-bottom: 2rem;
+        }
+
+        nav a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin: 2rem 0 1rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            margin: 1.5rem 0 0.5rem;
+            color: var(--accent);
+        }
+
+        p {
+            margin-bottom: 1rem;
+        }
+
+        code {
+            background: var(--bg-code);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Consolas', monospace;
+        }
+
+        pre {
+            background: var(--bg-code);
+            padding: 1rem;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        ul {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status.complete {
+            background: #238636;
+            color: white;
+        }
+
+        .file-ref {
+            font-size: 0.9em;
+            color: var(--accent);
+            border-top: 1px solid var(--border);
+            padding-top: 1rem;
+            margin-top: 2rem;
+        }
+    </style>
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        
+
+        <h1>🧠 Memory Management <span class="status complete">Complete</span></h1>
+        <p>NeolyxOS memory subsystem: physical memory, virtual memory, and heap allocation.</p>
+
+        <h2>Files</h2>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><code>kernel/src/mm/pmm.c</code></td>
+                <td>Physical Memory Manager (bitmap allocator)</td>
+            </tr>
+            <tr>
+                <td><code>kernel/src/mm/vmm.c</code></td>
+                <td>Virtual Memory Manager (4-level paging)</td>
+            </tr>
+            <tr>
+                <td><code>kernel/src/mm/kheap.c</code></td>
+                <td>Kernel heap (kmalloc/kfree)</td>
+            </tr>
+            <tr>
+                <td><code>kernel/include/mm/vmm.h</code></td>
+                <td>VMM API definitions</td>
+            </tr>
+        </table>
+
+        <h2>Physical Memory Manager (PMM) <span class="status complete">Complete</span></h2>
+
+        <h3>Design</h3>
+        <ul>
+            <li>Bitmap allocator (1 bit per 4KB page)</li>
+            <li>Parses UEFI memory map at boot</li>
+            <li>Tracks free, used, reserved pages</li>
+            <li>Zeros pages on allocation (security)</li>
+            <li>Double-free detection</li>
+        </ul>
+
+        <h3>API</h3>
+        <pre><code>// Allocate physical pages
+uint64_t pmm_alloc_page(void);
+uint64_t pmm_alloc_pages(size_t count);
+
+// Free physical pages
+void pmm_free_page(uint64_t addr);
+void pmm_free_pages(uint64_t addr, size_t count);
+
+// Reserve region (e.g., MMIO)
+void pmm_reserve_region(uint64_t start, uint64_t size);
+
+// Statistics
+void pmm_get_stats(pmm_stats_t *stats);
+int pmm_is_initialized(void);</code></pre>
+
+        <h2>Virtual Memory Manager (VMM) <span class="status complete">Complete</span></h2>
+
+        <h3>Features</h3>
+        <ul>
+            <li><strong>4-level page tables</strong> (PML4 → PDP → PD → PT)</li>
+            <li><strong>Higher-half kernel</strong> at 0xFFFF800000000000</li>
+            <li><strong>Identity mapping</strong> first 4GB (2MB huge pages)</li>
+            <li><strong>PMM integration</strong> for dynamic page table allocation</li>
+            <li><strong>Address space management</strong> for processes/VMs</li>
+            <li><strong>TLB management</strong> (per-page and full flush)</li>
+        </ul>
+
+        <h3>Page Flags</h3>
+        <table>
+            <tr>
+                <th>Flag</th>
+                <th>Bit</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td>PAGE_PRESENT</td>
+                <td>0</td>
+                <td>Page is present in memory</td>
+            </tr>
+            <tr>
+                <td>PAGE_WRITABLE</td>
+                <td>1</td>
+                <td>Page is writable</td>
+            </tr>
+            <tr>
+                <td>PAGE_USER</td>
+                <td>2</td>
+                <td>Page accessible from Ring 3</td>
+            </tr>
+            <tr>
+                <td>PAGE_HUGE</td>
+                <td>7</td>
+                <td>2MB huge page</td>
+            </tr>
+            <tr>
+                <td>PAGE_GLOBAL</td>
+                <td>8</td>
+                <td>Global (not flushed on CR3 switch)</td>
+            </tr>
+            <tr>
+                <td>PAGE_NO_EXECUTE</td>
+                <td>63</td>
+                <td>NX bit (no execute)</td>
+            </tr>
+        </table>
+
+        <h3>VMM API</h3>
+        <pre><code>// Initialize VMM (after PMM)
+void vmm_init(void);
+
+// Map virtual to physical
+int vmm_map(uint64_t virt, uint64_t phys, uint64_t flags);
+int vmm_map_range(uint64_t virt, uint64_t phys, size_t size, uint64_t flags);
+
+// Unmap virtual address
+void vmm_unmap(uint64_t virt);
+
+// Get physical address from virtual
+uint64_t vmm_get_physical(uint64_t virt);
+
+// Allocate virtual pages (with backing physical)
+uint64_t vmm_alloc_pages(size_t pages);
+void vmm_free_pages(uint64_t virt, size_t pages);
+
+// TLB control
+void vmm_flush_tlb(uint64_t virt);
+void vmm_flush_tlb_all(void);</code></pre>
+
+        <h3>Address Space Management (VM/Process Support)</h3>
+        <pre><code>// Create new address space (for process/VM)
+uint64_t vmm_create_address_space(void);
+
+// Switch address space (loads CR3)
+void vmm_switch_address_space(uint64_t pml4_phys);
+
+// Get current address space
+uint64_t vmm_get_current_address_space(void);
+
+// Map in specific address space
+int vmm_map_in_space(uint64_t pml4, uint64_t virt, uint64_t phys, uint64_t flags);
+
+// Debug
+void vmm_debug_walk(uint64_t virt);</code></pre>
+
+        <h2>Heap Allocator <span class="status complete">Complete</span></h2>
+
+        <h3>API</h3>
+        <pre><code>// Allocate kernel memory
+void *kmalloc(size_t size);
+void *kzalloc(size_t size);  // Zero-initialized
+
+// Free kernel memory
+void kfree(void *ptr);
+
+// Reallocate
+void *krealloc(void *ptr, size_t new_size);</code></pre>
+
+        <h2>Memory Layout</h2>
+        <pre><code>0x0000000000000000 - 0x00007FFFFFFFFFFF  User space (128TB)
+0xFFFF800000000000 - 0xFFFF8FFFFFFFFFFF  Kernel base (identity)
+0xFFFF900000000000 - 0xFFFFFFFFFFFFFFFF  Kernel heap/dynamic</code></pre>
+
+        <h2>Usage Example</h2>
+        <pre><code>// In kernel_main after PMM init:
+vmm_init();
+
+// Allocate 16 pages of virtual memory
+uint64_t vaddr = vmm_alloc_pages(16);
+
+// Create process address space
+uint64_t proc_space = vmm_create_address_space();
+vmm_map_in_space(proc_space, 0x400000, phys_code, PAGE_PRESENT | PAGE_USER);
+
+// Switch to process
+vmm_switch_address_space(proc_space);</code></pre>
+
+        <div class="file-ref">
+            <strong>Source:</strong>
+            <a href="../../kernel/src/mm/vmm.c">vmm.c</a> |
+            <a href="../../kernel/src/mm/pmm.c">pmm.c</a> |
+            <a href="../../kernel/include/mm/vmm.h">vmm.h</a>
+        </div>
+    </div>
+</body>
+
+</html>

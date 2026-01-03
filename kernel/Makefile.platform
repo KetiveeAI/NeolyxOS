@@ -1,0 +1,23 @@
+# Platform detection and optimization rules
+platform_detect.o: src/platform/platform_detect.c include/platform/platform_detect.h
+	$(CC) $(CFLAGS) -c src/platform/platform_detect.c -o platform_detect.o
+
+amd_platform.o: src/platform/amd/amd_platform.c include/platform/platform_detect.h
+	$(CC) $(CFLAGS) -c src/platform/amd/amd_platform.c -o amd_platform.o
+
+intel_platform.o: src/platform/intel/intel_platform.c include/platform/platform_detect.h
+	$(CC) $(CFLAGS) -c src/platform/intel/intel_platform.c -o intel_platform.o
+
+generic_platform.o: src/platform/generic/generic_platform.c include/platform/platform_detect.h
+	$(CC) $(CFLAGS) -c src/platform/generic/generic_platform.c -o generic_platform.o
+
+arm_platform.o: src/platform/arm/arm_platform.c include/platform/platform_detect.h
+	$(CC) $(CFLAGS) -c src/platform/arm/arm_platform.c -o arm_platform.o
+
+platform_kdrv.o: src/platform/platform_kdrv.c include/platform/platform_kdrv.h include/platform/platform_detect.h
+	$(CC) $(CFLAGS) -c src/platform/platform_kdrv.c -o platform_kdrv.o
+
+# Architecture - BSP Init
+bsp.o: src/arch/x86_64/bsp.c
+	$(CC) $(CFLAGS) -c src/arch/x86_64/bsp.c -o bsp.o
+

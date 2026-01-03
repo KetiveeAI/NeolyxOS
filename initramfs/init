@@ -1,0 +1,367 @@
+#!/bin/sh
+#
+# NeolyxOS Initramfs /init script
+#
+# This script runs in early boot to:
+# - Mount essential filesystems
+# - Find and mount the root filesystem
+# - Pivot to the real root
+# - Execute neo-init (PID 1)
+#
+# Copyright (c) 2025 KetiveeAI
+#
+
+# ==============================================================================
+# Configuration
+# ==============================================================================
+
+# Default root device (can be overridden by kernel cmdline)
+ROOT_DEV=""
+ROOT_OPTS="rw"
+ROOT_FSTYPE="ext4"
+INIT="/sbin/neo-init"
+DEBUG=0
+
+# Colors for messages (if terminal supports)
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# ==============================================================================
+# Logging
+# ==============================================================================
+
+log() {
+    echo "[initramfs] $1"
+}
+
+log_ok() {
+    echo -e "[initramfs] ${GREEN}OK${NC} $1"
+}
+
+log_err() {
+    echo -e "[initramfs] ${RED}ERROR${NC} $1"
+}
+
+log_warn() {
+    echo -e "[initramfs] ${YELLOW}WARN${NC} $1"
+}
+
+# ==============================================================================
+# Panic Handler
+# ==============================================================================
+
+panic() {
+    log_err "PANIC: $1"
+    log_err "Dropping to emergency shell..."
+    exec /bin/sh
+}
+
+# ==============================================================================
+# Mount Virtual Filesystems
+# ==============================================================================
+
+mount_virtual_fs() {
+    log "Mounting virtual filesystems..."
+    
+    # Mount /proc
+    mkdir -p /proc
+    mount -t proc proc /proc || panic "Failed to mount /proc"
+    
+    # Mount /sys
+    mkdir -p /sys
+    mount -t sysfs sysfs /sys || panic "Failed to mount /sys"
+    
+    # Mount /dev (devtmpfs)
+    mkdir -p /dev
+    mount -t devtmpfs devtmpfs /dev 2>/dev/null || mount -t tmpfs tmpfs /dev
+    
+    # Create essential device nodes if devtmpfs failed
+    if [ ! -e /dev/console ]; then
+        mknod /dev/console c 5 1
+    fi
+    if [ ! -e /dev/null ]; then
+        mknod /dev/null c 1 3
+    fi
+    if [ ! -e /dev/tty ]; then
+        mknod /dev/tty c 5 0
+    fi
+    
+    # Mount /dev/pts
+    mkdir -p /dev/pts
+    mount -t devpts devpts /dev/pts 2>/dev/null
+    
+    log_ok "Virtual filesystems mounted"
+}
+
+# ==============================================================================
+# Parse Kernel Command Line
+# ==============================================================================
+
+parse_cmdline() {
+    log "Parsing kernel command line..."
+    
+    for param in $(cat /proc/cmdline); do
+        case $param in
+            root=*)
+                ROOT_DEV="${param#root=}"
+                log "  root=$ROOT_DEV"
+                ;;
+            rootfstype=*)
+                ROOT_FSTYPE="${param#rootfstype=}"
+                log "  rootfstype=$ROOT_FSTYPE"
+                ;;
+            rootflags=*)
+                ROOT_OPTS="${param#rootflags=}"
+                log "  rootflags=$ROOT_OPTS"
+                ;;
+            init=*)
+                INIT="${param#init=}"
+                log "  init=$INIT"
+                ;;
+            debug)
+                DEBUG=1
+                log "  debug mode enabled"
+                ;;
+            rw)
+                ROOT_OPTS="rw"
+                ;;
+            ro)
+                ROOT_OPTS="ro"
+                ;;
+        esac
+    done
+}
+
+# ==============================================================================
+# Wait for Root Device
+# ==============================================================================
+
+resolve_root_device() {
+    log "Resolving root device: $ROOT_DEV"
+    
+    # Handle special cases
+    case "$ROOT_DEV" in
+        UUID=*)
+            uuid="${ROOT_DEV#UUID=}"
+            ROOT_DEV="/dev/disk/by-uuid/$uuid"
+            ;;
+        LABEL=*)
+            label="${ROOT_DEV#LABEL=}"
+            ROOT_DEV="/dev/disk/by-label/$label"
+            ;;
+        PARTUUID=*)
+            partuuid="${ROOT_DEV#PARTUUID=}"
+            ROOT_DEV="/dev/disk/by-partuuid/$partuuid"
+            ;;
+    esac
+    
+    log "Resolved to: $ROOT_DEV"
+}
+
+wait_for_root() {
+    log "Waiting for root device..."
+    
+    local timeout=30
+    local count=0
+    
+    while [ ! -e "$ROOT_DEV" ] && [ $count -lt $timeout ]; do
+        sleep 1
+        count=$((count + 1))
+        
+        if [ $((count % 5)) -eq 0 ]; then
+            log "  Still waiting for $ROOT_DEV... ($count/$timeout)"
+        fi
+    done
+    
+    if [ ! -e "$ROOT_DEV" ]; then
+        log_err "Root device $ROOT_DEV not found after ${timeout}s"
+        
+        # List available devices
+        log "Available block devices:"
+        ls -la /dev/sd* /dev/vd* /dev/nvme* 2>/dev/null || true
+        
+        panic "Root device not found"
+    fi
+    
+    log_ok "Root device found"
+}
+
+# ==============================================================================
+# Mount Root Filesystem
+# ==============================================================================
+
+mount_root() {
+    log "Mounting root filesystem..."
+    
+    mkdir -p /newroot
+    
+    # Try mounting with detected or specified fstype
+    if ! mount -t "$ROOT_FSTYPE" -o "$ROOT_OPTS" "$ROOT_DEV" /newroot; then
+        log_warn "Mount with $ROOT_FSTYPE failed, trying auto-detection..."
+        
+        # Try common filesystems
+        for fs in ext4 ext3 xfs btrfs f2fs; do
+            if mount -t "$fs" -o "$ROOT_OPTS" "$ROOT_DEV" /newroot 2>/dev/null; then
+                ROOT_FSTYPE="$fs"
+                log_ok "Mounted with $fs"
+                return 0
+            fi
+        done
+        
+        panic "Failed to mount root filesystem"
+    fi
+    
+    log_ok "Root filesystem mounted ($ROOT_FSTYPE)"
+}
+
+# ==============================================================================
+# Validate Root Filesystem
+# ==============================================================================
+
+validate_root() {
+    log "Validating root filesystem..."
+    
+    # Check for init
+    if [ ! -x "/newroot$INIT" ]; then
+        log_warn "Init $INIT not found, looking for alternatives..."
+        
+        # Try common init paths
+        for init_path in /sbin/neo-init /sbin/init /bin/init /lib/systemd/systemd; do
+            if [ -x "/newroot$init_path" ]; then
+                INIT="$init_path"
+                log "  Found init at $init_path"
+                break
+            fi
+        done
+        
+        if [ ! -x "/newroot$INIT" ]; then
+            log_err "No init found on root filesystem"
+            log "Contents of /newroot:"
+            ls -la /newroot/
+            panic "No init found"
+        fi
+    fi
+    
+    # Check for essential directories
+    for dir in bin sbin lib etc; do
+        if [ ! -d "/newroot/$dir" ]; then
+            log_warn "Missing directory: /$dir"
+        fi
+    done
+    
+    log_ok "Root filesystem validated"
+}
+
+# ==============================================================================
+# Switch to Real Root
+# ==============================================================================
+
+switch_root() {
+    log "Switching to real root filesystem..."
+    
+    # Move virtual filesystems to new root
+    mkdir -p /newroot/proc /newroot/sys /newroot/dev /newroot/run
+    
+    mount --move /proc /newroot/proc 2>/dev/null || true
+    mount --move /sys /newroot/sys 2>/dev/null || true
+    mount --move /dev /newroot/dev 2>/dev/null || true
+    
+    # Clean up initramfs
+    log "Cleaning up initramfs..."
+    
+    # Check for switch_root or pivot_root
+    if command -v switch_root > /dev/null 2>&1; then
+        log "Using switch_root..."
+        exec switch_root /newroot "$INIT"
+    else
+        log "Using pivot_root..."
+        
+        # Create old root directory
+        mkdir -p /newroot/mnt/initramfs
+        
+        # Pivot root
+        cd /newroot
+        pivot_root . mnt/initramfs
+        
+        # Execute init
+        exec chroot . "$INIT" < /dev/console > /dev/console 2>&1
+    fi
+    
+    panic "Failed to switch to real root"
+}
+
+# ==============================================================================
+# Debug Shell
+# ==============================================================================
+
+debug_shell() {
+    if [ "$DEBUG" = "1" ]; then
+        log "Debug mode: dropping to shell before switch_root"
+        log "Type 'exit' to continue boot"
+        /bin/sh
+    fi
+}
+
+# ==============================================================================
+# Main
+# ==============================================================================
+
+main() {
+    echo ""
+    echo "========================================"
+    echo "  NeolyxOS Initramfs"
+    echo "  Copyright (c) 2025 KetiveeAI"
+    echo "========================================"
+    echo ""
+    
+    # Mount virtual filesystems
+    mount_virtual_fs
+    
+    # Parse kernel command line
+    parse_cmdline
+    
+    # Check if root device was specified
+    if [ -z "$ROOT_DEV" ]; then
+        log_warn "No root= specified, trying common devices..."
+        
+        # Try common root devices
+        for dev in /dev/sda2 /dev/vda2 /dev/nvme0n1p2; do
+            if [ -e "$dev" ]; then
+                ROOT_DEV="$dev"
+                break
+            fi
+        done
+        
+        if [ -z "$ROOT_DEV" ]; then
+            log "Available block devices:"
+            ls /dev/sd* /dev/vd* /dev/nvme* 2>/dev/null || true
+            panic "No root device specified or found"
+        fi
+    fi
+    
+    # Resolve special root device syntax
+    resolve_root_device
+    
+    # Wait for root device to appear
+    wait_for_root
+    
+    # Mount root filesystem
+    mount_root
+    
+    # Validate root filesystem
+    validate_root
+    
+    # Debug shell if requested
+    debug_shell
+    
+    # Switch to real root
+    switch_root
+    
+    # Should never reach here
+    panic "Unknown error during boot"
+}
+
+# Run main
+main "$@"

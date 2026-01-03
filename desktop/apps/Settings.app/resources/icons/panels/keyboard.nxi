@@ -1,0 +1,52 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Keyboard Panel Icon - Blue gradient tile with keyboard
+
+[nxi]
+version = 1.0
+name = keyboard
+size = 64
+author = KetiveeAI
+category = settings
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+tile_start = #007AFF
+tile_end = #0055CC
+icon_color = #FFFFFF
+key_bg = rgba(0,122,255,0.5)
+nx_key = #32ADE6
+
+[gradients]
+tileGrad = linear 0,0 64,64 tile_start tile_end
+
+[shapes]
+# Rounded square tile background
+rect x=0 y=0 width=64 height=64 rx=12 fill=tileGrad
+
+# Keyboard body
+rect x=8 y=20 width=48 height=28 rx=4 fill=icon_color
+
+# Top row keys (4 small keys)
+rect x=12 y=24 width=8 height=6 rx=1 fill=key_bg
+rect x=22 y=24 width=8 height=6 rx=1 fill=key_bg
+rect x=32 y=24 width=8 height=6 rx=1 fill=key_bg
+rect x=42 y=24 width=8 height=6 rx=1 fill=key_bg
+
+# Middle row (3 keys)
+rect x=12 y=32 width=10 height=6 rx=1 fill=key_bg
+rect x=24 y=32 width=14 height=6 rx=1 fill=key_bg
+rect x=40 y=32 width=10 height=6 rx=1 fill=key_bg
+
+# Bottom row with NX keys (highlighted)
+rect x=12 y=40 width=6 height=5 rx=1 fill=nx_key
+rect x=20 y=40 width=22 height=5 rx=1 fill=key_bg
+rect x=44 y=40 width=6 height=5 rx=1 fill=nx_key
+
+[style.dark]
+tile_start = #0A84FF
+tile_end = #0055CC

@@ -1,0 +1,21 @@
+# Sunset Theme - Warm orange/red theme
+# NeolyxOS Calendar App
+
+[Theme]
+Name = Sunset
+Type = Dark
+
+[Colors]
+Background = 0x1A0A0A
+TextPrimary = 0xFFFFFF
+TextSecondary = 0xD0A080
+Accent = 0xFF6040
+Highlight = 0xFF8060
+Border = 0x503020
+
+[ClockFace]
+DialColor = 0x2A1A1A
+HandHour = 0xFFFFFF
+HandMinute = 0xFF6040
+HandSecond = 0xFFFF60
+MarkerColor = 0x804020

@@ -1,0 +1,42 @@
+#ifndef EFI_H
+#define EFI_H
+
+#include <stdint.h>
+
+// Basic UEFI types
+typedef void* EFI_HANDLE;
+typedef uint64_t EFI_STATUS;
+typedef uint16_t CHAR16;
+typedef uint64_t UINTN;
+typedef int64_t  INTN;
+typedef uint8_t  UINT8;
+typedef uint16_t UINT16;
+typedef uint32_t UINT32;
+typedef uint64_t UINT64;
+
+typedef void* EFI_FILE_HANDLE;
+
+// EFI Status codes
+#define EFI_SUCCESS 0
+#define EFI_NOT_FOUND ((EFI_STATUS)0x800000000000000EULL)
+#define EFI_UNSUPPORTED ((EFI_STATUS)0x8000000000000003ULL)
+
+// Dummy GUID for file system protocol
+static const struct { uint32_t Data1; uint16_t Data2; uint16_t Data3; uint8_t Data4[8]; } gEfiSimpleFileSystemProtocolGuid = {0};
+
+// Dummy uefi_call_wrapper
+static inline EFI_STATUS uefi_call_wrapper(void* func, unsigned long nargs, ...) { (void)func; (void)nargs; return 0; }
+
+// Graphics protocol stubs
+typedef struct EFI_GRAPHICS_OUTPUT_PROTOCOL EFI_GRAPHICS_OUTPUT_PROTOCOL;
+typedef struct {
+    EFI_GRAPHICS_OUTPUT_PROTOCOL* Mode;
+} EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE;
+
+struct EFI_GRAPHICS_OUTPUT_PROTOCOL {
+    EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE* Mode;
+};
+
+typedef struct _EFI_SYSTEM_TABLE EFI_SYSTEM_TABLE;
+
+#endif // EFI_H 

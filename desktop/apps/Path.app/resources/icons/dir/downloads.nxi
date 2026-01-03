@@ -1,0 +1,58 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Downloads Folder Icon - with download arrow emblem
+
+[nxi]
+version = 1.0
+name = downloads
+size = 32
+author = KetiveeAI
+category = directory
+viewbox = 0 0 32 32
+
+[canvas]
+width = 32
+height = 32
+background = transparent
+
+[colors]
+shadow = #000000
+folder_base = #F2D6C9
+folder_dark = #DDAE98
+arrow_start = #CBC9FF
+arrow_end = #F7F7F7
+arrow_inner = #FFFFFF
+
+[gradients]
+arrowGrad = linear 0,0 0,32 arrow_start arrow_end
+
+[paths]
+# Shadow layer
+shadow = M0,4 L0,26 L30,26 L30,6 L15,6 L13,4 Z
+
+# Back folder tab
+back_tab = M0,5 L0,27 L31,27 L31,7 L16,7 L14,5 Z
+
+# Front folder body
+front = M0,8 L0,28 L32,28 L32,10 L18,10 L16,8 Z
+
+# Download arrow pill background
+pill = M6,18 a10,10 0 0,0 20,0 a10,10 0 0,0 -20,0 Z
+
+# Arrow shaft
+shaft = M14,11 L14,20 L18,20 L18,11 Z
+
+# Arrow head
+head = M16,24 L10,17 L12,17 L16,21 L20,17 L22,17 Z
+
+[style]
+shadow.fill = shadow
+shadow.opacity = 0.3
+back_tab.fill = folder_base
+front.fill = folder_base
+pill.fill = arrowGrad
+shaft.fill = arrow_inner
+head.fill = arrow_inner
+
+[style.dark]
+folder_base = #C4A99E
+arrow_start = #9B99CC

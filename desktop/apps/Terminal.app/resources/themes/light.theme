@@ -1,0 +1,52 @@
+# Terminal.app Light Theme
+# NeolyxOS Theme Format
+
+[theme]
+name = "light"
+variant = "light"
+author = "KetiveeAI"
+
+[window]
+background = #EFF1F5
+titlebar = #DCE0E8
+border = #9CA0B0
+
+[terminal]
+background = #EFF1F5
+foreground = #4C4F69
+cursor = #DC8A78
+cursor_text = #EFF1F5
+selection = #ACB0BE
+
+[ansi]
+# Normal colors
+black = #5C5F77
+red = #D20F39
+green = #40A02B
+yellow = #DF8E1D
+blue = #1E66F5
+magenta = #EA76CB
+cyan = #179299
+white = #ACB0BE
+
+# Bright colors
+bright_black = #6C6F85
+bright_red = #D20F39
+bright_green = #40A02B
+bright_yellow = #DF8E1D
+bright_blue = #1E66F5
+bright_magenta = #EA76CB
+bright_cyan = #179299
+bright_white = #BCC0CC
+
+[tab_bar]
+background = #DCE0E8
+tab = #DCE0E8
+tab_active = #EFF1F5
+tab_hover = #CCD0DA
+tab_border = #9CA0B0
+
+[scrollbar]
+background = #EFF1F5
+thumb = #ACB0BE
+thumb_hover = #9CA0B0

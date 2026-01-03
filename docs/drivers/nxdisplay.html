@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NXDisplay Driver - NeolyxOS</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --card: #161b22;
+            --border: #30363d;
+            --text: #c9d1d9;
+            --accent: #58a6ff;
+            --green: #3fb950;
+            --purple: #a371f7;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 2rem;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: var(--accent);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        h2 {
+            color: var(--purple);
+            margin-top: 2rem;
+        }
+
+        h3 {
+            color: var(--green);
+        }
+
+        code {
+            background: var(--card);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+        }
+
+        pre {
+            background: var(--card);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--border);
+            padding: 0.5rem;
+            text-align: left;
+        }
+
+        th {
+            background: var(--card);
+            color: var(--accent);
+        }
+
+        .feature {
+            display: inline-block;
+            background: var(--card);
+            border: 1px solid var(--border);
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            margin: 0.2rem;
+        }
+
+        .feature.active {
+            border-color: var(--green);
+            color: var(--green);
+        }
+    </style>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <h1>NXDisplay Kernel Driver</h1>
+    <p><strong>Version:</strong> 1.0.0 | <strong>File:</strong> <code>nxdisplay_kdrv.c</code> (797 lines)</p>
+
+    <h2>Features</h2>
+    <p>
+        <span class="feature active">Multi-Monitor</span>
+        <span class="feature active">EDID Parsing</span>
+        <span class="feature active">VRR/FreeSync</span>
+        <span class="feature active">HDR10</span>
+        <span class="feature">Dolby Vision</span>
+        <span class="feature active">VSync</span>
+        <span class="feature active">Color Profiles</span>
+        <span class="feature active">Atomic Commit</span>
+    </p>
+
+    <h2>Capability Descriptor</h2>
+    <p>Query once, cache in NXRender/NXGame:</p>
+    <pre><code>nxdisplay_caps_t caps;
+nxdisplay_kdrv_get_caps(0, &caps);
+
+// Supported features
+caps.supports.vrr       // VRR capable
+caps.supports.hdr10     // HDR10 capable
+caps.supports.audio     // Audio over display
+
+// Currently active
+caps.active.vrr         // VRR enabled
+caps.active.hdr         // HDR enabled
+
+// Refresh range
+caps.min_refresh_hz     // 24 Hz
+caps.max_refresh_hz     // 144 Hz</code></pre>
+
+    <h2>Declarative Mode Request</h2>
+    <p>Apps request features, OS arbitrates:</p>
+    <pre><code>// NXGame says: "I want VRR + HDR if possible"
+nxdisplay_mode_hint_t hint = {
+    .want_vrr = 1,
+    .want_hdr = 1,
+    .want_low_latency = 1,
+    .target_refresh_hz = 120
+};
+
+nxdisplay_mode_result_t result;
+nxdisplay_kdrv_request_mode(0, &hint, &result);
+
+// Check what OS granted
+if (result.vrr_enabled) { /* VRR active */ }
+if (result.hdr_enabled) { /* HDR active */ }
+printf("Refresh: %d Hz", result.actual_refresh_hz);</code></pre>
+
+    <h2>API Reference</h2>
+    <table>
+        <tr>
+            <th>Function</th>
+            <th>Purpose</th>
+        </tr>
+        <tr>
+            <td><code>nxdisplay_kdrv_init()</code></td>
+            <td>Initialize driver</td>
+        </tr>
+        <tr>
+            <td><code>nxdisplay_kdrv_count()</code></td>
+            <td>Get display count</td>
+        </tr>
+        <tr>
+            <td><code>nxdisplay_kdrv_info()</code></td>
+            <td>Get display info</td>
+        </tr>
+        <tr>
+            <td><code>nxdisplay_kdrv_get_caps()</code></td>
+            <td>Get capability descriptor</td>
+        </tr>
+        <tr>
+            <td><code>nxdisplay_kdrv_request_mode()</code></td>
+            <td>Declarative mode request</td>
+        </tr>
+        <tr>
+            <td><code>nxdisplay_kdrv_set_refresh()</code></td>
+            <td>Set refresh rate</td>
+        </tr>
+        <tr>
+            <td><code>nxdisplay_kdrv_vrr_enable()</code></td>
+            <td>Enable VRR</td>
+        </tr>
+        <tr>
+            <td><code>nxdisplay_kdrv_hdr_enable()</code></td>
+            <td>Enable HDR</td>
+        </tr>
+        <tr>
+            <td><code>nxdisplay_kdrv_wait_vsync()</code></td>
+            <td>Wait for VSync</td>
+        </tr>
+        <tr>
+            <td><code>nxdisplay_kdrv_commit()</code></td>
+            <td>Atomic commit changes</td>
+        </tr>
+    </table>
+
+    <h2>Connector Types</h2>
+    <table>
+        <tr>
+            <th>Type</th>
+            <th>Enum</th>
+        </tr>
+        <tr>
+            <td>HDMI</td>
+            <td>NXCONN_HDMI</td>
+        </tr>
+        <tr>
+            <td>DisplayPort</td>
+            <td>NXCONN_DISPLAYPORT</td>
+        </tr>
+        <tr>
+            <td>eDP (laptop)</td>
+            <td>NXCONN_EDP</td>
+        </tr>
+        <tr>
+            <td>VGA</td>
+            <td>NXCONN_VGA</td>
+        </tr>
+        <tr>
+            <td>DVI</td>
+            <td>NXCONN_DVI</td>
+        </tr>
+    </table>
+
+    <h2>HDR Modes</h2>
+    <table>
+        <tr>
+            <th>Mode</th>
+            <th>Enum</th>
+            <th>Status</th>
+        </tr>
+        <tr>
+            <td>HDR10</td>
+            <td>NXHDR_HDR10</td>
+            <td>✅ Supported</td>
+        </tr>
+        <tr>
+            <td>Dolby Vision</td>
+            <td>NXHDR_DOLBY_VISION</td>
+            <td>🚧 Planned</td>
+        </tr>
+        <tr>
+            <td>HLG</td>
+            <td>NXHDR_HLG</td>
+            <td>🚧 Planned</td>
+        </tr>
+    </table>
+
+    <p style="margin-top: 2rem; color: #8b949e; font-size: 0.9rem;">
+        © 2025 KetiveeAI - KETIVEEAI License
+    </p>
+</body>
+
+</html>

@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Cursor Set Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            min-height: 100vh;
+            padding: 20px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 3.5em;
+            font-weight: 800;
+            color: white;
+            margin-bottom: 10px;
+            text-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
+        }
+
+        .subtitle {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 1.2em;
+            font-weight: 300;
+        }
+
+        .controls {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(20px);
+            border-radius: 25px;
+            padding: 30px;
+            margin-bottom: 40px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .control-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 25px;
+            margin-bottom: 25px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            color: white;
+            font-weight: 600;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.2);
+            outline: none;
+        }
+
+        .size-display {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 1.1em;
+            margin-top: 8px;
+            font-weight: 500;
+        }
+
+        select {
+            padding: 12px 20px;
+            border-radius: 15px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            font-size: 1em;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        select option {
+            background: #764ba2;
+            color: white;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 15px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            color: white;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+        }
+
+        .cursors-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .cursor-card {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 25px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .cursor-preview {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
+            min-height: 140px;
+        }
+
+        .cursor-name {
+            color: white;
+            font-weight: 600;
+            font-size: 1.1em;
+            text-align: center;
+            margin-bottom: 5px;
+        }
+
+        .cursor-id {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.9em;
+            text-align: center;
+        }
+
+        .cursor-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .cursor-actions button {
+            flex: 1;
+            padding: 8px 12px;
+            font-size: 0.85em;
+        }
+
+        .info-box {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(20px);
+            border-radius: 25px;
+            padding: 30px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .info-box h2 {
+            color: white;
+            font-size: 1.8em;
+            margin-bottom: 20px;
+            font-weight: 700;
+        }
+
+        .info-box ul {
+            list-style: none;
+            color: rgba(255, 255, 255, 0.9);
+            line-height: 2;
+        }
+
+        .info-box li {
+            padding-left: 25px;
+            position: relative;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 18px 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            display: none;
+            font-weight: 600;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>OS Cursor Collection</h1>
+            <p class="subtitle">Professional cursor set with stunning design</p>
+        </div>
+
+        <div class="controls">
+            <div class="control-grid">
+                <div class="control-group">
+                    <label>Cursor Size</label>
+                    <input type="range" id="sizeSlider" min="24" max="128" value="48">
+                    <div class="size-display"><span id="sizeValue">48</span>px</div>
+                </div>
+
+                <div class="control-group">
+                    <label>Color Theme</label>
+                    <select id="skinSelect">
+                        <option value="default">Default Purple</option>
+                        <option value="dark">Dark Purple</option>
+                        <option value="neon">Neon Cyber</option>
+                        <option value="fire">Fire Orange</option>
+                        <option value="forest">Forest Green</option>
+                        <option value="ocean">Ocean Blue</option>
+                        <option value="sunset">Sunset Pink</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn-primary" onclick="downloadAll()">Download All</button>
+                <button class="btn-secondary" onclick="copyAllSVG()">Copy All SVG</button>
+            </div>
+        </div>
+
+        <div class="cursors-grid" id="cursorsGrid"></div>
+
+        <div class="info-box">
+            <h2>Usage Guide</h2>
+            <ul>
+                <li>Click Download on any cursor to save it</li>
+                <li>Use Copy SVG to copy the code</li>
+                <li>Download all cursors at once</li>
+                <li>Adjust size from 24px to 128px</li>
+                <li>Choose from 7 beautiful themes</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="toast" id="toast">
+        <span id="toastMessage">Success!</span>
+    </div>
+
+    <script>
+        var skins = {
+            "default": { primary: "#B0AAE3", secondary: "#CDBBE6" },
+            "dark": { primary: "#6B5BA3", secondary: "#8B7BC3" },
+            "neon": { primary: "#00F0FF", secondary: "#FF00FF" },
+            "fire": { primary: "#FF4500", secondary: "#FFA500" },
+            "forest": { primary: "#2D5016", secondary: "#4A7C2E" },
+            "ocean": { primary: "#0077BE", secondary: "#00C8FF" },
+            "sunset": { primary: "#FF6B9D", secondary: "#FFA07A" }
+        };
+
+        var currentSize = 48;
+        var currentSkin = "default";
+
+        function getSVG1(size, c) {
+            var h = Math.round(size * 56 / 48);
+            return '<svg width="' + size + '" height="' + h + '" viewBox="0 0 48 56" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" d="M22.7351 31.7866C21.695 30.3283 1.97275 2.53771 0.159163 0.081543C-0.0449064 0.326823 -0.0185706 0.246181 0.0505495 0.719944C1.16305 8.43117 9.30278 52.0039 9.8327 52.8134C10.9156 53.2572 12.4362 49.6417 13.0023 48.6873C16.6624 42.4447 19.0454 38.0126 22.7351 31.7866Z" fill="' + c.primary + '"/><path fill-rule="evenodd" clip-rule="evenodd" d="M22.6858 31.8204C21.649 30.3588 1.88389 2.6051 0.15918 0.0817309C0.452119 -0.0392295 0.363243 -0.0392333 0.784546 0.172447C7.62087 3.64332 45.6765 25.0466 46.2689 25.8127C46.3478 27.0021 42.5102 27.3549 41.447 27.6103C34.4986 29.2264 29.6274 30.1672 22.6858 31.8204Z" fill="' + c.secondary + '"/></svg>';
+        }
+
+        function getSVG2(size, c) {
+            return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 48 48" fill="none"><path d="M18 8C18 5.79086 19.7909 4 22 4C24.2091 4 26 5.79086 26 8V20H28C30.2091 20 32 21.7909 32 24V28C32 28.5 31.8 30 31 32C29.5 35.5 26 42 22 44C18 46 12 44 10 42C8 40 6 36 6 32V20C6 17.7909 7.79086 16 10 16C12.2091 16 14 17.7909 14 20V12C14 9.79086 15.7909 8 18 8Z" fill="' + c.primary + '"/></svg>';
+        }
+
+        function getSVG3(size, c) {
+            var w = Math.round(size * 0.6);
+            return '<svg width="' + w + '" height="' + size + '" viewBox="0 0 28 48" fill="none"><path d="M4 4H24M4 44H24M14 4V44" stroke="' + c.primary + '" stroke-width="4" stroke-linecap="round"/></svg>';
+        }
+
+        function getSVG4(size, c) {
+            return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="18" stroke="' + c.secondary + '" stroke-width="4" opacity="0.3"/><path d="M24 6C32.8366 6 40 13.1634 40 22" stroke="' + c.primary + '" stroke-width="4" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 24 24" to="360 24 24" dur="1s" repeatCount="indefinite"/></path></svg>';
+        }
+
+        function getSVG5(size, c) {
+            return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 48 48" fill="none"><path d="M6 18L6 6L18 6M42 30L42 42L30 42" stroke="' + c.primary + '" stroke-width="4" stroke-linecap="round"/></svg>';
+        }
+
+        function getSVG6(size, c) {
+            return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 48 48" fill="none"><path d="M24 6V18M24 30V42M6 24H18M30 24H42" stroke="' + c.primary + '" stroke-width="4" stroke-linecap="round"/></svg>';
+        }
+
+        function getSVG7(size, c) {
+            return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="18" stroke="' + c.primary + '" stroke-width="4"/><path d="M10 10L38 38" stroke="' + c.primary + '" stroke-width="5" stroke-linecap="round"/></svg>';
+        }
+
+        function getSVG8(size, c) {
+            return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="18" fill="' + c.secondary + '"/><path d="M24 28V26C24 24 25 23 27 21C28.5 19.5 29 18.5 29 17C29 14.5 27 13 24 13C21 13 19 14.5 19 17" stroke="' + c.primary + '" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="33" r="2" fill="' + c.primary + '"/></svg>';
+        }
+
+        function getSVG9(size, c) {
+            return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 48 48" fill="none"><circle cx="20" cy="20" r="12" stroke="' + c.primary + '" stroke-width="3"/><path d="M29 29L40 40" stroke="' + c.primary + '" stroke-width="4" stroke-linecap="round"/><path d="M20 14V26M14 20H26" stroke="' + c.secondary + '" stroke-width="3" stroke-linecap="round"/></svg>';
+        }
+
+        function getSVG10(size, c) {
+            return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="3" fill="' + c.primary + '"/><circle cx="24" cy="24" r="10" stroke="' + c.primary + '" stroke-width="2"/></svg>';
+        }
+
+        var cursors = [
+            { name: "Default Arrow", id: "default", fn: getSVG1 },
+            { name: "Pointer Hand", id: "pointer", fn: getSVG2 },
+            { name: "Text I-Beam", id: "text", fn: getSVG3 },
+            { name: "Loading Spinner", id: "loading", fn: getSVG4 },
+            { name: "Resize Diagonal", id: "resize", fn: getSVG5 },
+            { name: "Move Cross", id: "move", fn: getSVG6 },
+            { name: "Not Allowed", id: "not-allowed", fn: getSVG7 },
+            { name: "Help Question", id: "help", fn: getSVG8 },
+            { name: "Zoom In", id: "zoom-in", fn: getSVG9 },
+            { name: "Precision Cross", id: "precision", fn: getSVG10 }
+        ];
+
+        function renderCursors() {
+            var grid = document.getElementById("cursorsGrid");
+            var colors = skins[currentSkin];
+            var html = "";
+            
+            for (var i = 0; i < cursors.length; i++) {
+                var cursor = cursors[i];
+                html += '<div class="cursor-card">';
+                html += '<div class="cursor-preview">' + cursor.fn(currentSize, colors) + '</div>';
+                html += '<div class="cursor-name">' + cursor.name + '</div>';
+                html += '<div class="cursor-id">' + cursor.id + '</div>';
+                html += '<div class="cursor-actions">';
+                html += '<button class="btn-primary" onclick="downloadCursor(' + i + ')">Download</button>';
+                html += '<button class="btn-secondary" onclick="copyCursor(' + i + ')">Copy</button>';
+                html += '</div></div>';
+            }
+            
+            grid.innerHTML = html;
+        }
+
+        function downloadCursor(index) {
+            var cursor = cursors[index];
+            var colors = skins[currentSkin];
+            var svgContent = cursor.fn(currentSize, colors);
+            
+            var blob = new Blob([svgContent], { type: "image/svg+xml" });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement("a");
+            a.href = url;
+            a.download = "cursor-" + cursor.id + "-" + currentSkin + "-" + currentSize + "px.svg";
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showToast("Downloaded: " + cursor.name);
+        }
+
+        function copyCursor(index) {
+            var cursor = cursors[index];
+            var colors = skins[currentSkin];
+            var svgContent = cursor.fn(currentSize, colors);
+            
+            navigator.clipboard.writeText(svgContent).then(function() {
+                showToast("Copied: " + cursor.name);
+            });
+        }
+
+        function downloadAll() {
+            for (var i = 0; i < cursors.length; i++) {
+                setTimeout(function(idx) {
+                    downloadCursor(idx);
+                }, i * 200, i);
+            }
+            showToast("Downloading all cursors...");
+        }
+
+        function copyAllSVG() {
+            var colors = skins[currentSkin];
+            var allSVG = "";
+            
+            for (var i = 0; i < cursors.length; i++) {
+                var cursor = cursors[i];
+                allSVG += "<!-- " + cursor.name + " -->\n";
+                allSVG += cursor.fn(currentSize, colors) + "\n\n";
+            }
+            
+            navigator.clipboard.writeText(allSVG).then(function() {
+                showToast("Copied all SVG codes!");
+            });
+        }
+
+        function showToast(message) {
+            var toast = document.getElementById("toast");
+            var toastMessage = document.getElementById("toastMessage");
+            toastMessage.textContent = message;
+            toast.classList.add("show");
+            
+            setTimeout(function() {
+                toast.classList.remove("show");
+            }, 3000);
+        }
+
+        document.getElementById("sizeSlider").addEventListener("input", function(e) {
+            currentSize = parseInt(e.target.value);
+            document.getElementById("sizeValue").textContent = currentSize;
+            renderCursors();
+        });
+
+        document.getElementById("skinSelect").addEventListener("change", function(e) {
+            currentSkin = e.target.value;
+            renderCursors();
+        });
+
+        renderCursors();
+    </script>
+</body>
+</html>

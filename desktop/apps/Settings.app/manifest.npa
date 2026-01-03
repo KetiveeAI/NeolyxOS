@@ -1,0 +1,24 @@
+# NeolyxOS Application Manifest
+# Settings.app - System Preferences
+
+[app]
+id = org.neolyx.settings
+name = Settings
+version = 1.0.0
+category = system
+icon = resources/icons/settings.nxi
+
+[metadata]
+author = KetiveeAI
+description = System preferences and configuration
+copyright = Copyright (c) 2025 KetiveeAI
+license = KetiveeAI-Proprietary
+
+[requirements]
+min_os_version = 1.0.0
+permissions = system.read, system.write, network.read, display.configure
+
+[build]
+binary = bin/settings
+main = main.c
+libs = reox_ui, reox_runtime

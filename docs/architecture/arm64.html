@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARM64 Architecture - NeolyxOS Documentation</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --text-primary: #f0f6fc;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --border: #30363d;
+            --code-bg: #1f2428;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1,
+        h2,
+        h3 {
+            color: var(--accent);
+        }
+
+        h1 {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        code {
+            background: var(--code-bg);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'Fira Code', monospace;
+        }
+
+        pre {
+            background: var(--code-bg);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            border: 1px solid var(--border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--border);
+            padding: 0.75rem;
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .badge-done {
+            background: #238636;
+            color: white;
+        }
+
+        .badge-new {
+            background: #58a6ff;
+            color: white;
+        }
+
+        a {
+            color: var(--accent);
+        }
+    </style>
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🦾 ARM64 (AArch64) Architecture</h1>
+
+        <p><span class="badge badge-new">NEW</span> Added in Phase 11</p>
+
+        <h2>Overview</h2>
+        <p>NeolyxOS now supports ARM64/AArch64 architecture, enabling the OS to run on:</p>
+        <ul>
+            <li>ARM Cortex-A53/A72/A76+ processors</li>
+            <li>Apple Silicon (M1/M2/M3)</li>
+            <li>Raspberry Pi 4/5</li>
+            <li>ARM servers (Ampere, Graviton)</li>
+            <li>QEMU virt machine</li>
+        </ul>
+
+        <h2>File Structure</h2>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Lines</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><code>include/arch/aarch64/arm64.h</code></td>
+                <td>320</td>
+                <td>Architecture definitions, page tables, GIC, system registers</td>
+            </tr>
+            <tr>
+                <td><code>src/arch/aarch64/boot.S</code></td>
+                <td>310</td>
+                <td>Boot stub, exception vectors, context switch</td>
+            </tr>
+            <tr>
+                <td><code>src/arch/aarch64/mmu.c</code></td>
+                <td>320</td>
+                <td>MMU initialization, page tables, MAIR/TCR</td>
+            </tr>
+            <tr>
+                <td><code>include/arch/aarch64/fdt.h</code></td>
+                <td>160</td>
+                <td>Device Tree structures</td>
+            </tr>
+            <tr>
+                <td><code>src/arch/aarch64/fdt.c</code></td>
+                <td>350</td>
+                <td>FDT parser implementation</td>
+            </tr>
+        </table>
+
+        <h2>Boot Sequence</h2>
+        <pre><code>Firmware (UEFI/U-Boot)
+    ↓
+EL3 (Secure Monitor) ──→ If present, drop to EL2
+    ↓
+EL2 (Hypervisor) ──────→ Configure HCR_EL2, drop to EL1
+    ↓
+EL1 (Kernel) ──────────→ _start entry point
+    ↓
+at_el1:
+    • Set up stack (16KB)
+    • Clear BSS
+    • Set VBAR_EL1 (exception vectors)
+    • Initialize MMU
+    ↓
+kernel_main_arm64()</code></pre>
+
+        <h2>Exception Levels</h2>
+        <table>
+            <tr>
+                <th>Level</th>
+                <th>Name</th>
+                <th>Usage</th>
+            </tr>
+            <tr>
+                <td>EL0</td>
+                <td>User</td>
+                <td>Applications</td>
+            </tr>
+            <tr>
+                <td>EL1</td>
+                <td>Kernel</td>
+                <td>NeolyxOS kernel runs here</td>
+            </tr>
+            <tr>
+                <td>EL2</td>
+                <td>Hypervisor</td>
+                <td>Virtual machine monitor</td>
+            </tr>
+            <tr>
+                <td>EL3</td>
+                <td>Secure Monitor</td>
+                <td>TrustZone</td>
+            </tr>
+        </table>
+
+        <h2>Page Tables (4KB Granule)</h2>
+        <p>ARM64 uses 4-level page tables for 48-bit virtual addresses:</p>
+        <pre><code>Virtual Address (48-bit):
+┌────────┬────────┬────────┬────────┬──────────┐
+│ L0 idx │ L1 idx │ L2 idx │ L3 idx │  Offset  │
+│ [47:39]│ [38:30]│ [29:21]│ [20:12]│  [11:0]  │
+└────────┴────────┴────────┴────────┴──────────┘
+   9 bits   9 bits   9 bits   9 bits   12 bits
+
+L0 → 512GB regions
+L1 → 1GB regions  
+L2 → 2MB blocks (or table)
+L3 → 4KB pages</code></pre>
+
+        <h3>Memory Attributes (MAIR)</h3>
+        <table>
+            <tr>
+                <th>Index</th>
+                <th>Attribute</th>
+                <th>Usage</th>
+            </tr>
+            <tr>
+                <td>0</td>
+                <td>Device-nGnRnE</td>
+                <td>MMIO (GIC, UART)</td>
+            </tr>
+            <tr>
+                <td>1</td>
+                <td>Normal NC</td>
+                <td>Non-cacheable</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>Normal WT</td>
+                <td>Write-through</td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td>Normal WB</td>
+                <td>Write-back (RAM)</td>
+            </tr>
+        </table>
+
+        <h2>Exception Vectors</h2>
+        <p>16 exception vectors at VBAR_EL1:</p>
+        <pre><code>Offset    Exception         Source
+0x000     Synchronous       Current EL, SP_EL0
+0x080     IRQ               Current EL, SP_EL0
+0x100     FIQ               Current EL, SP_EL0
+0x180     SError            Current EL, SP_EL0
+0x200     Synchronous       Current EL, SP_ELx
+0x280     IRQ               Current EL, SP_ELx
+0x300     FIQ               Current EL, SP_ELx
+0x380     SError            Current EL, SP_ELx
+0x400     Synchronous       Lower EL, AArch64
+0x480     IRQ               Lower EL, AArch64
+0x500     FIQ               Lower EL, AArch64
+0x580     SError            Lower EL, AArch64</code></pre>
+
+        <h2>GIC (Generic Interrupt Controller)</h2>
+        <p>NeolyxOS supports GICv2 and GICv3:</p>
+        <table>
+            <tr>
+                <th>Component</th>
+                <th>QEMU virt Address</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td>Distributor</td>
+                <td>0x08000000</td>
+                <td>Interrupt routing</td>
+            </tr>
+            <tr>
+                <td>CPU Interface</td>
+                <td>0x08010000</td>
+                <td>Per-CPU interface</td>
+            </tr>
+            <tr>
+                <td>Redistributor</td>
+                <td>0x080A0000</td>
+                <td>GICv3 per-CPU</td>
+            </tr>
+        </table>
+
+        <h2>Device Tree (FDT)</h2>
+        <p>ARM platforms use Device Tree to describe hardware:</p>
+        <pre><code>fdt_info_t info;
+fdt_parse(dtb_addr, &info);
+
+// Memory regions
+for (int i = 0; i < info.mem_region_count; i++) {
+    uint64_t base = info.mem_regions[i].base;
+    uint64_t size = info.mem_regions[i].size;
+}
+
+// UART
+uint64_t uart = info.uart_base;  // 0x09000000
+
+// GIC
+uint64_t gic = info.gic_dist_base;  // 0x08000000</code></pre>
+
+        <h2>Key Functions</h2>
+
+        <h3>boot.S</h3>
+        <table>
+            <tr>
+                <th>Function</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><code>_start</code></td>
+                <td>Entry point, EL transitions</td>
+            </tr>
+            <tr>
+                <td><code>arm64_vectors</code></td>
+                <td>Exception vector table</td>
+            </tr>
+            <tr>
+                <td><code>arm64_context_switch</code></td>
+                <td>Switch between processes</td>
+            </tr>
+        </table>
+
+        <h3>mmu.c</h3>
+        <table>
+            <tr>
+                <th>Function</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><code>arm64_mmu_early_init</code></td>
+                <td>Initialize MMU and page tables</td>
+            </tr>
+            <tr>
+                <td><code>arm64_map_page</code></td>
+                <td>Map a virtual page to physical</td>
+            </tr>
+            <tr>
+                <td><code>arm64_set_ttbr0/1</code></td>
+                <td>Set page table base</td>
+            </tr>
+            <tr>
+                <td><code>arm64_mmu_enable</code></td>
+                <td>Enable MMU and caches</td>
+            </tr>
+        </table>
+
+        <h3>fdt.c</h3>
+        <table>
+            <tr>
+                <th>Function</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><code>fdt_parse</code></td>
+                <td>Parse entire DTB</td>
+            </tr>
+            <tr>
+                <td><code>fdt_find_node</code></td>
+                <td>Find node by path</td>
+            </tr>
+            <tr>
+                <td><code>fdt_get_property</code></td>
+                <td>Get property value</td>
+            </tr>
+        </table>
+
+        <h2>Testing with QEMU</h2>
+        <pre><code># Run ARM64 kernel
+qemu-system-aarch64 \
+    -M virt \
+    -cpu cortex-a53 \
+    -m 1G \
+    -kernel kernel.elf \
+    -serial stdio \
+    -nographic</code></pre>
+
+        <h2>See Also</h2>
+        <ul>
+            <li><a href="overview.html">Architecture Overview</a></li>
+            <li><a href="boot.html">Boot Process</a></li>
+            <li><a href="../kernel/memory.html">Memory Management</a></li>
+            <li><a href="../kernel/interrupts.html">Interrupts</a></li>
+        </ul>
+
+        <hr>
+        <p style="color: var(--text-secondary);">
+            NeolyxOS Documentation &copy; 2025 KetiveeAI
+        </p>
+    </div>
+</body>
+
+</html>

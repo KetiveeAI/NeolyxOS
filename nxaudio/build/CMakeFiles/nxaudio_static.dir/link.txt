@@ -1,0 +1,2 @@
+/usr/bin/ar qc libnxaudio_static.a CMakeFiles/nxaudio_static.dir/src/core/init.c.o CMakeFiles/nxaudio_static.dir/src/spatial/hrtf.c.o CMakeFiles/nxaudio_static.dir/src/spatial/mixer.c.o
+/usr/bin/ranlib libnxaudio_static.a

@@ -1,0 +1,38 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Folder Icon
+
+[nxi]
+version = 1.0
+name = folder
+size = 32
+author = KetiveeAI
+category = filetype
+viewbox = 0 0 32 32
+
+[canvas]
+width = 32
+height = 32
+background = transparent
+
+[colors]
+back = #5d7cc7
+front_start = #89b4fa
+front_end = #667eea
+
+[gradients]
+folderGrad = linear 0,0 32,32 front_start front_end
+
+[paths]
+# Back folder tab
+back = M2,8 L2,26 L30,26 L30,12 L16,12 L14,8 Z
+# Front folder body
+front = M0,10 L0,28 L32,28 L32,14 L18,14 L16,10 Z
+
+[style]
+back.fill = back
+front.fill = folderGrad
+
+[style.dark]
+back = #3B4252
+front_start = #5E81AC
+front_end = #4C566A

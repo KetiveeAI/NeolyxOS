@@ -1,0 +1,98 @@
+# RoleCut Effects Package
+# Built-in color correction effects
+
+[package]
+name = "Color Correction"
+version = "1.0.0"
+category = "color"
+
+[effects]
+
+[effects.brightness_contrast]
+id = "RC_FX_BRIGHTNESS_CONTRAST"
+name = "Brightness/Contrast"
+free = true
+params = [
+    { name = "brightness", type = "float", default = 0, min = -100, max = 100 },
+    { name = "contrast", type = "float", default = 0, min = -100, max = 100 }
+]
+
+[effects.exposure]
+id = "RC_FX_EXPOSURE"
+name = "Exposure"
+free = true
+params = [
+    { name = "exposure", type = "float", default = 0, min = -4, max = 4 },
+    { name = "offset", type = "float", default = 0, min = -1, max = 1 },
+    { name = "gamma", type = "float", default = 1, min = 0.1, max = 4 }
+]
+
+[effects.curves]
+id = "RC_FX_CURVES"
+name = "Curves"
+free = false
+params = [
+    { name = "channel", type = "choice", choices = ["RGB", "Red", "Green", "Blue", "Luma"] },
+    { name = "curve", type = "curve" }
+]
+
+[effects.color_wheels]
+id = "RC_FX_COLOR_WHEELS"
+name = "Color Wheels"
+free = false
+description = "3-way color correction (DaVinci style)"
+params = [
+    { name = "lift_hue", type = "angle", default = 0 },
+    { name = "lift_sat", type = "float", default = 0, min = -1, max = 1 },
+    { name = "lift_lum", type = "float", default = 0, min = -1, max = 1 },
+    { name = "gamma_hue", type = "angle", default = 0 },
+    { name = "gamma_sat", type = "float", default = 0, min = -1, max = 1 },
+    { name = "gamma_lum", type = "float", default = 0, min = -1, max = 1 },
+    { name = "gain_hue", type = "angle", default = 0 },
+    { name = "gain_sat", type = "float", default = 0, min = -1, max = 1 },
+    { name = "gain_lum", type = "float", default = 0, min = -1, max = 1 }
+]
+
+[effects.hsl_secondary]
+id = "RC_FX_HSL_SECONDARY"
+name = "HSL Secondary"
+free = false
+description = "Target specific colors for adjustment"
+params = [
+    { name = "target_hue", type = "angle", default = 0 },
+    { name = "hue_range", type = "float", default = 30, min = 1, max = 180 },
+    { name = "sat_range", type = "float", default = 0.5, min = 0, max = 1 },
+    { name = "lum_range", type = "float", default = 0.5, min = 0, max = 1 },
+    { name = "hue_shift", type = "angle", default = 0 },
+    { name = "sat_adjust", type = "float", default = 0, min = -1, max = 1 },
+    { name = "lum_adjust", type = "float", default = 0, min = -1, max = 1 }
+]
+
+[effects.white_balance]
+id = "RC_FX_WHITE_BALANCE"
+name = "White Balance"
+free = false
+params = [
+    { name = "temperature", type = "float", default = 6500, min = 2000, max = 12000 },
+    { name = "tint", type = "float", default = 0, min = -100, max = 100 }
+]
+
+[effects.vibrance]
+id = "RC_FX_VIBRANCE"
+name = "Vibrance"
+free = false
+params = [
+    { name = "vibrance", type = "float", default = 0, min = -100, max = 100 },
+    { name = "saturation", type = "float", default = 0, min = -100, max = 100 }
+]
+
+[effects.shadow_highlight]
+id = "RC_FX_SHADOW_HIGHLIGHT"
+name = "Shadow/Highlight"
+free = false
+params = [
+    { name = "shadows", type = "float", default = 0, min = -100, max = 100 },
+    { name = "highlights", type = "float", default = 0, min = -100, max = 100 },
+    { name = "shadow_tone", type = "float", default = 50, min = 0, max = 100 },
+    { name = "highlight_tone", type = "float", default = 50, min = 0, max = 100 }
+]

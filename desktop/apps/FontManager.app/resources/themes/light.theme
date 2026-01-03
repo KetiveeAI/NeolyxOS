@@ -1,0 +1,50 @@
+# FontManager.app Light Theme
+# NeolyxOS Theme Format
+
+[theme]
+name = "light"
+variant = "light"
+author = "KetiveeAI"
+
+[window]
+background = #F2F2F7
+titlebar = #FFFFFF
+border = #C6C6C8
+
+[sidebar]
+background = #FFFFFF
+section_header = #8E8E93
+item = #000000
+item_hover = #E5E5EA
+item_active = #D1D1D6
+
+[font_list]
+background = #F2F2F7
+item_bg = #FFFFFF
+item_hover = #E5E5EA
+item_selected = #007AFF
+text = #000000
+text_dim = #8E8E93
+
+[preview]
+background = #F2F2F7
+text = #000000
+sample_box = #FFFFFF
+
+[toolbar]
+background = #FFFFFF
+button = #E5E5EA
+button_hover = #D1D1D6
+button_active = #007AFF
+
+[icons]
+installed = #34C759
+system = #007AFF
+user = #FF9500
+recently_added = #AF52DE
+
+[text]
+primary = #000000
+secondary = #8E8E93
+dim = #C7C7CC
+accent = #007AFF

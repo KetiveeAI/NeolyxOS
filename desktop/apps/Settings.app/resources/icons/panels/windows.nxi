@@ -1,0 +1,32 @@
+<nxi version="1.0" width="24" height="24">
+  <metadata>
+    <name>windows</name>
+    <category>preferences</category>
+    <description>Windows settings panel icon</description>
+  </metadata>
+  
+  <defs>
+    <gradient id="window_grad" type="linear" x1="0" y1="0" x2="0" y2="24">
+      <stop offset="0%" color="#89B4FA"/>
+      <stop offset="100%" color="#7AA2F7"/>
+    </gradient>
+  </defs>
+  
+  <!-- Main window frame -->
+  <rect x="3" y="4" width="18" height="14" rx="2" fill="#313244" stroke="#7AA2F7" stroke-width="1.5"/>
+  
+  <!-- Title bar -->
+  <rect x="3" y="4" width="18" height="4" rx="2" fill="url(#window_grad)"/>
+  
+  <!-- Window buttons -->
+  <circle cx="6" cy="6" r="1" fill="#F38BA8"/>
+  <circle cx="9" cy="6" r="1" fill="#F9E2AF"/>
+  <circle cx="12" cy="6" r="1" fill="#A6E3A1"/>
+  
+  <!-- Tiling preview boxes -->
+  <rect x="5" y="10" width="7" height="6" rx="1" fill="#45475A" stroke="#89B4FA" stroke-width="0.5"/>
+  <rect x="13" y="10" width="6" height="6" rx="1" fill="#45475A" stroke="#89B4FA" stroke-width="0.5"/>
+  
+  <!-- Animation arc indicator -->
+  <path d="M9 21 Q12 18 15 21" stroke="#89B4FA" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+</nxi>

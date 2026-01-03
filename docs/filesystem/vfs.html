@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual File System - NeolyxOS Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-code: #1c2128;
+            --text-primary: #c9d1d9;
+            --accent: #58a6ff;
+            --border: #30363d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        nav {
+            margin-bottom: 2rem;
+        }
+
+        nav a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin: 2rem 0 1rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            margin: 1.5rem 0 0.5rem;
+            color: var(--accent);
+        }
+
+        p {
+            margin-bottom: 1rem;
+        }
+
+        code {
+            background: var(--bg-code);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Consolas', monospace;
+        }
+
+        pre {
+            background: var(--bg-code);
+            padding: 1rem;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        ul,
+        ol {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status.complete {
+            background: #238636;
+            color: white;
+        }
+    </style>
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        
+
+        <h1>📁 Virtual File System <span class="status complete">Complete</span></h1>
+        <p>Unified filesystem interface supporting multiple backends (NXFS, FAT32, NTFS).</p>
+
+        <h2>Files</h2>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><code>kernel/src/fs/vfs.c</code></td>
+                <td>VFS core implementation</td>
+            </tr>
+            <tr>
+                <td><code>kernel/include/fs/vfs.h</code></td>
+                <td>VFS structures and API</td>
+            </tr>
+            <tr>
+                <td><code>kernel/src/fs/nxfs.c</code></td>
+                <td>NXFS native filesystem</td>
+            </tr>
+            <tr>
+                <td><code>kernel/src/drivers/block/block.c</code></td>
+                <td>Block device layer</td>
+            </tr>
+        </table>
+
+        <h2>VFS Node Structure</h2>
+        <pre><code>typedef struct vfs_node {
+    char name[256];
+    uint32_t flags;         // VFS_FILE, VFS_DIRECTORY, VFS_MOUNT
+    uint32_t inode;
+    uint64_t size;
+    
+    // Operations
+    vfs_ops_t *ops;
+    
+    // Links
+    struct vfs_node *parent;
+    struct vfs_node *children;
+    struct vfs_node *next;
+    
+    // Backend-specific data
+    void *private_data;
+} vfs_node_t;</code></pre>
+
+        <h2>File Operations</h2>
+        <pre><code>typedef struct vfs_ops {
+    int (*open)(vfs_node_t *node, uint32_t flags);
+    int (*close)(vfs_node_t *node);
+    int (*read)(vfs_node_t *node, void *buffer, size_t size, size_t offset);
+    int (*write)(vfs_node_t *node, const void *buffer, size_t size, size_t offset);
+    vfs_node_t *(*readdir)(vfs_node_t *node, uint32_t index);
+    vfs_node_t *(*finddir)(vfs_node_t *node, const char *name);
+    int (*create)(vfs_node_t *parent, const char *name, uint32_t flags);
+    int (*unlink)(vfs_node_t *node);
+} vfs_ops_t;</code></pre>
+
+        <h2>API</h2>
+
+        <h3>Path Operations</h3>
+        <pre><code>// Open file by path
+vfs_node_t *vfs_open(const char *path, uint32_t flags);
+
+// Close file
+int vfs_close(vfs_node_t *node);
+
+// Read from file
+int vfs_read(vfs_node_t *node, void *buffer, size_t size, size_t offset);
+
+// Write to file
+int vfs_write(vfs_node_t *node, const void *buffer, size_t size, size_t offset);</code></pre>
+
+        <h3>Mount Operations</h3>
+        <pre><code>// Mount filesystem at path
+int vfs_mount(const char *path, vfs_node_t *root, const char *type);
+
+// Unmount filesystem
+int vfs_unmount(const char *path);
+
+// Get mount point count
+int vfs_get_mount_count(void);</code></pre>
+
+        <h3>Directory Operations</h3>
+        <pre><code>// List directory contents
+vfs_node_t *vfs_readdir(vfs_node_t *dir, uint32_t index);
+
+// Find entry in directory
+vfs_node_t *vfs_finddir(vfs_node_t *dir, const char *name);
+
+// Create file/directory
+int vfs_create(const char *path, uint32_t flags);</code></pre>
+
+        <h2>Supported Filesystems</h2>
+        <table>
+            <tr>
+                <th>Filesystem</th>
+                <th>Read</th>
+                <th>Write</th>
+                <th>Notes</th>
+            </tr>
+            <tr>
+                <td>NXFS (Native)</td>
+                <td>✅</td>
+                <td>✅</td>
+                <td>Extents, encryption, checksums</td>
+            </tr>
+            <tr>
+                <td>FAT32</td>
+                <td>✅</td>
+                <td>📋</td>
+                <td>LFN support</td>
+            </tr>
+            <tr>
+                <td>exFAT</td>
+                <td>✅</td>
+                <td>📋</td>
+                <td>Large files</td>
+            </tr>
+            <tr>
+                <td>NTFS</td>
+                <td>✅</td>
+                <td>❌</td>
+                <td>Read-only</td>
+            </tr>
+        </table>
+
+        <h2>Example Usage</h2>
+        <pre><code>// Mount root filesystem
+vfs_mount("/", nxfs_root, "nxfs");
+
+// Open a file
+vfs_node_t *file = vfs_open("/home/user/test.txt", VFS_READ);
+
+// Read contents
+char buffer[1024];
+int bytes = vfs_read(file, buffer, sizeof(buffer), 0);
+
+// Close
+vfs_close(file);</code></pre>
+
+        <h2>How to Add New Filesystem</h2>
+        <ol>
+            <li>Create <code>kernel/src/fs/myfs.c</code></li>
+            <li>Implement <code>vfs_ops_t</code> operations</li>
+            <li>Create mount function <code>myfs_mount()</code></li>
+            <li>Add to Makefile</li>
+            <li>Register in VFS during boot</li>
+        </ol>
+
+    </div>
+</body>
+
+</html>

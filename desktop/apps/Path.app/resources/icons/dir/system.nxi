@@ -1,0 +1,54 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# System Folder Icon - with gear emblem
+
+[nxi]
+version = 1.0
+name = system
+size = 32
+author = KetiveeAI
+category = directory
+viewbox = 0 0 32 32
+
+[canvas]
+width = 32
+height = 32
+background = transparent
+
+[colors]
+shadow = #000000
+folder_base = #F2D6C9
+folder_dark = #DDAE98
+gear = #DDAE98
+center = #FFFFFF
+
+[paths]
+# Shadow layer
+shadow = M0,4 L0,26 L30,26 L30,6 L15,6 L13,4 Z
+
+# Back folder tab
+back_tab = M0,5 L0,27 L31,27 L31,7 L16,7 L14,5 Z
+
+# Front folder body
+front = M0,8 L0,28 L32,28 L32,10 L18,10 L16,8 Z
+
+# Gear teeth (simplified as octagon)
+gear_outer = M16,11 L18,11 L21,13 L21,15 L21,19 L21,21 L18,23 L16,23 L14,23 L11,21 L11,19 L11,15 L11,13 L14,11 Z
+
+# Gear inner circle
+gear_inner = M16,17 a3,3 0 1,0 0.01,0
+
+# Gear center
+gear_center = M16,17 a1.5,1.5 0 1,0 0.01,0
+
+[style]
+shadow.fill = shadow
+shadow.opacity = 0.3
+back_tab.fill = folder_base
+front.fill = folder_base
+gear_outer.fill = gear
+gear_inner.fill = folder_base
+gear_center.fill = center
+
+[style.dark]
+folder_base = #C4A99E
+gear = #B8988A

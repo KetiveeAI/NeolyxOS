@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCP/IP Stack - NeolyxOS Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --border: #30363d;
+            --code-bg: #1f2428;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1,
+        h2,
+        h3 {
+            color: var(--accent);
+        }
+
+        h1 {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        code {
+            background: var(--code-bg);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        pre {
+            background: var(--code-bg);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--border);
+            padding: 0.5rem;
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+    </style>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <a href="index.html" class="back-link">← Back to Network Overview</a>
+
+        <h1>🥩 TCP/IP Stack Implementation</h1>
+        <p><strong>Source:</strong> <code>kernel/src/net/tcpip.c</code></p>
+
+        <h2>Socket Layer</h2>
+        <p>NeolyxOS provides a BSD-like socket interface. Sockets are kernel objects (`socket_t`) linked list tracked by
+            file descriptors.</p>
+
+        <h3>Supported Operations</h3>
+        <table>
+            <tr>
+                <th>Function</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td><code>socket_create(type, proto)</code></td>
+                <td>Allocates new socket (FD > 2).</td>
+            </tr>
+            <tr>
+                <td><code>socket_bind(fd, addr)</code></td>
+                <td>Binds to local IP/Port.</td>
+            </tr>
+            <tr>
+                <td><code>socket_connect(fd, addr)</code></td>
+                <td>Initiates TCP 3-way handshake.</td>
+            </tr>
+            <tr>
+                <td><code>socket_listen(fd, backlog)</code></td>
+                <td>Sets TCP state to LISTEN.</td>
+            </tr>
+            <tr>
+                <td><code>socket_accept(fd, addr)</code></td>
+                <td>Accepts incoming connection (Stub).</td>
+            </tr>
+            <tr>
+                <td><code>socket_send(fd, buf, len)</code></td>
+                <td>Transmits data (TCP/UDP).</td>
+            </tr>
+            <tr>
+                <td><code>socket_recv(fd, buf, len)</code></td>
+                <td>Reads from RX circular buffer.</td>
+            </tr>
+        </table>
+
+        <h2>Protocols</h2>
+
+        <h3>IPv4</h3>
+        <ul>
+            <li><strong>ARP:</strong> Caching enabled (Size: 32 entries). Handles Request/Reply.</li>
+            <li><strong>Routing:</strong> Basic subnet check. Uses Gateway for outside subnet.</li>
+            <li><strong>Checksum:</strong> Hardware offload assisted (software fallback).</li>
+        </ul>
+
+        <h3>TCP (Transmission Control Protocol)</h3>
+        <p>A state-machine based implementation handling reliability.</p>
+        <ul>
+            <li><strong>States:</strong> LISTEN, SYN_SENT, SYN_RCVD, ESTABLISHED, CLOSE_WAIT.</li>
+            <li><strong>Window:</strong> Fixed 8192 bytes.</li>
+            <li><strong>Buffering:</strong> 8KB RX buffer per socket.</li>
+        </ul>
+
+        <h3>UDP (User Datagram Protocol)</h3>
+        <ul>
+            <li>Stateless datagrams.</li>
+            <li><strong>DNS Integration:</strong> Auto-intercepts port 53 responses for DNS resolver.</li>
+        </ul>
+
+        <h2>🔥 Built-in Firewall</h2>
+        <p>The kernel includes a stateful packet filter activated by default.</p>
+
+        <h3>Default Rules</h3>
+        <pre><code>Rule 0: DENY Port 23  (Telnet)
+Rule 1: DENY Port 139 (NetBIOS)
+Rule 2: DENY Port 445 (SMB)</code></pre>
+
+        <h2>DHCP Client</h2>
+        <p>NeolyxOS implements a full DHCP DORA (Discover-Offer-Request-Ack) cycle.</p>
+        <ol>
+            <li><strong>Discover:</strong> Broadcasts to 255.255.255.255 (Port 67).</li>
+            <li><strong>Offer:</strong> Parses offered IP/Mask/Router/DNS.</li>
+            <li><strong>Request:</strong> Requests the offered IP.</li>
+            <li><strong>Ack:</strong> Configures interface on confirmation.</li>
+        </ol>
+    </div>
+</body>
+
+</html>

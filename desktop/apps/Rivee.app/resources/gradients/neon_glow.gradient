@@ -1,0 +1,12 @@
+{
+    "name": "Neon Glow",
+    "type": "radial",
+    "center": {"x": 0.5, "y": 0.5},
+    "radius": 1.0,
+    "stops": [
+        {"position": 0.0, "color": "#FF00FF"},
+        {"position": 0.3, "color": "#8B00FF"},
+        {"position": 0.6, "color": "#4B0082"},
+        {"position": 1.0, "color": "#000033"}
+    ]
+}

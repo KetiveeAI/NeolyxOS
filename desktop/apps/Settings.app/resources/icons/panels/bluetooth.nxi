@@ -1,0 +1,42 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Bluetooth Panel Icon - Blue gradient tile with bluetooth symbol
+
+[nxi]
+version = 1.0
+name = bluetooth
+size = 64
+author = KetiveeAI
+category = settings
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+tile_start = #5856D6
+tile_end = #4442B8
+icon_color = #FFFFFF
+
+[gradients]
+tileGrad = linear 0,0 64,64 tile_start tile_end
+
+[shapes]
+# Rounded square tile background
+rect x=0 y=0 width=64 height=64 rx=12 fill=tileGrad
+
+[paths]
+# Bluetooth rune symbol
+bluetooth = M32,12 L32,52 L44,40 L24,24 L32,32 L24,40 L44,24 L32,12 Z
+
+[style]
+bluetooth.fill = none
+bluetooth.stroke = icon_color
+bluetooth.stroke-width = 4
+bluetooth.stroke-linecap = round
+bluetooth.stroke-linejoin = round
+
+[style.dark]
+tile_start = #5E5CE6
+tile_end = #4442B8

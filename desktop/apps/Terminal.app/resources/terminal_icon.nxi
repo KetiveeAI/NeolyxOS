@@ -1,0 +1,43 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Terminal.app Icon
+# Dark rounded rectangle with command prompt
+
+[nxi]
+version = 1.0
+name = terminal
+size = 40
+author = KetiveeAI
+category = app
+viewbox = 0 0 40 40
+
+[canvas]
+width = 40
+height = 40
+background = transparent
+
+[colors]
+bg_top = #090909
+bg_bottom = #7071CD
+prompt_color = #FFFFFF
+
+[gradients]
+background = linear 0,0 0,40 bg_top bg_bottom
+
+[paths]
+# Rounded rect background (squircle shape)
+bg = M0,20 C0,9 8,0 17,0 L23,0 C32,0 40,9 40,20 C40,31 32,40 23,40 L17,40 C8,40 0,31 0,20 Z
+
+# Command prompt arrow >
+prompt = M7,19 L11,14 L11,9 C11,8 12,8 12,9 L12,16 L8,19 L12,22 L12,29 C12,30 11,30 11,29 L11,24 L7,19 Z
+
+# Underscore cursor
+cursor = M12,19 L20,19 L20,21 L12,21 Z
+
+[style]
+bg.fill = background
+prompt.fill = prompt_color
+cursor.fill = prompt_color
+
+[style.dark]
+bg_top = #000000
+bg_bottom = #5050AA

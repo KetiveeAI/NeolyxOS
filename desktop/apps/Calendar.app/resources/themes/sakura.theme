@@ -1,0 +1,21 @@
+# Sakura Theme - Cherry blossom pink theme
+# NeolyxOS Calendar App
+
+[Theme]
+Name = Sakura
+Type = Dark
+
+[Colors]
+Background = 0x1A0A14
+TextPrimary = 0xFFE0F0
+TextSecondary = 0xA08090
+Accent = 0xFF80B0
+Highlight = 0xFFA0C0
+Border = 0x402030
+
+[ClockFace]
+DialColor = 0x2A1A24
+HandHour = 0xFFE0F0
+HandMinute = 0xFF80B0
+HandSecond = 0xFFFFFF
+MarkerColor = 0x806070

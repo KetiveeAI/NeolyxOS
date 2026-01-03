@@ -1,0 +1,72 @@
+{
+    "name": "Terminal",
+    "version": "1.0.0",
+    "bundle_id": "com.neolyx.terminal",
+    "category": "Utilities",
+    "description": "NeolyxOS Terminal Emulator",
+    
+    "binary": "bin/terminal",
+    "library": "lib/libterminal.so",
+    "icon": "resources/terminal.nxi",
+    
+    "permissions": [
+        "pty.create",
+        "pty.read",
+        "pty.write",
+        "process.spawn",
+        "filesystem.read",
+        "filesystem.write"
+    ],
+    
+    "associations": [
+        {
+            "extension": "sh",
+            "role": "editor"
+        }
+    ],
+    
+    "menu": {
+        "shell": [
+            { "label": "New Window", "action": "new_window", "shortcut": "Cmd+N" },
+            { "label": "New Tab", "action": "new_tab", "shortcut": "Cmd+T" },
+            { "label": "Close Tab", "action": "close_tab", "shortcut": "Cmd+W" },
+            { "separator": true },
+            { "label": "Split Horizontally", "action": "split_h", "shortcut": "Cmd+D" },
+            { "label": "Split Vertically", "action": "split_v", "shortcut": "Cmd+Shift+D" }
+        ],
+        "edit": [
+            { "label": "Copy", "action": "copy", "shortcut": "Cmd+C" },
+            { "label": "Paste", "action": "paste", "shortcut": "Cmd+V" },
+            { "label": "Select All", "action": "select_all", "shortcut": "Cmd+A" },
+            { "separator": true },
+            { "label": "Clear", "action": "clear", "shortcut": "Cmd+K" },
+            { "label": "Find", "action": "find", "shortcut": "Cmd+F" }
+        ],
+        "view": [
+            { "label": "Increase Font Size", "action": "font_up", "shortcut": "Cmd++" },
+            { "label": "Decrease Font Size", "action": "font_down", "shortcut": "Cmd+-" },
+            { "label": "Reset Font Size", "action": "font_reset", "shortcut": "Cmd+0" },
+            { "separator": true },
+            { "label": "Toggle Fullscreen", "action": "fullscreen", "shortcut": "Cmd+Enter" }
+        ]
+    },
+    
+    "settings": {
+        "default_shell": "/bin/nxsh",
+        "font_family": "NeolyxMono",
+        "font_size": 14,
+        "cursor_style": "block",
+        "cursor_blink": true,
+        "scrollback_lines": 10000
+    },
+    
+    "requirements": {
+        "os_version": "1.0.0",
+        "drivers": ["nxgfx"],
+        "syscalls": ["pty"]
+    },
+    
+    "author": "KetiveeAI",
+    "copyright": "Copyright (c) 2025 KetiveeAI",
+    "license": "MIT"
+}

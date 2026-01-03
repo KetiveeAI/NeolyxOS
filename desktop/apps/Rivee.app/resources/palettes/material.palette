@@ -1,0 +1,25 @@
+{
+    "name": "Material Design",
+    "description": "Google Material Design color palette",
+    "colors": [
+        {"name": "Red 500", "hex": "#F44336"},
+        {"name": "Pink 500", "hex": "#E91E63"},
+        {"name": "Purple 500", "hex": "#9C27B0"},
+        {"name": "Deep Purple 500", "hex": "#673AB7"},
+        {"name": "Indigo 500", "hex": "#3F51B5"},
+        {"name": "Blue 500", "hex": "#2196F3"},
+        {"name": "Light Blue 500", "hex": "#03A9F4"},
+        {"name": "Cyan 500", "hex": "#00BCD4"},
+        {"name": "Teal 500", "hex": "#009688"},
+        {"name": "Green 500", "hex": "#4CAF50"},
+        {"name": "Light Green 500", "hex": "#8BC34A"},
+        {"name": "Lime 500", "hex": "#CDDC39"},
+        {"name": "Yellow 500", "hex": "#FFEB3B"},
+        {"name": "Amber 500", "hex": "#FFC107"},
+        {"name": "Orange 500", "hex": "#FF9800"},
+        {"name": "Deep Orange 500", "hex": "#FF5722"},
+        {"name": "Brown 500", "hex": "#795548"},
+        {"name": "Grey 500", "hex": "#9E9E9E"},
+        {"name": "Blue Grey 500", "hex": "#607D8B"}
+    ]
+}

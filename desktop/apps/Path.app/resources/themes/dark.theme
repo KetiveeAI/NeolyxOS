@@ -1,0 +1,66 @@
+# Path.app Dark Theme
+# NeolyxOS Theme Format
+
+[theme]
+name = "dark"
+variant = "dark"
+author = "KetiveeAI"
+
+[window]
+background = #1E1E2E
+titlebar = #181825
+border = #45475A
+
+[toolbar]
+background = #181825
+border = #313244
+button = #313244
+button_hover = #45475A
+button_active = #585B70
+button_disabled = #26283B
+
+[sidebar]
+background = #181825
+section_header = #6C7086
+item = #CDD6F4
+item_hover = #313244
+item_active = #45475A
+
+[file_view]
+background = #1E1E2E
+selected = #45475A
+hover = #313244
+text = #CDD6F4
+text_dim = #6C7086
+
+[tab_bar]
+background = #181825
+tab = #181825
+tab_active = #1E1E2E
+tab_hover = #313244
+tab_border = #45475A
+
+[context_menu]
+background = #1E1E2E
+border = #45475A
+item_hover = #313244
+separator = #313244
+
+[icons]
+folder = #89B4FA
+file = #F5C2E7
+image = #A6E3A1
+video = #F38BA8
+audio = #FAB387
+text = #CDD6F4
+code = #94E2D5
+archive = #EBA0AC
+
+[text]
+primary = #CDD6F4
+secondary = #A6ADC8
+dim = #6C7086
+accent = #89B4FA
+error = #F38BA8
+success = #A6E3A1
+warning = #F9E2AF

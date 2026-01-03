@@ -1,0 +1,8 @@
+/home/swana/Documents/zeprabrowser/src/nxvideo/build/CMakeFiles/nxvideo-static.dir
+/home/swana/Documents/zeprabrowser/src/nxvideo/build/CMakeFiles/nxvideo-shared.dir
+/home/swana/Documents/zeprabrowser/src/nxvideo/build/CMakeFiles/edit_cache.dir
+/home/swana/Documents/zeprabrowser/src/nxvideo/build/CMakeFiles/rebuild_cache.dir
+/home/swana/Documents/zeprabrowser/src/nxvideo/build/CMakeFiles/list_install_components.dir
+/home/swana/Documents/zeprabrowser/src/nxvideo/build/CMakeFiles/install.dir
+/home/swana/Documents/zeprabrowser/src/nxvideo/build/CMakeFiles/install/local.dir
+/home/swana/Documents/zeprabrowser/src/nxvideo/build/CMakeFiles/install/strip.dir

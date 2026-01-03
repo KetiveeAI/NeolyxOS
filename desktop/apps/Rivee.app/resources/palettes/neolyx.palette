@@ -1,0 +1,23 @@
+{
+    "name": "NeolyxOS System",
+    "description": "Official NeolyxOS color palette",
+    "colors": [
+        {"name": "Primary Blue", "hex": "#007AFF"},
+        {"name": "Primary Blue Dark", "hex": "#0055CC"},
+        {"name": "Accent Green", "hex": "#34C759"},
+        {"name": "Accent Orange", "hex": "#FF9500"},
+        {"name": "Accent Red", "hex": "#FF3B30"},
+        {"name": "Accent Yellow", "hex": "#FFCC00"},
+        {"name": "Purple", "hex": "#AF52DE"},
+        {"name": "Pink", "hex": "#FF2D55"},
+        {"name": "Teal", "hex": "#5AC8FA"},
+        {"name": "Cyan", "hex": "#32D0D5"},
+        {"name": "Background Dark", "hex": "#1C1C1E"},
+        {"name": "Surface Dark", "hex": "#2C2C2E"},
+        {"name": "Fill Dark", "hex": "#3A3A3C"},
+        {"name": "Separator", "hex": "#48484A"},
+        {"name": "Text Primary", "hex": "#FFFFFF"},
+        {"name": "Text Secondary", "hex": "#8E8E93"},
+        {"name": "Text Tertiary", "hex": "#636366"}
+    ]
+}

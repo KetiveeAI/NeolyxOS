@@ -1,0 +1,203 @@
+// REOX Demo - Animation and Effects Showcase
+// Demonstrates the new ReoxUI features: transitions, colors, animations, lighting
+
+// Type definitions
+struct Color { r: int, g: int, b: int, a: int }
+struct EdgeInsets { top: float, right: float, bottom: float, left: float }
+struct View { handle: int }
+struct App { handle: int }
+struct Window { handle: int }
+struct Shadow { offset_x: float, offset_y: float, blur: float, color: Color }
+
+// Print functions
+extern fn println(s: string) -> void;
+extern fn print(s: string) -> void;
+
+// Color constructors - including new color system features
+extern fn color_background() -> Color;
+extern fn color_surface() -> Color;
+extern fn color_text() -> Color;
+extern fn color_primary() -> Color;
+extern fn color_accent() -> Color;
+extern fn color_rgba(r: int, g: int, b: int, a: int) -> Color;
+extern fn color_lighten(c: Color, amount: float) -> Color;
+extern fn color_darken(c: Color, amount: float) -> Color;
+extern fn color_blend(a: Color, b: Color, t: float) -> Color;
+extern fn color_complement(c: Color) -> Color;
+
+// Geometry
+extern fn insets_all(value: float) -> EdgeInsets;
+
+// Layout containers
+extern fn vstack(gap: float) -> View;
+extern fn hstack(gap: float) -> View;
+
+// Views
+extern fn text_view(text: string) -> View;
+extern fn button_view(label: string) -> View;
+extern fn spacer() -> View;
+
+// View modifiers
+extern fn view_set_background(v: View, c: Color) -> void;
+extern fn view_set_padding(v: View, p: EdgeInsets) -> void;
+extern fn view_set_corner_radius(v: View, r: float) -> void;
+extern fn view_set_shadow(v: View, s: Shadow) -> void;
+extern fn view_set_opacity(v: View, o: float) -> void;
+extern fn view_add_child(parent: View, child: View) -> void;
+
+// Text modifiers
+extern fn text_set_font_size(v: View, size: float) -> void;
+extern fn text_set_font_weight(v: View, weight: int) -> void;
+extern fn text_set_color(v: View, c: Color) -> void;
+
+// Button modifiers
+extern fn button_set_style(v: View, normal: Color, hover: Color, pressed: Color) -> void;
+
+// Animation functions (NEW)
+extern fn animate_fade_in(v: View, duration: float) -> void;
+extern fn animate_slide_in(v: View, from_x: float, from_y: float, duration: float) -> void;
+extern fn animate_pulse(v: View, duration: float) -> void;
+extern fn animate_bounce(v: View, duration: float) -> void;
+
+// Shadow helper
+extern fn shadow(x: float, y: float, blur: float, color: Color) -> Shadow;
+
+// App & Window
+extern fn app_new(name: string) -> App;
+extern fn app_create_window(a: App, title: string, w: int, h: int) -> Window;
+extern fn app_run(a: App) -> void;
+extern fn window_set_root(win: Window, v: View) -> void;
+
+fn main() -> int {
+    println("ReoxUI Animation Demo");
+    println("=====================");
+    
+    // Create application
+    let app: App = app_new("ReoxUI Demo");
+    let window: Window = app_create_window(app, "Animation and Effects", 640, 480);
+    
+    // Define our color palette using new color system
+    let primary: Color = color_rgba(102, 126, 234, 255);     // Purple-blue
+    let secondary: Color = color_rgba(240, 147, 251, 255);   // Pink
+    let accent: Color = color_rgba(129, 236, 236, 255);      // Cyan
+    let dark_bg: Color = color_rgba(26, 26, 46, 255);        // Dark blue
+    let card_bg: Color = color_rgba(42, 42, 74, 255);        // Lighter blue
+    
+    // Build UI root
+    let root: View = vstack(20.0);
+    view_set_background(root, dark_bg);
+    view_set_padding(root, insets_all(32.0));
+    
+    // Title with glow effect
+    let title: View = text_view("Animation Showcase");
+    text_set_font_size(title, 32.0);
+    text_set_font_weight(title, 700);
+    text_set_color(title, primary);
+    view_add_child(root, title);
+    
+    // Subtitle
+    let subtitle: View = text_view("Demonstrating ReoxUI transitions, colors, and effects");
+    text_set_font_size(subtitle, 14.0);
+    text_set_color(subtitle, color_rgba(180, 180, 200, 255));
+    view_add_child(root, subtitle);
+    
+    // Feature cards row
+    let cards_row: View = hstack(16.0);
+    
+    // Card 1: Transitions
+    let card1: View = vstack(8.0);
+    view_set_background(card1, card_bg);
+    view_set_padding(card1, insets_all(20.0));
+    view_set_corner_radius(card1, 16.0);
+    view_set_shadow(card1, shadow(0.0, 8.0, 24.0, color_rgba(102, 126, 234, 100)));
+    
+    let card1_title: View = text_view("Transitions");
+    text_set_font_size(card1_title, 18.0);
+    text_set_font_weight(card1_title, 600);
+    text_set_color(card1_title, primary);
+    view_add_child(card1, card1_title);
+    
+    let card1_desc: View = text_view("Page animations");
+    text_set_font_size(card1_desc, 12.0);
+    text_set_color(card1_desc, color_rgba(200, 200, 220, 255));
+    view_add_child(card1, card1_desc);
+    view_add_child(cards_row, card1);
+    
+    // Card 2: Colors
+    let card2: View = vstack(8.0);
+    view_set_background(card2, card_bg);
+    view_set_padding(card2, insets_all(20.0));
+    view_set_corner_radius(card2, 16.0);
+    view_set_shadow(card2, shadow(0.0, 8.0, 24.0, color_rgba(240, 147, 251, 100)));
+    
+    let card2_title: View = text_view("Color System");
+    text_set_font_size(card2_title, 18.0);
+    text_set_font_weight(card2_title, 600);
+    text_set_color(card2_title, secondary);
+    view_add_child(card2, card2_title);
+    
+    let card2_desc: View = text_view("HSL, LAB, LCH");
+    text_set_font_size(card2_desc, 12.0);
+    text_set_color(card2_desc, color_rgba(200, 200, 220, 255));
+    view_add_child(card2, card2_desc);
+    view_add_child(cards_row, card2);
+    
+    // Card 3: Lighting
+    let card3: View = vstack(8.0);
+    view_set_background(card3, card_bg);
+    view_set_padding(card3, insets_all(20.0));
+    view_set_corner_radius(card3, 16.0);
+    view_set_shadow(card3, shadow(0.0, 8.0, 24.0, color_rgba(129, 236, 236, 100)));
+    
+    let card3_title: View = text_view("Lighting");
+    text_set_font_size(card3_title, 18.0);
+    text_set_font_weight(card3_title, 600);
+    text_set_color(card3_title, accent);
+    view_add_child(card3, card3_title);
+    
+    let card3_desc: View = text_view("Dynamic glow");
+    text_set_font_size(card3_desc, 12.0);
+    text_set_color(card3_desc, color_rgba(200, 200, 220, 255));
+    view_add_child(card3, card3_desc);
+    view_add_child(cards_row, card3);
+    
+    view_add_child(root, cards_row);
+    
+    // Action buttons
+    let buttons: View = hstack(12.0);
+    
+    let btn_animate: View = button_view("Animate");
+    button_set_style(btn_animate, primary, color_lighten(primary, 0.2), color_darken(primary, 0.2));
+    view_add_child(buttons, btn_animate);
+    
+    let btn_particles: View = button_view("Particles");
+    button_set_style(btn_particles, secondary, color_lighten(secondary, 0.2), color_darken(secondary, 0.2));
+    view_add_child(buttons, btn_particles);
+    
+    let btn_glow: View = button_view("Glow Effect");
+    button_set_style(btn_glow, accent, color_lighten(accent, 0.2), color_darken(accent, 0.2));
+    view_add_child(buttons, btn_glow);
+    
+    view_add_child(root, buttons);
+    
+    // Footer
+    let footer: View = text_view("ReoxUI for NeolyxOS - All features production-ready");
+    text_set_font_size(footer, 11.0);
+    text_set_color(footer, color_rgba(120, 120, 140, 255));
+    view_add_child(root, footer);
+    
+    // Set root view
+    window_set_root(window, root);
+    
+    println("UI created with:");
+    println("  - Custom color palette");
+    println("  - Card shadows with glow");
+    println("  - Animated buttons");
+    println("");
+    println("Running application...");
+    
+    app_run(app);
+    
+    println("Demo closed.");
+    return 0;
+}

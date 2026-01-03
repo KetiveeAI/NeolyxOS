@@ -1,0 +1,276 @@
+// REOX Component Demo - NeolyxOS System Monitor
+// Demonstrates: State, Components, Layout, Timer, Collections
+
+// Types from runtime
+struct Color { r: int, g: int, b: int, a: int }
+struct EdgeInsets { top: float, right: float, bottom: float, left: float }
+struct Border { width: float, color: Color, style: int }
+struct Shadow { offset_x: float, offset_y: float, blur: float, color: Color }
+struct View { handle: int }
+struct App { handle: int }
+struct Window { handle: int }
+struct StateInt { value: int, id: int }
+struct StateBool { value: bool, id: int }
+
+// Print
+extern fn println(s: string) -> void;
+extern fn print(s: string) -> void;
+extern fn print_int(n: int) -> void;
+
+// Colors
+extern fn color_background() -> Color;
+extern fn color_surface() -> Color;
+extern fn color_text() -> Color;
+extern fn color_primary() -> Color;
+extern fn color_accent() -> Color;
+extern fn color_success() -> Color;
+extern fn color_warning() -> Color;
+extern fn color_error() -> Color;
+extern fn color_rgba(r: int, g: int, b: int, a: int) -> Color;
+extern fn color_lighten(c: Color, amount: float) -> Color;
+extern fn color_darken(c: Color, amount: float) -> Color;
+
+// Geometry
+extern fn insets_all(value: float) -> EdgeInsets;
+extern fn border(width: float, c: Color) -> Border;
+extern fn shadow(x: float, y: float, blur: float, c: Color) -> Shadow;
+
+// Layout
+extern fn vstack(gap: float) -> View;
+extern fn hstack(gap: float) -> View;
+extern fn scroll_view() -> View;
+extern fn spacer() -> View;
+extern fn divider() -> View;
+extern fn grid_view(cols: int, gap: float) -> View;
+
+// Views
+extern fn text_view(text: string) -> View;
+extern fn button_view(label: string) -> View;
+extern fn slider_view(min_val: float, max_val: float, value: float) -> View;
+extern fn toggle_view(label: string, on: bool) -> View;
+extern fn icon_view(name: string) -> View;
+
+// Modifiers
+extern fn view_set_background(v: View, c: Color) -> void;
+extern fn view_set_padding(v: View, p: EdgeInsets) -> void;
+extern fn view_set_corner_radius(v: View, r: float) -> void;
+extern fn view_set_shadow(v: View, s: Shadow) -> void;
+extern fn view_set_border(v: View, b: Border) -> void;
+extern fn view_add_child(parent: View, child: View) -> void;
+extern fn view_set_opacity(v: View, alpha: float) -> void;
+extern fn text_set_font_size(v: View, size: float) -> void;
+extern fn text_set_font_weight(v: View, weight: int) -> void;
+extern fn text_set_color(v: View, c: Color) -> void;
+extern fn button_set_style(v: View, normal: Color, hover: Color, pressed: Color) -> void;
+
+// App
+extern fn app_new(name: string) -> App;
+extern fn app_create_window(app: App, title: string, w: int, h: int) -> Window;
+extern fn app_run(app: App) -> void;
+extern fn window_set_root(win: Window, v: View) -> void;
+
+// State
+extern fn state_int(initial: int) -> StateInt;
+extern fn state_bool(initial: bool) -> StateBool;
+extern fn state_get_int(s: StateInt) -> int;
+extern fn state_get_bool(s: StateBool) -> bool;
+
+// Platform
+extern fn platform_name() -> string;
+extern fn screen_width() -> int;
+extern fn screen_height() -> int;
+
+// Timer
+extern fn set_interval(callback_id: int, interval_ms: int) -> int;
+
+// ============================================================================
+// Component: Card
+// ============================================================================
+
+fn create_card(title: string) -> View {
+    let card: View = vstack(8.0);
+    view_set_background(card, color_surface());
+    view_set_padding(card, insets_all(16.0));
+    view_set_corner_radius(card, 12.0);
+    view_set_shadow(card, shadow(0.0, 2.0, 8.0, color_rgba(0, 0, 0, 60)));
+    
+    let header: View = text_view(title);
+    text_set_font_size(header, 16.0);
+    text_set_font_weight(header, 600);
+    text_set_color(header, color_text());
+    view_add_child(card, header);
+    
+    return card;
+}
+
+// ============================================================================
+// Component: Stat Widget
+// ============================================================================
+
+fn create_stat_widget(label: string, value: string, c: Color) -> View {
+    let stat: View = vstack(4.0);
+    view_set_background(stat, color_rgba(0, 0, 0, 0));
+    
+    let val_text: View = text_view(value);
+    text_set_font_size(val_text, 28.0);
+    text_set_font_weight(val_text, 700);
+    text_set_color(val_text, c);
+    view_add_child(stat, val_text);
+    
+    let lbl_text: View = text_view(label);
+    text_set_font_size(lbl_text, 12.0);
+    text_set_color(lbl_text, color_rgba(174, 174, 178, 255));
+    view_add_child(stat, lbl_text);
+    
+    return stat;
+}
+
+// ============================================================================
+// Component: Progress Bar
+// ============================================================================
+
+fn create_progress_bar(percent: float, c: Color) -> View {
+    let container: View = hstack(0.0);
+    view_set_background(container, color_rgba(60, 60, 60, 255));
+    view_set_corner_radius(container, 4.0);
+    
+    let fill: View = spacer();
+    view_set_background(fill, c);
+    view_set_corner_radius(fill, 4.0);
+    view_set_opacity(fill, percent / 100.0);
+    view_add_child(container, fill);
+    
+    return container;
+}
+
+// ============================================================================
+// Main App
+// ============================================================================
+
+fn main() -> int {
+    println("=== REOX System Monitor ===");
+    println("");
+    
+    // Create app
+    let app: App = app_new("System Monitor");
+    let window: Window = app_create_window(app, "NeolyxOS System Monitor", 800, 600);
+    
+    // Root layout
+    let root: View = vstack(16.0);
+    view_set_background(root, color_background());
+    view_set_padding(root, insets_all(24.0));
+    
+    // Header
+    let header: View = hstack(12.0);
+    
+    let logo: View = icon_view("neolyx-logo");
+    view_add_child(header, logo);
+    
+    let title: View = text_view("System Monitor");
+    text_set_font_size(title, 24.0);
+    text_set_font_weight(title, 700);
+    text_set_color(title, color_text());
+    view_add_child(header, title);
+    
+    view_add_child(header, spacer());
+    
+    let platform_label: View = text_view(platform_name());
+    text_set_color(platform_label, color_primary());
+    view_add_child(header, platform_label);
+    
+    view_add_child(root, header);
+    view_add_child(root, divider());
+    
+    // Stats Grid
+    let stats_grid: View = grid_view(4, 16.0);
+    
+    // CPU Card
+    let cpu_card: View = create_card("CPU");
+    let cpu_stat: View = create_stat_widget("Usage", "42%", color_primary());
+    view_add_child(cpu_card, cpu_stat);
+    let cpu_bar: View = create_progress_bar(42.0, color_primary());
+    view_add_child(cpu_card, cpu_bar);
+    view_add_child(stats_grid, cpu_card);
+    
+    // Memory Card
+    let mem_card: View = create_card("Memory");
+    let mem_stat: View = create_stat_widget("Used", "8.2 GB", color_success());
+    view_add_child(mem_card, mem_stat);
+    let mem_bar: View = create_progress_bar(68.0, color_success());
+    view_add_child(mem_card, mem_bar);
+    view_add_child(stats_grid, mem_card);
+    
+    // Disk Card
+    let disk_card: View = create_card("Disk");
+    let disk_stat: View = create_stat_widget("Used", "256 GB", color_warning());
+    view_add_child(disk_card, disk_stat);
+    let disk_bar: View = create_progress_bar(51.0, color_warning());
+    view_add_child(disk_card, disk_bar);
+    view_add_child(stats_grid, disk_card);
+    
+    // Network Card
+    let net_card: View = create_card("Network");
+    let net_stat: View = create_stat_widget("Speed", "125 Mbps", color_accent());
+    view_add_child(net_card, net_stat);
+    view_add_child(stats_grid, net_card);
+    
+    view_add_child(root, stats_grid);
+    
+    // Processes section
+    let proc_card: View = create_card("Running Processes");
+    
+    let proc_list: View = scroll_view();
+    
+    let proc1: View = hstack(8.0);
+    let p1_name: View = text_view("zepra-browser");
+    let p1_cpu: View = text_view("12.3%");
+    text_set_color(p1_cpu, color_primary());
+    view_add_child(proc1, p1_name);
+    view_add_child(proc1, spacer());
+    view_add_child(proc1, p1_cpu);
+    view_add_child(proc_list, proc1);
+    
+    let proc2: View = hstack(8.0);
+    let p2_name: View = text_view("neolyx-compositor");
+    let p2_cpu: View = text_view("8.7%");
+    text_set_color(p2_cpu, color_primary());
+    view_add_child(proc2, p2_name);
+    view_add_child(proc2, spacer());
+    view_add_child(proc2, p2_cpu);
+    view_add_child(proc_list, proc2);
+    
+    let proc3: View = hstack(8.0);
+    let p3_name: View = text_view("reox-runtime");
+    let p3_cpu: View = text_view("2.1%");
+    text_set_color(p3_cpu, color_success());
+    view_add_child(proc3, p3_name);
+    view_add_child(proc3, spacer());
+    view_add_child(proc3, p3_cpu);
+    view_add_child(proc_list, proc3);
+    
+    view_add_child(proc_card, proc_list);
+    view_add_child(root, proc_card);
+    
+    // Actions
+    let actions: View = hstack(12.0);
+    view_add_child(actions, spacer());
+    
+    let refresh_btn: View = button_view("Refresh");
+    button_set_style(refresh_btn, color_primary(), color_lighten(color_primary(), 0.1), color_darken(color_primary(), 0.1));
+    view_add_child(actions, refresh_btn);
+    
+    let kill_btn: View = button_view("End Process");
+    button_set_style(kill_btn, color_error(), color_lighten(color_error(), 0.1), color_darken(color_error(), 0.1));
+    view_add_child(actions, kill_btn);
+    
+    view_add_child(root, actions);
+    
+    // Set root and run
+    window_set_root(window, root);
+    
+    println("");
+    println("UI Structure complete!");
+    app_run(app);
+    
+    return 0;
+}

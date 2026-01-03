@@ -1,0 +1,44 @@
+{
+    "id": "com.example.myapp",
+    "name": "My NXRT App",
+    "version": "1.0.0",
+    "author": "Your Name",
+    "description": "A sample NXRT application",
+    "icon": "icon.png",
+    "entry": "index.html",
+    "permissions": [
+        "network",
+        "storage",
+        "notifications"
+    ],
+    "sandboxed": true,
+    "singleInstance": false,
+    "autoStart": false,
+    "background": false,
+    "window": {
+        "title": "My App",
+        "width": 1280,
+        "height": 720,
+        "minWidth": 640,
+        "minHeight": 480,
+        "resizable": true,
+        "frameless": false,
+        "transparent": false
+    },
+    "cloud": {
+        "enabled": true,
+        "endpoint": "https://api.neolyxos.com",
+        "region": "auto"
+    },
+    "build": {
+        "target": "neolyxos",
+        "arch": [
+            "x64",
+            "arm64"
+        ],
+        "assets": [
+            "assets/",
+            "fonts/"
+        ]
+    }
+}

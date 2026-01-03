@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Path.app - NeoLyx File Manager</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0a15;
+            color: #e0e0e0;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .window {
+            width: 95%;
+            height: 95%;
+            background: linear-gradient(135deg, #16161f 0%, #1e1e2e 100%);
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid rgba(138, 99, 210, 0.3);
+        }
+
+        /* Title Bar - Windows/NeoLyx Style */
+        .titlebar {
+            height: 45px;
+            background: rgba(20, 20, 30, 0.95);
+            border-bottom: 1px solid rgba(138, 99, 210, 0.2);
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            justify-content: space-between;
+            backdrop-filter: blur(10px);
+        }
+
+        .titlebar-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .app-icon {
+            width: 24px;
+            height: 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            font-size: 14px;
+        }
+
+        .app-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .titlebar-right {
+            display: flex;
+            gap: 2px;
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .window-btn {
+            width: 13px;
+            height: 13px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: transparent;
+            position: relative;
+        }
+
+        .window-btn:hover {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .window-btn.close {
+            background: rgba(255, 95, 86, 0.8);
+        }
+
+        .window-btn.close:hover {
+            background: #ff5f56;
+        }
+
+        .window-btn.minimize {
+            background: rgba(255, 189, 46, 0.8);
+        }
+
+        .window-btn.minimize:hover {
+            background: #ffbd2e;
+        }
+
+        .window-btn.maximize {
+            background: rgba(39, 201, 63, 0.8);
+        }
+
+        .window-btn.maximize:hover {
+            background: #27c93f;
+        }
+
+        .window-btn::before {
+            content: '';
+            position: absolute;
+            font-size: 11px;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .window-btn:hover::before {
+            opacity: 1;
+        }
+
+        .window-btn.close::before {
+            content: '×';
+            font-size: 14px;
+            line-height: 1;
+        }
+
+        .window-btn.minimize::before {
+            content: '─';
+            font-size: 10px;
+            line-height: 1;
+        }
+
+        .window-btn.maximize::before {
+            content: '⬜';
+            font-size: 8px;
+            line-height: 1;
+        }
+
+        /* Toolbar */
+        .toolbar {
+            height: 55px;
+            background: rgba(25, 25, 38, 0.8);
+            border-bottom: 1px solid rgba(138, 99, 210, 0.15);
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            gap: 10px;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 5px;
+        }
+
+        .nav-btn {
+            width: 38px;
+            height: 38px;
+            background: rgba(138, 99, 210, 0.15);
+            border: 1px solid rgba(138, 99, 210, 0.3);
+            border-radius: 8px;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            font-weight: bold;
+        }
+
+        .nav-btn:hover {
+            background: rgba(138, 99, 210, 0.3);
+            border-color: rgba(138, 99, 210, 0.5);
+            transform: translateY(-1px);
+        }
+
+        .nav-btn:active {
+            transform: translateY(0);
+        }
+
+        .nav-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .separator {
+            width: 1px;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 0 5px;
+        }
+
+        .path-bar {
+            flex: 1;
+            height: 38px;
+            background: rgba(138, 99, 210, 0.1);
+            border: 1px solid rgba(138, 99, 210, 0.3);
+            border-radius: 8px;
+            padding: 0 12px;
+            color: #e0e0e0;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            overflow-x: auto;
+        }
+
+        .path-bar::-webkit-scrollbar {
+            height: 4px;
+        }
+
+        .path-segment {
+            cursor: pointer;
+            padding: 4px 10px;
+            border-radius: 5px;
+            transition: all 0.2s;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .path-segment:hover {
+            background: rgba(138, 99, 210, 0.3);
+        }
+
+        .path-icon {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+        }
+
+        .path-separator {
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 12px;
+        }
+
+        .search-box {
+            width: 220px;
+            height: 38px;
+            background: rgba(138, 99, 210, 0.1);
+            border: 1px solid rgba(138, 99, 210, 0.3);
+            border-radius: 8px;
+            padding: 0 12px 0 36px;
+            color: #e0e0e0;
+            font-size: 13px;
+            position: relative;
+        }
+
+        .search-box::placeholder {
+            color: rgba(255, 255, 255, 0.3);
+        }
+
+        .search-container {
+            position: relative;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 18px;
+            height: 18px;
+            stroke: rgba(255, 255, 255, 0.5);
+            pointer-events: none;
+        }
+
+        .view-buttons {
+            display: flex;
+            gap: 5px;
+            background: rgba(138, 99, 210, 0.15);
+            border-radius: 8px;
+            padding: 3px;
+        }
+
+        .view-btn {
+            width: 32px;
+            height: 32px;
+            background: transparent;
+            border: none;
+            border-radius: 6px;
+            color: rgba(255, 255, 255, 0.6);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .view-btn:hover {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .view-btn.active {
+            background: rgba(138, 99, 210, 0.4);
+            color: white;
+        }
+
+        .view-icon {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 220px;
+            background: rgba(20, 20, 30, 0.6);
+            border-right: 1px solid rgba(138, 99, 210, 0.15);
+            padding: 15px 10px;
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            margin-bottom: 25px;
+        }
+
+        .sidebar-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: rgba(138, 99, 210, 0.8);
+            margin-bottom: 10px;
+            padding: 0 10px;
+            letter-spacing: 0.5px;
+        }
+
+        .sidebar-item {
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 13px;
+            color: #e0e0e0;
+            transition: all 0.2s;
+            margin-bottom: 3px;
+        }
+
+        .sidebar-item:hover {
+            background: rgba(138, 99, 210, 0.15);
+        }
+
+        .sidebar-item.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-weight: 500;
+        }
+
+        .sidebar-icon {
+            width: 20px;
+            height: 20px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            flex-shrink: 0;
+        }
+
+        /* File View */
+        .file-view {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .tab-bar {
+            height: 42px;
+            background: rgba(25, 25, 38, 0.6);
+            border-bottom: 1px solid rgba(138, 99, 210, 0.15);
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            gap: 5px;
+        }
+
+        .tab {
+            height: 34px;
+            padding: 0 18px;
+            background: rgba(138, 99, 210, 0.1);
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.6);
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .tab.active {
+            background: rgba(138, 99, 210, 0.25);
+            color: #fff;
+            border-color: rgba(138, 99, 210, 0.3);
+        }
+
+        .tab:hover:not(.active) {
+            background: rgba(138, 99, 210, 0.15);
+        }
+
+        .tab-icon {
+            width: 14px;
+            height: 14px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+        }
+
+        .tab-close {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            background: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            opacity: 0.5;
+            transition: all 0.2s;
+            margin-left: 5px;
+        }
+
+        .tab-close:hover {
+            opacity: 1;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .new-tab-btn {
+            width: 34px;
+            height: 34px;
+            background: rgba(138, 99, 210, 0.15);
+            border: 1px solid rgba(138, 99, 210, 0.3);
+            border-radius: 8px;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            margin-left: auto;
+        }
+
+        .new-tab-btn:hover {
+            background: rgba(138, 99, 210, 0.3);
+        }
+
+        .file-grid {
+            flex: 1;
+            padding: 25px;
+            overflow-y: auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+            gap: 25px;
+            align-content: start;
+        }
+
+        .file-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            padding: 12px;
+            border-radius: 10px;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .file-item:hover {
+            background: rgba(138, 99, 210, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .file-item.selected {
+            background: rgba(138, 99, 210, 0.25);
+            outline: 2px solid rgba(138, 99, 210, 0.6);
+        }
+
+        .file-icon-container {
+            width: 70px;
+            height: 70px;
+            background: rgba(138, 99, 210, 0.15);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 10px;
+            position: relative;
+            border: 2px solid rgba(138, 99, 210, 0.2);
+        }
+
+        .file-icon-svg {
+            width: 40px;
+            height: 40px;
+            stroke: #8a63d2;
+            fill: none;
+            stroke-width: 2;
+        }
+
+        .file-icon-container.folder {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.3) 100%);
+            border-color: rgba(102, 126, 234, 0.5);
+        }
+
+        .file-icon-container.folder .file-icon-svg {
+            stroke: #667eea;
+        }
+
+        .file-icon-container.image {
+            background: linear-gradient(135deg, rgba(240, 147, 251, 0.3) 0%, rgba(245, 87, 108, 0.3) 100%);
+            border-color: rgba(240, 147, 251, 0.5);
+        }
+
+        .file-icon-container.image .file-icon-svg {
+            stroke: #f093fb;
+        }
+
+        .file-icon-container.document {
+            background: linear-gradient(135deg, rgba(79, 172, 254, 0.3) 0%, rgba(0, 242, 254, 0.3) 100%);
+            border-color: rgba(79, 172, 254, 0.5);
+        }
+
+        .file-icon-container.document .file-icon-svg {
+            stroke: #4facfe;
+        }
+
+        .file-name {
+            font-size: 12px;
+            text-align: center;
+            color: #e0e0e0;
+            word-break: break-word;
+            max-width: 100%;
+            line-height: 1.4;
+        }
+
+        /* Status Bar */
+        .statusbar {
+            height: 32px;
+            background: rgba(20, 20, 30, 0.95);
+            border-top: 1px solid rgba(138, 99, 210, 0.15);
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.5);
+            justify-content: space-between;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Context Menu */
+        .context-menu {
+            position: absolute;
+            background: rgba(30, 30, 45, 0.98);
+            border: 1px solid rgba(138, 99, 210, 0.3);
+            border-radius: 10px;
+            padding: 6px;
+            min-width: 200px;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
+            display: none;
+            z-index: 1000;
+        }
+
+        .context-menu.show {
+            display: block;
+        }
+
+        .context-item {
+            padding: 10px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #e0e0e0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.2s;
+        }
+
+        .context-item:hover {
+            background: rgba(138, 99, 210, 0.25);
+        }
+
+        .context-icon {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+        }
+
+        .context-separator {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 6px 0;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(138, 99, 210, 0.3);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(138, 99, 210, 0.5);
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .file-item {
+            animation: fadeIn 0.3s ease;
+        }
+
+        /* Quick Look Modal */
+        .quick-look-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .quick-look-overlay.show {
+            display: flex;
+        }
+
+        .quick-look-panel {
+            width: 70%;
+            max-width: 800px;
+            height: 70%;
+            max-height: 600px;
+            background: linear-gradient(135deg, #1e1e30 0%, #2a2a45 100%);
+            border-radius: 16px;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(138, 99, 210, 0.4);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            animation: quickLookIn 0.2s ease;
+        }
+
+        @keyframes quickLookIn {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .quick-look-header {
+            height: 50px;
+            background: rgba(20, 20, 35, 0.95);
+            border-bottom: 1px solid rgba(138, 99, 210, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+        }
+
+        .quick-look-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .quick-look-close {
+            width: 28px;
+            height: 28px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 6px;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .quick-look-close:hover {
+            background: rgba(255, 95, 86, 0.8);
+        }
+
+        .quick-look-content {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 30px;
+            overflow: auto;
+        }
+
+        .quick-look-preview {
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        .quick-look-preview.folder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .quick-look-preview .folder-icon {
+            width: 120px;
+            height: 120px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .quick-look-preview .folder-icon svg {
+            width: 60px;
+            height: 60px;
+            stroke: white;
+            fill: none;
+            stroke-width: 2;
+        }
+
+        .quick-look-preview.document {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 30px;
+            font-family: 'Fira Code', monospace;
+            font-size: 13px;
+            color: #a0a0a0;
+            white-space: pre-wrap;
+            max-width: 100%;
+            overflow: auto;
+        }
+
+        .quick-look-preview.image {
+            background: repeating-conic-gradient(#2a2a3a 0% 25%, #1a1a2e 0% 50%) 50% / 20px 20px;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .quick-look-preview.image img {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 4px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+        }
+
+        .quick-look-footer {
+            height: 50px;
+            background: rgba(20, 20, 35, 0.95);
+            border-top: 1px solid rgba(138, 99, 210, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .quick-look-footer .open-btn {
+            padding: 8px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .quick-look-footer .open-btn:hover {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+        }
+
+        .quick-look-hint {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(30, 30, 50, 0.95);
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+            border: 1px solid rgba(138, 99, 210, 0.3);
+            display: none;
+        }
+
+        .quick-look-hint.show {
+            display: block;
+        }
+    </style>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="window">
+        <!-- Title Bar - NeoLyx Style (Mac-like buttons, left side) -->
+        <div class="titlebar">
+            <div class="titlebar-left">
+                <div class="window-controls">
+                    <button class="window-btn close" title="Close"></button>
+                    <button class="window-btn minimize" title="Minimize"></button>
+                    <button class="window-btn maximize" title="Maximize"></button>
+                </div>
+                <div class="app-icon">P</div>
+                <span class="app-title">Path</span>
+            </div>
+            <div class="titlebar-right">
+            </div>
+        </div>
+
+        <!-- Toolbar with Better Navigation -->
+        <div class="toolbar">
+            <div class="nav-buttons">
+                <button class="nav-btn" title="Back" id="backBtn">←</button>
+                <button class="nav-btn" title="Forward" id="forwardBtn" disabled>→</button>
+                <button class="nav-btn" title="Up Directory" id="upBtn">↑</button>
+                <button class="nav-btn" title="Refresh" id="refreshBtn">↻</button>
+            </div>
+
+            <div class="separator"></div>
+
+            <div class="path-bar" id="pathBar">
+                <!-- Path segments will be generated by JS -->
+            </div>
+
+            <div class="separator"></div>
+
+            <div class="search-container">
+                <svg class="search-icon" viewBox="0 0 24 24">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.35-4.35" />
+                </svg>
+                <input type="text" class="search-box" placeholder="Search in documents...">
+            </div>
+
+            <div class="view-buttons">
+                <button class="view-btn active" title="Grid View">
+                    <svg class="view-icon" viewBox="0 0 24 24">
+                        <rect x="3" y="3" width="7" height="7" />
+                        <rect x="14" y="3" width="7" height="7" />
+                        <rect x="3" y="14" width="7" height="7" />
+                        <rect x="14" y="14" width="7" height="7" />
+                    </svg>
+                </button>
+                <button class="view-btn" title="List View">
+                    <svg class="view-icon" viewBox="0 0 24 24">
+                        <line x1="3" y1="6" x2="21" y2="6" />
+                        <line x1="3" y1="12" x2="21" y2="12" />
+                        <line x1="3" y1="18" x2="21" y2="18" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Sidebar with SVG Icons -->
+            <div class="sidebar">
+                <div class="sidebar-section">
+                    <div class="sidebar-title">Favorites</div>
+                    <div class="sidebar-item active" data-path="/users/swanaya">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24">
+                            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                            <polyline points="9 22 9 12 15 12 15 22" />
+                        </svg>
+                        <span>Home</span>
+                    </div>
+                    <div class="sidebar-item" data-path="/users/swanaya/desktop">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                            <line x1="8" y1="21" x2="16" y2="21" />
+                            <line x1="12" y1="17" x2="12" y2="21" />
+                        </svg>
+                        <span>Desktop</span>
+                    </div>
+                    <div class="sidebar-item" data-path="/users/swanaya/documents">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                        </svg>
+                        <span>Documents</span>
+                    </div>
+                    <div class="sidebar-item" data-path="/users/swanaya/downloads">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                        <span>Downloads</span>
+                    </div>
+                    <div class="sidebar-item" data-path="/users/swanaya/pictures">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                            <circle cx="8.5" cy="8.5" r="1.5" />
+                            <polyline points="21 15 16 10 5 21" />
+                        </svg>
+                        <span>Pictures</span>
+                    </div>
+                    <div class="sidebar-item" data-path="/users/swanaya/music">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24">
+                            <path d="M9 18V5l12-2v13" />
+                            <circle cx="6" cy="18" r="3" />
+                            <circle cx="18" cy="16" r="3" />
+                        </svg>
+                        <span>Music</span>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-title">Devices</div>
+                    <div class="sidebar-item" data-path="/">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24">
+                            <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                        </svg>
+                        <span>NeoLyx (/)</span>
+                    </div>
+                    <div class="sidebar-item" data-path="/storage/usb1">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24">
+                            <rect x="2" y="11" width="20" height="10" rx="2" ry="2" />
+                            <line x1="7" y1="11" x2="7" y2="7" />
+                            <line x1="12" y1="11" x2="12" y2="7" />
+                        </svg>
+                        <span>USB Drive</span>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-title">Recent</div>
+                    <div class="sidebar-item">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        <span>Recent Files</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- File View -->
+            <div class="file-view">
+                <!-- Tab Bar -->
+                <div class="tab-bar">
+                    <div class="tab active">
+                        <svg class="tab-icon" viewBox="0 0 24 24">
+                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                        </svg>
+                        <span>documents</span>
+                        <span class="tab-close">×</span>
+                    </div>
+                    <div class="tab">
+                        <svg class="tab-icon" viewBox="0 0 24 24">
+                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                        </svg>
+                        <span>projects</span>
+                        <span class="tab-close">×</span>
+                    </div>
+                    <button class="new-tab-btn" title="New Tab">+</button>
+                </div>
+
+                <!-- File Grid -->
+                <div class="file-grid" id="fileGrid">
+                    <!-- Files will be generated by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="statusbar">
+            <div class="status-item">
+                <span id="itemCount">24 items</span>
+                <span>·</span>
+                <span id="selectedCount">3 selected</span>
+            </div>
+            <div class="status-item">
+                <span id="freeSpace">2.4 GB available</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div class="context-menu" id="contextMenu">
+        <div class="context-item">
+            <svg class="context-icon" viewBox="0 0 24 24">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+            <span>Open</span>
+        </div>
+        <div class="context-item">
+            <svg class="context-icon" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="16" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+            <span>Get Info</span>
+        </div>
+        <div class="context-separator"></div>
+        <div class="context-item">
+            <svg class="context-icon" viewBox="0 0 24 24">
+                <path d="M9 5H2v2h7V5zm0 12H2v2h7v-2z" />
+                <path d="M13 10h9V8h-9v2zm0 8h9v-2h-9v2z" />
+            </svg>
+            <span>Cut</span>
+        </div>
+        <div class="context-item">
+            <svg class="context-icon" viewBox="0 0 24 24">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+            <span>Copy</span>
+        </div>
+        <div class="context-item">
+            <svg class="context-icon" viewBox="0 0 24 24">
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+            </svg>
+            <span>Paste</span>
+        </div>
+        <div class="context-separator"></div>
+        <div class="context-item">
+            <svg class="context-icon" viewBox="0 0 24 24">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+            <span>Rename</span>
+        </div>
+        <div class="context-item">
+            <svg class="context-icon" viewBox="0 0 24 24">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+            <span>Delete</span>
+        </div>
+    </div>
+
+    <script>
+        // Sample file data
+        const files = [
+            { name: 'Projects', type: 'folder' },
+            { name: 'Reports', type: 'folder' },
+            { name: 'NeoLyx Design.pdf', type: 'document' },
+            { name: 'Screenshot.png', type: 'image' },
+            { name: 'Budget 2025.xlsx', type: 'document' },
+            { name: 'Vacation', type: 'folder' },
+            { name: 'Profile.jpg', type: 'image' },
+            { name: 'Notes.txt', type: 'document' },
+            { name: 'Music', type: 'folder' },
+            { name: 'Presentation.pptx', type: 'document' },
+            { name: 'Code', type: 'folder' },
+            { name: 'Meeting Notes.md', type: 'document' },
+        ];
+
+        const currentPath = ['users', 'swanaya', 'documents'];
+        const fileGrid = document.getElementById('fileGrid');
+        const contextMenu = document.getElementById('contextMenu');
+        const pathBar = document.getElementById('pathBar');
+
+        // SVG Icons
+        const icons = {
+            folder: `<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>`,
+            document: `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>`,
+            image: `<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>`,
+            home: `<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>`
+        };
+
+        // Render path bar
+        function renderPathBar() {
+            pathBar.innerHTML = `
+                <div class="path-segment">
+                    <svg class="path-icon" viewBox="0 0 24 24">${icons.home}</svg>
+                </div>
+                <span class="path-separator">/</span>
+            `;
+
+            currentPath.forEach((segment, index) => {
+                const segmentDiv = document.createElement('div');
+                segmentDiv.className = 'path-segment';
+                segmentDiv.textContent = segment;
+                segmentDiv.onclick = () => {
+                    console.log(`Navigate to: /${currentPath.slice(0, index + 1).join('/')}`);
+                };
+                pathBar.appendChild(segmentDiv);
+
+                if (index < currentPath.length - 1) {
+                    const sep = document.createElement('span');
+                    sep.className = 'path-separator';
+                    sep.textContent = '/';
+                    pathBar.appendChild(sep);
+                }
+            });
+        }
+
+        // Render files
+        function renderFiles() {
+            fileGrid.innerHTML = '';
+            files.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `
+                    <div class="file-icon-container ${file.type}">
+                        <svg class="file-icon-svg" viewBox="0 0 24 24">
+                            ${icons[file.type]}
+                        </svg>
+                    </div>
+                    <div class="file-name">${file.name}</div>
+                `;
+
+                // Click handler
+                fileItem.addEventListener('click', (e) => {
+                    if (!e.ctrlKey && !e.metaKey) {
+                        document.querySelectorAll('.file-item').forEach(item => {
+                            item.classList.remove('selected');
+                        });
+                    }
+                    fileItem.classList.toggle('selected');
+                    updateStatusBar();
+                });
+
+                // Double click handler
+                fileItem.addEventListener('dblclick', () => {
+                    if (file.type === 'folder') {
+                        console.log(`Opening folder: ${file.name}`);
+                        currentPath.push(file.name.toLowerCase());
+                        renderPathBar();
+                    } else {
+                        console.log(`Opening file: ${file.name}`);
+                    }
+                });
+
+                // Context menu handler
+                fileItem.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    contextMenu.style.left = e.pageX + 'px';
+                    contextMenu.style.top = e.pageY + 'px';
+                    contextMenu.classList.add('show');
+                });
+
+                fileGrid.appendChild(fileItem);
+            });
+        }
+
+        // Update status bar
+        function updateStatusBar() {
+            const selectedItems = document.querySelectorAll('.file-item.selected').length;
+            document.getElementById('itemCount').textContent = `${files.length} items`;
+            document.getElementById('selectedCount').textContent = selectedItems > 0 ? `${selectedItems} selected` : 'None selected';
+        }
+
+        // Navigation buttons
+        document.getElementById('backBtn').addEventListener('click', () => {
+            if (currentPath.length > 1) {
+                currentPath.pop();
+                renderPathBar();
+                console.log('Navigate back');
+            }
+        });
+
+        document.getElementById('upBtn').addEventListener('click', () => {
+            if (currentPath.length > 1) {
+                currentPath.pop();
+                renderPathBar();
+                console.log('Navigate up');
+            }
+        });
+
+        document.getElementById('refreshBtn').addEventListener('click', () => {
+            console.log('Refresh directory');
+            renderFiles();
+        });
+
+        // Close context menu on click outside
+        document.addEventListener('click', () => {
+            contextMenu.classList.remove('show');
+        });
+
+        // Window control buttons
+        document.querySelector('.window-btn.close').addEventListener('click', () => {
+            console.log('Close window');
+        });
+
+        document.querySelector('.window-btn.minimize').addEventListener('click', () => {
+            console.log('Minimize window');
+        });
+
+        document.querySelector('.window-btn.maximize').addEventListener('click', () => {
+            console.log('Maximize window');
+        });
+
+        // Sidebar items
+        document.querySelectorAll('.sidebar-item').forEach(item => {
+            item.addEventListener('click', () => {
+                document.querySelectorAll('.sidebar-item').forEach(i => {
+                    i.classList.remove('active');
+                });
+                item.classList.add('active');
+                const path = item.getAttribute('data-path');
+                if (path) {
+                    console.log('Navigate to:', path);
+                }
+            });
+        });
+
+        // View buttons
+        document.querySelectorAll('.view-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+
+        // Initialize
+        renderPathBar();
+        renderFiles();
+        updateStatusBar();
+    </script>
+</body>
+
+</html>

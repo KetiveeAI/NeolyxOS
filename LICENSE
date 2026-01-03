@@ -1,0 +1,166 @@
+# NeolyxOS License
+## Version 1.0 - December 2025
+
+**Copyright (c) 2025 KetiveeAI. All rights reserved, except as expressly granted in this license.**
+
+---
+
+## Summary
+
+NeolyxOS is **source-available** software. You may use, study, and contribute to NeolyxOS, but you may not redistribute it or create derivative operating systems.
+
+---
+
+## Definitions
+
+- **"NeolyxOS"**: The operating system including kernel, drivers, libraries, tools, and documentation in this repository.
+- **"KetiveeAI"**: The sole owner and distributor of NeolyxOS.
+- **"Application"**: Software that runs ON NeolyxOS but is not part of NeolyxOS itself.
+- **"Contribution"**: Code, documentation, or other materials submitted to KetiveeAI for inclusion in NeolyxOS.
+
+---
+
+## Permissions (What You CAN Do)
+
+### ✅ Use
+- Use NeolyxOS for personal, educational, and commercial purposes
+- Deploy NeolyxOS in production environments
+- Use NeolyxOS within organizations, businesses, and enterprises, provided NeolyxOS itself is not redistributed to third parties
+- Use NeolyxOS on any number of devices you own or operate
+
+### ✅ Study
+- Read and study the source code
+- Learn from the implementation
+- Use knowledge for educational purposes
+
+### ✅ Develop Applications
+- Create and sell applications that run on NeolyxOS
+- Distribute your applications freely
+- Use NeolyxOS APIs, SDKs, and libraries in your applications
+- Create closed-source or open-source applications
+
+### ✅ Contribute
+- Submit bug fixes, improvements, and features to NeolyxOS
+- Contributions become property of KetiveeAI upon acceptance
+- Contributors retain credit but transfer rights
+
+### ✅ Modify (Internal Only)
+- Modify NeolyxOS for internal testing and research
+- Create custom builds for personal use
+- Experiment with changes locally
+
+---
+
+## Restrictions (What You CANNOT Do)
+
+### ❌ Redistribute NeolyxOS
+- You may NOT distribute NeolyxOS binaries or images
+- You may NOT distribute NeolyxOS source code except by linking to the official repository
+- You may NOT create installation media for third-party use
+- Only KetiveeAI may distribute NeolyxOS
+
+### ❌ Create Derivative Operating Systems
+- You may NOT fork NeolyxOS to create a competing operating system
+- You may NOT create "NeolyxOS Lite", "NeolyxOS Pro", "NeolyxOS Remix", or similar
+- You may NOT rebrand NeolyxOS under a different name
+- You may NOT use NeolyxOS code as the foundation for another OS project
+
+### ❌ Remove Attribution
+- You may NOT remove or alter copyright notices
+- You may NOT remove or alter license notices
+- You may NOT claim authorship of NeolyxOS
+
+### ❌ Compete Using NeolyxOS Code
+- You may NOT use NeolyxOS code in competing operating systems
+- You may NOT extract substantial portions for use in other OS projects
+- This includes kernel, drivers, filesystem, and core libraries
+
+---
+
+## Official Distribution
+
+**Only KetiveeAI controls:**
+- Official builds and releases
+- Update channels and mechanisms
+- Platform APIs and SDK versioning
+- UI/UX direction and branding
+- NeolyxOS Store and app distribution
+
+---
+
+## Applications and Ecosystem
+
+Applications developed for NeolyxOS are **yours**:
+- You retain full ownership of your applications
+- You choose your application's license
+- You control pricing and distribution of your apps
+- No royalties to KetiveeAI for app sales (standard store policies apply)
+
+---
+
+## Contributions
+
+By submitting a contribution:
+1. You grant KetiveeAI perpetual, irrevocable rights to use, modify, and distribute your contribution
+2. You represent that you have the right to make the contribution
+3. You will be credited as a contributor
+4. KetiveeAI may incorporate, modify, or decline contributions at its discretion
+
+---
+
+## Warranty Disclaimer
+
+NEOLYXOS IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. KETIVEEAI DISCLAIMS ALL WARRANTIES INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+---
+
+## Limitation of Liability
+
+IN NO EVENT SHALL KETIVEEAI BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE USE OF NEOLYXOS. USE AT YOUR OWN RISK.
+
+---
+
+## Termination
+
+Your rights under this license terminate automatically if you:
+- Violate any term of this license
+- Attempt to redistribute NeolyxOS
+- Create a derivative operating system
+
+Upon termination, you must cease use of NeolyxOS and delete all copies under your control.
+
+---
+
+## Governing Law
+
+This license is governed by the laws of India. Disputes shall be resolved in the courts of India.
+
+---
+
+## Contact
+
+**KetiveeAI**  
+Email: license@ketivee.ai  
+Website: https://neolyx.os
+
+---
+
+## Quick Reference
+
+| Action | Allowed? |
+|--------|----------|
+| Use for personal/commercial work | ✅ Yes |
+| Study source code | ✅ Yes |
+| Develop and sell apps | ✅ Yes |
+| Contribute improvements | ✅ Yes |
+| Modify for personal use | ✅ Yes |
+| Redistribute NeolyxOS | ❌ No |
+| Create NeolyxOS forks/variants | ❌ No |
+| Rebrand NeolyxOS | ❌ No |
+| Use code in competing OS | ❌ No |
+
+---
+
+*This license is designed to enable a healthy ecosystem while ensuring NeolyxOS remains a unified platform. One OS, one target, one community.*
+
+**NeolyxOS - The Independent Operating System**

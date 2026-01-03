@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Syscalls Reference - NeolyxOS</title>
+
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>📞 Syscalls Reference</h1>
+        <p>Complete list of NeolyxOS system calls. Total: <strong>24 syscalls</strong></p>
+
+        <div class="card">
+            <h2>Calling Convention</h2>
+            <pre><code>Register Convention (x86_64 SYSCALL/SYSRET):
+  RAX  → syscall number
+  RDI  → arg1
+  RSI  → arg2
+  RDX  → arg3
+  R10  → arg4 (RCX clobbered by SYSCALL)
+  R8   → arg5
+  RAX  ← return value (negative = -errno)</code></pre>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h2>Process Control <span class="badge process">6 syscalls</span></h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>#</th>
+                            <th>Signature</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>SYS_EXIT</code></td>
+                            <td>1</td>
+                            <td><code>void sys_exit(int code)</code></td>
+                            <td>Terminate process</td>
+                        </tr>
+                        <tr>
+                            <td><code>SYS_SLEEP</code></td>
+                            <td>2</td>
+                            <td><code>int sys_sleep(uint32_t ms)</code></td>
+                            <td>Sleep for milliseconds</td>
+                        </tr>
+                        <tr>
+                            <td><code>SYS_TIME</code></td>
+                            <td>3</td>
+                            <td><code>uint64_t sys_time(void)</code></td>
+                            <td>Get system ticks</td>
+                        </tr>
+                        <tr>
+                            <td><code>SYS_YIELD</code></td>
+                            <td>4</td>
+                            <td><code>void sys_yield(void)</code></td>
+                            <td>Yield CPU to scheduler</td>
+                        </tr>
+                        <tr>
+                            <td><code>SYS_GETPID</code></td>
+                            <td>5</td>
+                            <td><code>int32_t sys_getpid(void)</code></td>
+                            <td>Get current PID</td>
+                        </tr>
+                        <tr>
+                            <td><code>SYS_GETPPID</code></td>
+                            <td>6</td>
+                            <td><code>int32_t sys_getppid(void)</code></td>
+                            <td>Get parent PID</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <h2>Memory Management <span class="badge memory">3 syscalls</span></h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>#</th>
+                            <th>Signature</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>SYS_BRK</code></td>
+                            <td>10</td>
+                            <td><code>void* sys_brk(void* addr)</code></td>
+                            <td>Change data segment size</td>
+                        </tr>
+                        <tr>
+                            <td><code>SYS_MMAP</code></td>
+                            <td>11</td>
+                            <td><code>void* sys_mmap(...)</code></td>
+                            <td>Map memory pages</td>
+                        </tr>
+                        <tr>
+                            <td><code>SYS_MUNMAP</code></td>
+                            <td>12</td>
+                            <td><code>int sys_munmap(...)</code></td>
+                            <td>Unmap memory</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h2>File I/O <span class="badge file">5 syscalls</span></h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>#</th>
+                            <th>Signature</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>SYS_OPEN</code></td>
+                            <td>20</td>
+                            <td><code>int sys_open(path, flags, mode)</code></td>
+                            <td>Open file</td>
+                        </tr>
+                        <tr>
+                            <td><code>SYS_CLOSE</code></td>
+                            <td>21</td>
+                            <td><code>int sys_close(int fd)</code></td>
+                            <td>Close file</td>
+                        </tr>
+                        <tr>
+                            <td><code>SYS_READ</code></td>
+                            <td>22</td>
+                            <td><code>ssize_t sys_read(fd, buf, count)</code></td>
+                            <td>Read from file</td>
+                        </tr>
+                        <tr>
+                            <td><code>SYS_WRITE</code></td>
+                            <td>23</td>
+                            <td><code>ssize_t sys_write(fd, buf, count)</code></td>
+                            <td>Write to file</td>
+                        </tr>
+                        <tr>
+                            <td><code>SYS_SEEK</code></td>
+                            <td>24</td>
+                            <td><code>off_t sys_seek(fd, offset, whence)</code></td>
+                            <td>Seek in file</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <h2>System Info <span class="badge process">1 syscall</span></h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>#</th>
+                            <th>Signature</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>SYS_INFO</code></td>
+                            <td>50</td>
+                            <td><code>int sys_info(sysinfo_t* info)</code></td>
+                            <td>Get system info</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>System Control <span class="badge system">PRIVILEGED - 2 syscalls</span></h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>#</th>
+                        <th>Signature</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>SYS_REBOOT</code></td>
+                        <td>100</td>
+                        <td><code>int sys_reboot(int cmd)</code></td>
+                        <td>Reboot system</td>
+                    </tr>
+                    <tr>
+                        <td><code>SYS_SHUTDOWN</code></td>
+                        <td>101</td>
+                        <td><code>int sys_shutdown(void)</code></td>
+                        <td>Shutdown system</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>NXGame Bridge <span class="badge nxgame">NEW - 10 syscalls</span></h2>
+            <p>Direct hardware access for games and creative applications.</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>#</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>SYS_NXGAME_CREATE</code></td>
+                        <td>110</td>
+                        <td>Create game session</td>
+                    </tr>
+                    <tr>
+                        <td><code>SYS_NXGAME_DESTROY</code></td>
+                        <td>111</td>
+                        <td>Destroy session</td>
+                    </tr>
+                    <tr>
+                        <td><code>SYS_NXGAME_START</code></td>
+                        <td>112</td>
+                        <td>Start exclusive mode</td>
+                    </tr>
+                    <tr>
+                        <td><code>SYS_NXGAME_STOP</code></td>
+                        <td>113</td>
+                        <td>Stop exclusive mode</td>
+                    </tr>
+                    <tr>
+                        <td><code>SYS_NXGAME_GPU_ACQUIRE</code></td>
+                        <td>114</td>
+                        <td>Acquire exclusive GPU</td>
+                    </tr>
+                    <tr>
+                        <td><code>SYS_NXGAME_GPU_RELEASE</code></td>
+                        <td>115</td>
+                        <td>Release GPU</td>
+                    </tr>
+                    <tr>
+                        <td><code>SYS_NXGAME_GPU_PRESENT</code></td>
+                        <td>116</td>
+                        <td>Present frame (flip)</td>
+                    </tr>
+                    <tr>
+                        <td><code>SYS_NXGAME_AUDIO</code></td>
+                        <td>117</td>
+                        <td>Audio control</td>
+                    </tr>
+                    <tr>
+                        <td><code>SYS_NXGAME_INPUT</code></td>
+                        <td>118</td>
+                        <td>Poll raw input</td>
+                    </tr>
+                    <tr>
+                        <td><code>SYS_NXGAME_GET_BUFFER</code></td>
+                        <td>119</td>
+                        <td>Get framebuffer info</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>Error Codes</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Code</th>
+                        <th>Value</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>EPERM</code></td>
+                        <td>1</td>
+                        <td>Operation not permitted</td>
+                    </tr>
+                    <tr>
+                        <td><code>ENOENT</code></td>
+                        <td>2</td>
+                        <td>No such file or directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>EIO</code></td>
+                        <td>5</td>
+                        <td>I/O error</td>
+                    </tr>
+                    <tr>
+                        <td><code>EBADF</code></td>
+                        <td>9</td>
+                        <td>Bad file descriptor</td>
+                    </tr>
+                    <tr>
+                        <td><code>ENOMEM</code></td>
+                        <td>12</td>
+                        <td>Out of memory</td>
+                    </tr>
+                    <tr>
+                        <td><code>EACCES</code></td>
+                        <td>13</td>
+                        <td>Permission denied</td>
+                    </tr>
+                    <tr>
+                        <td><code>EFAULT</code></td>
+                        <td>14</td>
+                        <td>Bad address</td>
+                    </tr>
+                    <tr>
+                        <td><code>EINVAL</code></td>
+                        <td>22</td>
+                        <td>Invalid argument</td>
+                    </tr>
+                    <tr>
+                        <td><code>ENOSYS</code></td>
+                        <td>38</td>
+                        <td>Function not implemented</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NXGame Bridge - NeolyxOS</title>
+    
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    
+
+    <div class="container">
+        <h1>🎮 NXGame Bridge</h1>
+        <p>Direct hardware access for games, creative apps (After Effects, DaVinci Resolve), and game engines (Unreal,
+            Unity).</p>
+
+        <span class="badge badge-new">NEW in Phase 9</span>
+        <span class="badge badge-success">Implemented</span>
+
+        <h2>Architecture</h2>
+        <div class="diagram">
+            Graphics Architecture
+            ┌─────────────────────────────────────────────────────────────┐
+            │ nxgfx (Kernel Driver) │
+            │ THE OWNER of framebuffer and GPU resources │
+            │ • Manages GPU memory • Handles mode switching │
+            │ • DMA transfers • VSync control │
+            ├─────────────────────────────────────────────────────────────┤
+            │ ▲ ▲ │
+            │ │ │ │
+            │ ┌────────┴────────┐ ┌────────┴────────┐ │
+            │ │ NXRender │ │ NXGame Bridge │ │
+            │ │ (Desktop Client)│ │ (Game Client) │ │
+            │ └────────┬────────┘ └────────┬────────┘ │
+            │ ▼ ▼ │
+            │ ┌─────────────────┐ ┌─────────────────┐ │
+            │ │ Desktop GUI │ │ Game/Unreal/ │ │
+            │ │ (Compositor) │ │ DaVinci/AE │ │
+            │ └─────────────────┘ └─────────────────┘ │
+            └─────────────────────────────────────────────────────────────┘
+
+            KEY PRINCIPLES:
+            1. nxgfx is the OWNER - NXRender is just a CLIENT
+            2. Games bypass compositor via EXCLUSIVE MODE
+            3. When game goes exclusive → NXRender steps out
+            4. Desktop crash ≠ System crash (kernel keeps running)
+            5. Game crash releases GPU cleanly, desktop resumes
+        </div>
+
+        <h2>Features</h2>
+        <div class="grid">
+            <div class="card">
+                <h3>🖥️ Direct GPU Access</h3>
+                <ul>
+                    <li>Bypass window compositor</li>
+                    <li>Direct framebuffer rendering</li>
+                    <li>VSync control (on/off)</li>
+                    <li>Exclusive fullscreen mode</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>🔊 Low-Latency Audio</h3>
+                <ul>
+                    <li>~5ms audio latency</li>
+                    <li>Direct audio buffer access</li>
+                    <li>Configurable sample rate</li>
+                    <li>Priority audio stream</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>🎮 Raw Input Polling</h3>
+                <ul>
+                    <li>No event queue delay</li>
+                    <li>Keyboard state array</li>
+                    <li>Mouse delta (FPS games)</li>
+                    <li>Gamepad support (via nxusb)</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>🛡️ Crash Isolation</h3>
+                <ul>
+                    <li>Game crash ≠ system crash</li>
+                    <li>GPU released on crash</li>
+                    <li>Desktop auto-resumes</li>
+                    <li>Resource quotas</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>Syscalls (110-119)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Syscall</th>
+                    <th>Number</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>SYS_NXGAME_CREATE</code></td>
+                    <td>110</td>
+                    <td>Create game session</td>
+                </tr>
+                <tr>
+                    <td><code>SYS_NXGAME_DESTROY</code></td>
+                    <td>111</td>
+                    <td>Destroy session</td>
+                </tr>
+                <tr>
+                    <td><code>SYS_NXGAME_START</code></td>
+                    <td>112</td>
+                    <td>Start exclusive mode</td>
+                </tr>
+                <tr>
+                    <td><code>SYS_NXGAME_STOP</code></td>
+                    <td>113</td>
+                    <td>Stop exclusive mode</td>
+                </tr>
+                <tr>
+                    <td><code>SYS_NXGAME_GPU_ACQUIRE</code></td>
+                    <td>114</td>
+                    <td>Acquire exclusive GPU</td>
+                </tr>
+                <tr>
+                    <td><code>SYS_NXGAME_GPU_RELEASE</code></td>
+                    <td>115</td>
+                    <td>Release GPU</td>
+                </tr>
+                <tr>
+                    <td><code>SYS_NXGAME_GPU_PRESENT</code></td>
+                    <td>116</td>
+                    <td>Present frame (flip)</td>
+                </tr>
+                <tr>
+                    <td><code>SYS_NXGAME_AUDIO</code></td>
+                    <td>117</td>
+                    <td>Audio control</td>
+                </tr>
+                <tr>
+                    <td><code>SYS_NXGAME_INPUT</code></td>
+                    <td>118</td>
+                    <td>Poll raw input</td>
+                </tr>
+                <tr>
+                    <td><code>SYS_NXGAME_GET_BUFFER</code></td>
+                    <td>119</td>
+                    <td>Get framebuffer info</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>Usage Example</h2>
+        <pre><code>// Create game session
+int session = syscall(SYS_NXGAME_CREATE, NXGAME_SESSION_GAME, 
+                      NXGAME_CAP_GPU | NXGAME_CAP_AUDIO, NULL);
+
+// Start exclusive mode (desktop steps back)
+syscall(SYS_NXGAME_START, session, 0, 0);
+
+// Get framebuffer for rendering
+nxgame_buffer_t buf;
+syscall(SYS_NXGAME_GET_BUFFER, session, &buf, 0);
+
+// Game loop
+while (running) {
+    // Poll input (no event queue delay)
+    nxgame_input_state_t input;
+    syscall(SYS_NXGAME_INPUT, session, &input, 0);
+    
+    // Render to framebuffer
+    render_game(buf.virt_addr, buf.width, buf.height);
+    
+    // Present with VSync
+    syscall(SYS_NXGAME_GPU_PRESENT, session, 1, 0);
+}
+
+// Cleanup (desktop resumes)
+syscall(SYS_NXGAME_DESTROY, session, 0, 0);</code></pre>
+
+        <h2>Files</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>File</th>
+                    <th>Lines</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>kernel/include/drivers/nxgame/nxgame_bridge.h</code></td>
+                    <td>~320</td>
+                    <td>API and types</td>
+                </tr>
+                <tr>
+                    <td><code>kernel/src/drivers/nxgame/nxgame_bridge.c</code></td>
+                    <td>623</td>
+                    <td>Implementation</td>
+                </tr>
+                <tr>
+                    <td><code>kernel/src/core/syscall.c</code></td>
+                    <td>+200</td>
+                    <td>Syscall handlers</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="card" style="margin-top: 40px;">
+            <h3>Related Documentation</h3>
+            <p>
+                <a href="session_manager.html">Session Manager</a> - Desktop crash isolation<br>
+                <a href="boot_guard.html">Boot Guard</a> - Boot protection<br>
+                <a href="sip.html">System Integrity Protection</a> - File protection
+            </p>
+        </div>
+    </div>
+</body>
+
+</html>
+</code></pre>

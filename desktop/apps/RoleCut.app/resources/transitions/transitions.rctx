@@ -1,0 +1,155 @@
+# RoleCut Transitions Library
+# Built-in video transitions
+
+[package]
+name = "Transitions"
+version = "1.0.0"
+
+[transitions]
+
+[transitions.dissolve]
+id = "RC_TRANS_DISSOLVE"
+name = "Cross Dissolve"
+free = true
+default_duration = 1000  # milliseconds
+params = []
+
+[transitions.fade_black]
+id = "RC_TRANS_FADE_BLACK"
+name = "Fade to Black"
+free = true
+default_duration = 1000
+params = []
+
+[transitions.fade_white]
+id = "RC_TRANS_FADE_WHITE"
+name = "Fade to White"
+free = true
+default_duration = 1000
+params = []
+
+[transitions.wipe_left]
+id = "RC_TRANS_WIPE_LEFT"
+name = "Wipe Left"
+free = true
+default_duration = 500
+params = [
+    { name = "softness", type = "float", default = 0, min = 0, max = 100 }
+]
+
+[transitions.wipe_right]
+id = "RC_TRANS_WIPE_RIGHT"
+name = "Wipe Right"
+free = true
+default_duration = 500
+params = [
+    { name = "softness", type = "float", default = 0, min = 0, max = 100 }
+]
+
+[transitions.wipe_up]
+id = "RC_TRANS_WIPE_UP"
+name = "Wipe Up"
+free = true
+default_duration = 500
+params = [
+    { name = "softness", type = "float", default = 0, min = 0, max = 100 }
+]
+
+[transitions.wipe_down]
+id = "RC_TRANS_WIPE_DOWN"
+name = "Wipe Down"
+free = true
+default_duration = 500
+params = [
+    { name = "softness", type = "float", default = 0, min = 0, max = 100 }
+]
+
+[transitions.slide_left]
+id = "RC_TRANS_SLIDE_LEFT"
+name = "Slide Left"
+free = false
+default_duration = 500
+params = []
+
+[transitions.slide_right]
+id = "RC_TRANS_SLIDE_RIGHT"
+name = "Slide Right"
+free = false
+default_duration = 500
+params = []
+
+[transitions.push]
+id = "RC_TRANS_PUSH"
+name = "Push"
+free = false
+default_duration = 500
+params = [
+    { name = "direction", type = "choice", choices = ["Left", "Right", "Up", "Down"] }
+]
+
+[transitions.zoom_in]
+id = "RC_TRANS_ZOOM_IN"
+name = "Zoom In"
+free = false
+default_duration = 700
+params = [
+    { name = "center_x", type = "float", default = 0.5, min = 0, max = 1 },
+    { name = "center_y", type = "float", default = 0.5, min = 0, max = 1 }
+]
+
+[transitions.zoom_out]
+id = "RC_TRANS_ZOOM_OUT"
+name = "Zoom Out"
+free = false
+default_duration = 700
+params = [
+    { name = "center_x", type = "float", default = 0.5, min = 0, max = 1 },
+    { name = "center_y", type = "float", default = 0.5, min = 0, max = 1 }
+]
+
+[transitions.spin]
+id = "RC_TRANS_SPIN"
+name = "Spin"
+free = false
+default_duration = 800
+params = [
+    { name = "direction", type = "choice", choices = ["Clockwise", "Counter-Clockwise"] },
+    { name = "rotations", type = "float", default = 1, min = 0.25, max = 3 }
+]
+
+[transitions.blur]
+id = "RC_TRANS_BLUR"
+name = "Blur Dissolve"
+free = false
+default_duration = 1000
+params = [
+    { name = "max_blur", type = "float", default = 20, min = 5, max = 50 }
+]
+
+[transitions.light_leak]
+id = "RC_TRANS_LIGHT_LEAK"
+name = "Light Leak"
+free = false
+default_duration = 1000
+params = [
+    { name = "color", type = "color", default = "#ffd93d" },
+    { name = "intensity", type = "float", default = 100, min = 50, max = 200 }
+]
+
+[transitions.glitch]
+id = "RC_TRANS_GLITCH"
+name = "Glitch"
+free = false
+default_duration = 500
+params = [
+    { name = "intensity", type = "float", default = 50, min = 10, max = 100 }
+]
+
+[transitions.film_burn]
+id = "RC_TRANS_FILM_BURN"
+name = "Film Burn"
+free = false
+default_duration = 1500
+params = [
+    { name = "color", type = "color", default = "#ff6b6b" }
+]

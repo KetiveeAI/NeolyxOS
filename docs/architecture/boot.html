@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boot Process - NeolyxOS Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-code: #1c2128;
+            --text-primary: #c9d1d9;
+            --accent: #58a6ff;
+            --border: #30363d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        nav {
+            margin-bottom: 2rem;
+        }
+
+        nav a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin: 2rem 0 1rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            margin: 1.5rem 0 0.5rem;
+            color: var(--accent);
+        }
+
+        p {
+            margin-bottom: 1rem;
+        }
+
+        code {
+            background: var(--bg-code);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Consolas', monospace;
+        }
+
+        pre {
+            background: var(--bg-code);
+            padding: 1rem;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        ul,
+        ol {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status.complete {
+            background: #238636;
+            color: white;
+        }
+
+        .file-ref {
+            font-size: 0.9em;
+            color: var(--accent);
+            border-top: 1px solid var(--border);
+            padding-top: 1rem;
+            margin-top: 2rem;
+        }
+    </style>
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        
+
+        <h1>🚀 Boot Process <span class="status complete">Complete</span></h1>
+        <p>UEFI bootloader to kernel handoff sequence.</p>
+
+        <h2>Files</h2>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><code>boot/main.c</code></td>
+                <td>UEFI bootloader entry</td>
+            </tr>
+            <tr>
+                <td><code>boot/graphics.c</code></td>
+                <td>GOP graphics, splash</td>
+            </tr>
+            <tr>
+                <td><code>boot/logo.h</code></td>
+                <td>Boot logo bitmap</td>
+            </tr>
+            <tr>
+                <td><code>kernel/kernel_main.c</code></td>
+                <td>Kernel entry point</td>
+            </tr>
+        </table>
+
+        <h2>Boot Flow</h2>
+        <pre><code>UEFI Firmware
+    │
+    ▼
+BOOTX64.EFI (boot/main.c)
+    ├── Initialize GOP (graphics)
+    ├── Load kernel.bin from ESP
+    ├── Validate ELF header
+    ├── Get memory map
+    ├── Find ACPI RSDP
+    ├── Prepare NeolyxBootInfo
+    ├── ExitBootServices()
+    │
+    ▼
+kernel_main(NeolyxBootInfo*)
+    ├── Validate magic (0x4E454F58)
+    ├── Init serial (COM1)
+    ├── Init framebuffer
+    ├── Init IDT/GDT
+    ├── Init PMM
+    ├── Init drivers
+    └── Start scheduler</code></pre>
+
+        <h2>Boot Info Structure</h2>
+        <pre><code>#define NEOLYX_BOOT_MAGIC 0x4E454F58  // "NEOX"
+
+typedef struct {
+    uint32_t magic;                 // Must be NEOLYX_BOOT_MAGIC
+    uint32_t version;               // Boot protocol version
+    
+    // Memory map from UEFI
+    uint64_t memory_map_addr;
+    uint64_t memory_map_size;
+    uint64_t memory_map_desc_size;
+    uint32_t memory_map_desc_version;
+    
+    // Framebuffer info
+    uint64_t framebuffer_addr;
+    uint32_t framebuffer_width;
+    uint32_t framebuffer_height;
+    uint32_t framebuffer_pitch;
+    uint32_t framebuffer_bpp;
+    
+    // Kernel info
+    uint64_t kernel_physical_base;
+    uint64_t kernel_size;
+    
+    // ACPI
+    uint64_t acpi_rsdp;
+} NeolyxBootInfo;</code></pre>
+
+        <h2>Kernel Entry</h2>
+        <pre><code>void kernel_main(NeolyxBootInfo *boot_info) {
+    // 1. Validate boot info
+    if (boot_info->magic != NEOLYX_BOOT_MAGIC) {
+        // Invalid boot - halt
+        while(1) __asm__("hlt");
+    }
+    
+    // 2. Initialize serial console (debug)
+    serial_init();
+    serial_puts("NeolyxOS booting...\n");
+    
+    // 3. Initialize framebuffer
+    fb_init(boot_info->framebuffer_addr,
+            boot_info->framebuffer_width,
+            boot_info->framebuffer_height,
+            boot_info->framebuffer_pitch);
+    
+    // 4. Initialize memory from UEFI map
+    pmm_init(boot_info->memory_map_addr,
+             boot_info->memory_map_size,
+             boot_info->memory_map_desc_size);
+    
+    // 5. Initialize interrupts
+    gdt_init();
+    idt_init();
+    
+    // 6. Initialize drivers
+    drivers_init();
+    
+    // 7. Start scheduler
+    scheduler_init();
+}</code></pre>
+
+        <h2>UEFI Memory Map</h2>
+        <table>
+            <tr>
+                <th>Type</th>
+                <th>Usage</th>
+            </tr>
+            <tr>
+                <td>EfiConventionalMemory</td>
+                <td>Free, usable RAM</td>
+            </tr>
+            <tr>
+                <td>EfiLoaderCode/Data</td>
+                <td>Bootloader (reclaimable)</td>
+            </tr>
+            <tr>
+                <td>EfiBootServicesCode/Data</td>
+                <td>UEFI services (reclaimable)</td>
+            </tr>
+            <tr>
+                <td>EfiRuntimeServicesCode/Data</td>
+                <td>UEFI runtime (reserved)</td>
+            </tr>
+            <tr>
+                <td>EfiACPIReclaimMemory</td>
+                <td>ACPI tables (reclaimable)</td>
+            </tr>
+            <tr>
+                <td>EfiReservedMemoryType</td>
+                <td>Reserved by firmware</td>
+            </tr>
+        </table>
+
+        <h2>Build and Test</h2>
+        <pre><code># Build bootloader
+cd boot && make
+
+# Build kernel
+cd kernel && make
+
+# Create disk image and test
+./build.sh && ./test_boot.sh
+
+# QEMU command
+qemu-system-x86_64 \
+    -bios OVMF.fd \
+    -drive file=neolyx.img,format=raw \
+    -serial stdio \
+    -m 256M</code></pre>
+
+        <div class="file-ref">
+            <strong>Source:</strong> <a href="../../boot/main.c">boot/main.c</a>, <a
+                href="../../kernel/kernel_main.c">kernel/kernel_main.c</a>
+        </div>
+    </div>
+</body>
+
+</html>

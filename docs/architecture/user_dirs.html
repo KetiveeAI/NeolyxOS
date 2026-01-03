@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS - User Directories</title>
+    
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    
+
+    <div class="container">
+        <h1>👤 User Directory Structure</h1>
+        <p style="color: var(--text-secondary);">Personal files organized per-user under /Users/{username}/</p>
+
+        <h2>Home Directory Layout</h2>
+        <div class="card">
+            <div class="tree">
+                <span style="color:var(--accent-green)">/Users/{username}/</span>
+                │
+                ├── <span class="icon">🖥️</span>Desktop/ <i style="color:var(--text-secondary);">— Desktop files and
+                    folders</i>
+                ├── <span class="icon">📄</span>Documents/ <i style="color:var(--text-secondary);">— Personal
+                    documents</i>
+                ├── <span class="icon">⬇️</span>Downloads/ <i style="color:var(--text-secondary);">— Downloaded
+                    files</i>
+                ├── <span class="icon">🖼️</span>Pictures/ <i style="color:var(--text-secondary);">— Photos and
+                    images</i>
+                ├── <span class="icon">🎵</span>Music/ <i style="color:var(--text-secondary);">— Audio files</i>
+                ├── <span class="icon">🎬</span>Videos/ <i style="color:var(--text-secondary);">— Video files</i>
+                ├── <span class="icon">🌐</span>Public/ <i style="color:var(--text-secondary);">— Shared with network
+                    (read-only)</i>
+                ├── <span class="icon">📦</span>Applications/ <i style="color:var(--text-secondary);">— User-installed
+                    apps</i>
+                │
+                ├── <span class="icon">📚</span>Library/ <i style="color:var(--text-secondary);">— User preferences and
+                    app data</i>
+                │ ├── Preferences/ <i style="color:var(--text-secondary);">— App settings (.plist)</i>
+                │ ├── Caches/ <i style="color:var(--text-secondary);">— App caches</i>
+                │ └── Logs/ <i style="color:var(--text-secondary);">— User app logs</i>
+                │
+                └── <span style="color:var(--text-secondary)">.config/</span> <i style="color:var(--text-secondary);">—
+                    Hidden config files</i>
+                ├── shell/ <i style="color:var(--text-secondary);">— Terminal settings</i>
+                └── nxrender/ <i style="color:var(--text-secondary);">— Theme settings</i>
+            </div>
+        </div>
+
+        <h2>Standard Directories</h2>
+        <div class="card">
+            <table>
+                <tr>
+                    <th>Directory</th>
+                    <th>Path Variable</th>
+                    <th>Purpose</th>
+                </tr>
+                <tr>
+                    <td>Desktop</td>
+                    <td><code>$HOME/Desktop</code></td>
+                    <td>Desktop icons and files</td>
+                </tr>
+                <tr>
+                    <td>Documents</td>
+                    <td><code>$HOME/Documents</code></td>
+                    <td>User documents</td>
+                </tr>
+                <tr>
+                    <td>Downloads</td>
+                    <td><code>$HOME/Downloads</code></td>
+                    <td>Browser/app downloads</td>
+                </tr>
+                <tr>
+                    <td>Pictures</td>
+                    <td><code>$HOME/Pictures</code></td>
+                    <td>Photos and screenshots</td>
+                </tr>
+                <tr>
+                    <td>Music</td>
+                    <td><code>$HOME/Music</code></td>
+                    <td>Audio files</td>
+                </tr>
+                <tr>
+                    <td>Videos</td>
+                    <td><code>$HOME/Videos</code></td>
+                    <td>Video files</td>
+                </tr>
+                <tr>
+                    <td>Public</td>
+                    <td><code>$HOME/Public</code></td>
+                    <td>Network-shared folder</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>Username in Terminal</h2>
+        <div class="card">
+            <pre><code># Terminal prompt format
+{username}@{hostname}:{current_dir}$
+
+# Example
+alice@neolyx:~/Documents$
+
+# Get current user
+whoami
+→ alice
+
+# Get home directory
+echo $HOME
+→ /Users/alice</code></pre>
+        </div>
+
+        <h2>Public Folder (Network Sharing)</h2>
+        <div class="card">
+            <p>Files in <code>/Users/{username}/Public/</code> are visible to other devices on the network.</p>
+            <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                <li><strong>Read-only</strong> by default for network users</li>
+                <li><strong>Drop Box/</strong> subfolder allows write access</li>
+                <li>Enable sharing in <code>Settings → Sharing</code></li>
+            </ul>
+            <pre style="margin-top:1rem;"><code># Enable file sharing
+nxconfig sharing enable
+
+# Set network name
+nxconfig set hostname "Alice-MacBook"
+
+# Other devices see:
+# nxshare://Alice-MacBook/alice/Public</code></pre>
+        </div>
+
+        <h2>User Creation</h2>
+        <div class="card">
+            <pre><code># Create new user
+nxuser add bob --fullname "Bob Smith"
+
+# Creates:
+# /Users/bob/
+# /Users/bob/Desktop/
+# /Users/bob/Documents/
+# ... all standard directories
+
+# Set password
+nxuser passwd bob
+
+# Make admin
+nxuser mod bob --admin</code></pre>
+        </div>
+
+        <footer
+            style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-secondary); text-align: center;">
+            NeolyxOS © 2025 KetiveeAI | User Directories
+        </footer>
+    </div>
+</body>
+
+</html>

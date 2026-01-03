@@ -1,0 +1,49 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Sound Panel Icon - Orange gradient tile with speaker
+
+[nxi]
+version = 1.0
+name = sound
+size = 64
+author = KetiveeAI
+category = settings
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+tile_start = #FF9500
+tile_end = #E67E00
+icon_color = #FFFFFF
+
+[gradients]
+tileGrad = linear 0,0 64,64 tile_start tile_end
+
+[shapes]
+# Rounded square tile background
+rect x=0 y=0 width=64 height=64 rx=12 fill=tileGrad
+
+[paths]
+# Speaker body
+speaker = M14,24 L14,40 L24,40 L34,50 L34,14 L24,24 Z
+# Sound waves
+wave1 = M40,24 Q48,32 40,40
+wave2 = M44,18 Q56,32 44,46
+
+[style]
+speaker.fill = icon_color
+wave1.fill = none
+wave1.stroke = icon_color
+wave1.stroke-width = 3
+wave1.stroke-linecap = round
+wave2.fill = none
+wave2.stroke = icon_color
+wave2.stroke-width = 3
+wave2.stroke-linecap = round
+
+[style.dark]
+tile_start = #FF9F0A
+tile_end = #E67E00

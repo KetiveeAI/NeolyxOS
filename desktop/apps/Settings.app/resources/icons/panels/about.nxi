@@ -1,0 +1,38 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# About Panel Icon - Gray gradient tile with info circle
+
+[nxi]
+version = 1.0
+name = about
+size = 64
+author = KetiveeAI
+category = settings
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+tile_start = #8E8E93
+tile_end = #636366
+icon_color = #FFFFFF
+
+[gradients]
+tileGrad = linear 0,0 64,64 tile_start tile_end
+
+[shapes]
+# Rounded square tile background
+rect x=0 y=0 width=64 height=64 rx=12 fill=tileGrad
+
+# Info circle
+circle center=32 y=32 radius=18 fill=none stroke=icon_color stroke-width=3
+# "i" dot
+circle center=32 y=22 radius=3 fill=icon_color
+# "i" line
+rect x=30 y=28 width=4 height=16 rx=2 fill=icon_color
+
+[style.dark]
+tile_start = #98989D
+tile_end = #636366

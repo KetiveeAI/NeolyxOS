@@ -1,0 +1,42 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Appearance Panel Icon - Pink gradient tile with paintbrush
+
+[nxi]
+version = 1.0
+name = appearance
+size = 64
+author = KetiveeAI
+category = settings
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+tile_start = #FF2D55
+tile_end = #CC1F42
+icon_color = #FFFFFF
+brush_tip = #FFD60A
+
+[gradients]
+tileGrad = linear 0,0 64,64 tile_start tile_end
+
+[shapes]
+# Rounded square tile background
+rect x=0 y=0 width=64 height=64 rx=12 fill=tileGrad
+
+[paths]
+# Paintbrush handle
+handle = M42,10 L54,22 L28,48 L16,50 L18,38 Z
+# Brush tip
+tip = M14,50 L18,46 L22,50 L18,54 Z
+
+[style]
+handle.fill = icon_color
+tip.fill = brush_tip
+
+[style.dark]
+tile_start = #FF375F
+tile_end = #CC1F42

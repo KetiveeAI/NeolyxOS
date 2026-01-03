@@ -1,0 +1,1 @@
+/usr/bin/cc -fPIC -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/nxvideo-shared.dir/link.d -shared -Wl,-soname,libnxvideo.so.1 -o libnxvideo.so.1.0.0 "CMakeFiles/nxvideo-shared.dir/src/core/init.c.o" "CMakeFiles/nxvideo-shared.dir/src/core/player.c.o"  -lpthread -ldl

@@ -1,0 +1,62 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Path.app Main Application Icon
+
+[nxi]
+version = 1.0
+name = path
+size = 64
+author = KetiveeAI
+category = app
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+folder_back = #7aa2f7
+folder_back_dark = #5d7cc7
+folder_front = #89b4fa
+folder_front_dark = #7aa2f7
+arrow = #CDD6F4
+shadow = rgba(0,0,0,0.3)
+
+[gradients]
+backGrad = linear 0,0 64,64 folder_back folder_back_dark
+frontGrad = linear 0,0 64,64 folder_front folder_front_dark
+
+[effects]
+shadow1 = drop-shadow offset=0,2 blur=3 color=shadow
+
+[paths]
+# Folder back panel
+back = M8,20 L8,52 L56,52 L56,24 L32,24 L28,20 Z
+# Folder front panel
+front = M4,24 L4,56 L60,56 L60,28 L36,28 L32,24 Z
+# Arrow 1 (left)
+arrow1 = M24,38 L32,44 L24,50
+# Arrow 2 (right)
+arrow2 = M36,38 L44,44 L36,50
+
+[style]
+back.fill = backGrad
+back.effect = shadow1
+front.fill = frontGrad
+arrow1.fill = none
+arrow1.stroke = arrow
+arrow1.stroke-width = 2.5
+arrow1.stroke-linecap = round
+arrow1.stroke-linejoin = round
+arrow2.fill = none
+arrow2.stroke = arrow
+arrow2.stroke-width = 2.5
+arrow2.stroke-linecap = round
+arrow2.stroke-linejoin = round
+
+[style.dark]
+folder_back = #4C566A
+folder_back_dark = #3B4252
+folder_front = #5E81AC
+folder_front_dark = #4C566A
+arrow = #ECEFF4

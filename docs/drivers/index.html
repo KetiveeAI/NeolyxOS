@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hardware Drivers - NeolyxOS</title>
+    
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <!-- Navbar -->
+    
+
+    <h1>NeolyxOS Hardware Drivers</h1>
+    <p><strong>74 driver files</strong> | <strong>18 categories</strong> | Kernel size: <strong>345 KB</strong></p>
+
+    <h2 style="color: #58a6ff;">📚 API Documentation</h2>
+    <div class="grid">
+        <div class="card">
+            <h3><a href="nxtouch_api.html">NXTouch API</a></h3>
+            <span class="status done">New</span>
+            <p>Multi-touch gestures, stylus, palm rejection</p>
+            <p>80+ gestures for mobile/tablet/laptop/desktop</p>
+        </div>
+        <div class="card">
+            <h3><a href="nxbacklight_api.html">NXBacklight API</a></h3>
+            <span class="status done">New</span>
+            <p>Laptop brightness, ambient sensor</p>
+            <p>Keyboard backlight, device detection</p>
+        </div>
+        <div class="card">
+            <h3><a href="nxdisplay_advanced_api.html">Display Advanced API</a></h3>
+            <span class="status done">New</span>
+            <p>DDC/CI, Adaptive Refresh, Gaming Mode</p>
+            <p>Night Light, 600Hz+ support</p>
+        </div>
+        <div class="card">
+            <h3><a href="settings_drivers_api.html">Settings Drivers API</a></h3>
+            <span class="status done">New</span>
+            <p>Unified Settings app interface</p>
+            <p>Display, audio, network, power, touch</p>
+        </div>
+    </div>
+
+    <h2>1. Biometric Drivers</h2>
+    <div class="grid">
+        <div class="card">
+            <h3>nxfp_kdrv</h3>
+            <span class="status done">Done</span>
+            <p>Fingerprint sensor driver</p>
+            <p>Enrollment, authentication, template storage</p>
+        </div>
+        <div class="card">
+            <h3>Face Recognition</h3>
+            <span class="status planned">Planned</span>
+            <p>IR + RGB camera combo</p>
+        </div>
+        <div class="card">
+            <h3>TPM</h3>
+            <span class="status planned">Planned</span>
+            <p>Secure enclave interface</p>
+        </div>
+    </div>
+
+    <h2>2. Camera & Imaging</h2>
+    <div class="grid">
+        <div class="card">
+            <h3>nxcam_kdrv</h3>
+            <span class="status done">Done</span>
+            <p>Camera/webcam support</p>
+            <p>Resolution control, streaming</p>
+        </div>
+        <div class="card">
+            <h3>IR Camera</h3>
+            <span class="status planned">Planned</span>
+            <p>Night vision, face unlock</p>
+        </div>
+    </div>
+
+    <h2>3. Power & Battery</h2>
+    <div class="grid">
+        <div class="card">
+            <h3>nxpower_kdrv</h3>
+            <span class="status done">Done</span>
+            <p>Battery management</p>
+            <p>Charge state, power source</p>
+        </div>
+        <div class="card">
+            <h3>ACPI</h3>
+            <span class="status done">Done</span>
+            <p>Power tables, sleep states</p>
+            <p><a href="kdrv.html">See acpi/</a></p>
+        </div>
+    </div>
+
+    <h2>4. Sensors</h2>
+    <div class="grid">
+        <div class="card">
+            <h3>nxsensor_kdrv</h3>
+            <span class="status done">Done</span>
+            <p>Motion sensors</p>
+            <p>Accelerometer, gyroscope, magnetometer</p>
+        </div>
+    </div>
+
+    <h2>5. Input Devices</h2>
+    <div class="grid">
+        <div class="card">
+            <h3><a href="nxtouch_api.html">nxtouch_kdrv</a></h3>
+            <span class="status done">Done</span>
+            <p>Touch screen (10-point)</p>
+            <p>80+ gestures, stylus, palm rejection</p>
+        </div>
+        <div class="card">
+            <h3><a href="nxtouch_api.html#stylus">nxpen_kdrv</a></h3>
+            <span class="status done">Done</span>
+            <p>Stylus/pen input</p>
+            <p>4096 pressure, tilt, rotation</p>
+        </div>
+        <div class="card">
+            <h3>mouse.c</h3>
+            <span class="status done">Done</span>
+            <p>PS/2 + USB mouse</p>
+        </div>
+        <div class="card">
+            <h3><a href="keyboard.html">keyboard.c</a></h3>
+            <span class="status done">Done</span>
+            <p>NeolyxOS Keyboard Layout</p>
+            <p>ALLOW key, MODE modifier</p>
+        </div>
+    </div>
+
+    <h2>Keyboard Shortcuts (Shift+Fn)</h2>
+    <div class="grid">
+        <div class="card">
+            <h3>Media Controls</h3>
+            <span class="status done">Done</span>
+            <p>S1: Play | S5: Mute</p>
+            <p>S6-S7: Volume ↓↑</p>
+        </div>
+        <div class="card">
+            <h3>Display</h3>
+            <span class="status done">Done</span>
+            <p>S8-S9: Brightness ↓↑</p>
+            <p>S10: Display Switch</p>
+        </div>
+        <div class="card">
+            <h3>Connectivity</h3>
+            <span class="status done">Done</span>
+            <p>S11: WiFi Toggle</p>
+            <p>S12: Airplane Mode</p>
+        </div>
+    </div>
+
+    <h2>6. Wireless & Connectivity</h2>
+    <div class="grid">
+        <div class="card">
+            <h3>wifi.c</h3>
+            <span class="status done">Done</span>
+            <p>Wi-Fi 802.11</p>
+        </div>
+        <div class="card">
+            <h3>bluetooth.c</h3>
+            <span class="status done">Done</span>
+            <p>Bluetooth Classic + BLE</p>
+        </div>
+        <div class="card">
+            <h3>nxnfc_kdrv</h3>
+            <span class="status done">Done</span>
+            <p>NFC polling, write</p>
+        </div>
+    </div>
+
+    <h2>7. Display & Graphics</h2>
+    <div class="grid">
+        <div class="card">
+            <h3><a href="nxdisplay.html">nxdisplay_kdrv</a></h3>
+            <span class="status done">Done</span>
+            <p>Multi-monitor, VRR, HDR</p>
+            <p>Capability descriptor, declarative mode</p>
+        </div>
+        <div class="card">
+            <h3>nxgfx_kdrv</h3>
+            <span class="status done">Done</span>
+            <p>GPU driver, framebuffer</p>
+        </div>
+        <div class="card">
+            <h3>nxrender_kdrv</h3>
+            <span class="status done">Done</span>
+            <p>Rendering pipeline</p>
+        </div>
+    </div>
+
+    <h2>8. Audio</h2>
+    <div class="grid">
+        <div class="card">
+            <h3><a href="nxaudio.html">nxaudio_kdrv</a></h3>
+            <span class="status done">Done</span>
+            <p>Audio codec driver</p>
+        </div>
+    </div>
+
+    <h2>9. Storage</h2>
+    <div class="grid">
+        <div class="card">
+            <h3><a href="nvme.html">nvme.c</a></h3>
+            <span class="status done">Done</span>
+            <p>NVMe SSD driver</p>
+        </div>
+        <div class="card">
+            <h3>nxstor_kdrv</h3>
+            <span class="status done">Done</span>
+            <p>Storage abstraction</p>
+        </div>
+    </div>
+
+    <h2>10. System & Platform</h2>
+    <div class="grid">
+        <div class="card">
+            <h3>nxsysinfo_kdrv</h3>
+            <span class="status done">Done</span>
+            <p>System information</p>
+        </div>
+        <div class="card">
+            <h3>nxtask_kdrv</h3>
+            <span class="status done">Done</span>
+            <p>Task/process info</p>
+        </div>
+        <div class="card">
+            <h3><a href="pci.html">nxpci_kdrv</a></h3>
+            <span class="status done">Done</span>
+            <p>PCI bus driver</p>
+        </div>
+    </div>
+
+    <footer
+        style="text-align: center; padding: 2rem; color: #8b949e; border-top: 1px solid var(--border); margin-top: 2rem;">
+        <p>NeolyxOS © 2025 KetiveeAI — <strong>74 hardware drivers</strong></p>
+        <p style="margin-top: 0.5rem;"><a href="../index.html" style="color: var(--accent);">← Back to Docs</a> | <a
+                href="kdrv.html" style="color: var(--accent);">KDRV Framework</a></p>
+        <p style="margin-top: 0.5rem;"><kbd
+                style="background: var(--card); padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid var(--border);">Ctrl+K</kbd>
+            to search</p>
+    </footer>
+
+    <script>
+        const drivers = [
+            { title: "NXTouch API", desc: "80+ gestures, stylus, palm rejection", url: "nxtouch_api.html" },
+            { title: "NXBacklight API", desc: "Laptop brightness, ambient sensor", url: "nxbacklight_api.html" },
+            { title: "Display Advanced API", desc: "DDC/CI, Gaming Mode, Night Light", url: "nxdisplay_advanced_api.html" },
+            { title: "Settings Drivers API", desc: "Unified Settings app interface", url: "settings_drivers_api.html" },
+            { title: "nxdisplay_kdrv", desc: "Multi-monitor, VRR, HDR", url: "nxdisplay.html" },
+            { title: "nxaudio_kdrv", desc: "Audio codec, spatial audio", url: "nxaudio.html" },
+            { title: "keyboard.c", desc: "NeolyxOS keyboard layout", url: "keyboard.html" },
+            { title: "NVMe Driver", desc: "NVMe SSD support", url: "nvme.html" },
+            { title: "PCI Driver", desc: "PCI bus enumeration", url: "pci.html" },
+            { title: "GPU 3D", desc: "GPU memory, 3D pipeline", url: "gpu_3d.html" },
+            { title: "NXGame ABI", desc: "Game bridge syscalls", url: "nxgame_abi.html" },
+            { title: "Block Driver", desc: "Block device abstraction", url: "block.html" },
+        ];
+
+        const searchInput = document.getElementById('searchInput');
+        const searchResults = document.getElementById('searchResults');
+
+        searchInput.addEventListener('input', function () {
+            const q = this.value.toLowerCase().trim();
+            if (q.length < 2) { searchResults.classList.remove('active'); return; }
+            const matches = drivers.filter(d => d.title.toLowerCase().includes(q) || d.desc.toLowerCase().includes(q));
+            if (matches.length === 0) {
+                searchResults.innerHTML = '<div style="padding:1rem;color:#8b949e;text-align:center;">No results</div>';
+            } else {
+                searchResults.innerHTML = matches.slice(0, 6).map(d => `
+                    <div class="search-item" onclick="location.href='${d.url}'">
+                        <div class="search-title">${d.title}</div>
+                        <div class="search-desc">${d.desc}</div>
+                    </div>
+                `).join('');
+            }
+            searchResults.classList.add('active');
+        });
+
+        searchInput.addEventListener('blur', () => setTimeout(() => searchResults.classList.remove('active'), 200));
+        searchInput.addEventListener('focus', function () { if (this.value.length >= 2) searchResults.classList.add('active'); });
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey && e.key === 'k') || (e.key === '/' && document.activeElement !== searchInput)) {
+                e.preventDefault();
+                searchInput.focus();
+            }
+            if (e.key === 'Escape') searchInput.blur();
+        });
+    </script>
+</body>
+
+</html>

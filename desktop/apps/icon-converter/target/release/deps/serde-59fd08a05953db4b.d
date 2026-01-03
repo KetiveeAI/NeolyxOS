@@ -1,0 +1,14 @@
+/home/swana/Documents/NEOLYXOS/neolyx-os/apps/icon-converter/target/release/deps/serde-59fd08a05953db4b.d: /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /home/swana/Documents/NEOLYXOS/neolyx-os/apps/icon-converter/target/release/build/serde-9805bc5318d87417/out/private.rs
+
+/home/swana/Documents/NEOLYXOS/neolyx-os/apps/icon-converter/target/release/deps/libserde-59fd08a05953db4b.rlib: /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /home/swana/Documents/NEOLYXOS/neolyx-os/apps/icon-converter/target/release/build/serde-9805bc5318d87417/out/private.rs
+
+/home/swana/Documents/NEOLYXOS/neolyx-os/apps/icon-converter/target/release/deps/libserde-59fd08a05953db4b.rmeta: /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /home/swana/Documents/NEOLYXOS/neolyx-os/apps/icon-converter/target/release/build/serde-9805bc5318d87417/out/private.rs
+
+/home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs:
+/home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs:
+/home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs:
+/home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:
+/home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs:
+/home/swana/Documents/NEOLYXOS/neolyx-os/apps/icon-converter/target/release/build/serde-9805bc5318d87417/out/private.rs:
+
+# env-dep:OUT_DIR=/home/swana/Documents/NEOLYXOS/neolyx-os/apps/icon-converter/target/release/build/serde-9805bc5318d87417/out

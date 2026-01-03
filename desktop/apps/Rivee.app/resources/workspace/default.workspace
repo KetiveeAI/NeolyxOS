@@ -1,0 +1,85 @@
+{
+    "name": "Default Workspace",
+    "version": "1.0",
+    "description": "Balanced layout for general illustration work",
+    
+    "window": {
+        "width": 1280,
+        "height": 800,
+        "maximized": false,
+        "fullscreen": false
+    },
+    
+    "panels": {
+        "toolbox": {
+            "visible": true,
+            "dock": "left",
+            "width": 48
+        },
+        "properties": {
+            "visible": true,
+            "dock": "right",
+            "width": 280,
+            "collapsed": false
+        },
+        "layers": {
+            "visible": true,
+            "dock": "right",
+            "width": 280,
+            "tab_group": 1
+        },
+        "pages": {
+            "visible": true,
+            "dock": "right",
+            "width": 280,
+            "tab_group": 1
+        },
+        "color": {
+            "visible": true,
+            "dock": "right",
+            "width": 280
+        },
+        "navigator": {
+            "visible": false,
+            "dock": "floating"
+        },
+        "history": {
+            "visible": false,
+            "dock": "floating"
+        }
+    },
+    
+    "toolbars": {
+        "standard": {
+            "visible": true,
+            "dock": "top",
+            "position": 0
+        },
+        "property_bar": {
+            "visible": true,
+            "dock": "top",
+            "position": 1
+        },
+        "view": {
+            "visible": true,
+            "dock": "top",
+            "position": 2
+        }
+    },
+    
+    "canvas": {
+        "zoom": 100,
+        "pan_x": 0,
+        "pan_y": 0,
+        "rulers_visible": true,
+        "guides_visible": true,
+        "grid_visible": false,
+        "snap_to_grid": true,
+        "snap_to_objects": true
+    },
+    
+    "theme": {
+        "dark_mode": true,
+        "accent_color": "#007AFF"
+    }
+}

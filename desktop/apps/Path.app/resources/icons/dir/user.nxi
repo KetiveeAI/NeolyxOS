@@ -1,0 +1,49 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# User/Home Folder Icon - with person emblem
+
+[nxi]
+version = 1.0
+name = user
+size = 32
+author = KetiveeAI
+category = directory
+viewbox = 0 0 32 32
+
+[canvas]
+width = 32
+height = 32
+background = transparent
+
+[colors]
+shadow = #000000
+folder_base = #F2D6C9
+folder_dark = #DDAE98
+person = #DDAE98
+
+[paths]
+# Shadow layer
+shadow = M0,4 L0,26 L30,26 L30,6 L15,6 L13,4 Z
+
+# Back folder tab
+back_tab = M0,5 L0,27 L31,27 L31,7 L16,7 L14,5 Z
+
+# Front folder body
+front = M0,8 L0,28 L32,28 L32,10 L18,10 L16,8 Z
+
+# Person head
+head = M16,11 a4,4 0 1,0 0.01,0
+
+# Person body
+body = M10,24 Q10,18 16,18 Q22,18 22,24 Z
+
+[style]
+shadow.fill = shadow
+shadow.opacity = 0.3
+back_tab.fill = folder_base
+front.fill = folder_base
+head.fill = person
+body.fill = person
+
+[style.dark]
+folder_base = #C4A99E
+person = #B8988A

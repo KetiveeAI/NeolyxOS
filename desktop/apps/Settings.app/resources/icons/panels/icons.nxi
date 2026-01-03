@@ -1,0 +1,44 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Icons Panel Icon - folder with grid
+
+[nxi]
+version = 1.0
+name = icons_panel
+size = 24
+author = KetiveeAI
+category = settings
+viewbox = 0 0 24 24
+
+[canvas]
+width = 24
+height = 24
+background = transparent
+
+[colors]
+primary = #89B4FA
+secondary = #F5C2E7
+
+[paths]
+# Main folder shape
+folder = M2,6 L2,20 L22,20 L22,8 L12,8 L10,6 Z
+
+# Icon grid (3x3 dots)
+dot1 = M7,11 L9,11 L9,13 L7,13 Z
+dot2 = M11,11 L13,11 L13,13 L11,13 Z
+dot3 = M15,11 L17,11 L17,13 L15,13 Z
+dot4 = M7,15 L9,15 L9,17 L7,17 Z
+dot5 = M11,15 L13,15 L13,17 L11,17 Z
+dot6 = M15,15 L17,15 L17,17 L15,17 Z
+
+[style]
+folder.fill = primary
+dot1.fill = secondary
+dot2.fill = secondary
+dot3.fill = secondary
+dot4.fill = secondary
+dot5.fill = secondary
+dot6.fill = secondary
+
+[style.dark]
+primary = #7AA2F7
+secondary = #E0A8D0

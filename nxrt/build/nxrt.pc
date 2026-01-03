@@ -1,0 +1,10 @@
+prefix=/usr/local
+exec_prefix=${prefix}
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: nxrt
+Description: NeolyxOS Application Runtime
+Version: 1.0.0
+Libs: -L${libdir} -lnxrt -lpthread
+Cflags: -I${includedir}

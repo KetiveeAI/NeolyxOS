@@ -1,0 +1,35 @@
+# NeolyxOS Production Kernel Makefile
+# Copyright (c) 2025 KetiveeAI
+
+CC = gcc
+AS = as
+LD = ld
+OBJCOPY = objcopy
+
+CFLAGS = -ffreestanding -nostdlib -mno-red-zone -Wall -Wextra \
+         -m64 -fno-pie -fno-stack-protector -mno-sse -mno-sse2 \
+         -mcmodel=kernel
+
+LDFLAGS = -T linker.ld -static -nostdlib
+
+KERNEL_OBJS = startup.o kernel_main.o
+
+all: kernel.bin kernel.elf
+	@echo "✓ NeolyxOS Kernel built"
+
+startup.o: src/arch/x86_64/startup.S
+	$(AS) --64 -o startup.o src/arch/x86_64/startup.S
+
+kernel_main.o: kernel_main.c
+	$(CC) $(CFLAGS) -c kernel_main.c -o kernel_main.o
+
+kernel.elf: $(KERNEL_OBJS) linker.ld
+	$(LD) $(LDFLAGS) $(KERNEL_OBJS) -o kernel.elf
+
+kernel.bin: kernel.elf
+	$(OBJCOPY) -O binary kernel.elf kernel.bin
+
+clean:
+	rm -f *.o kernel.elf kernel.bin
+
+.PHONY: all clean

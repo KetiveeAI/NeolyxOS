@@ -1,0 +1,41 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# System Panel Icon - Blue gradient tile with monitor
+
+[nxi]
+version = 1.0
+name = system
+size = 64
+author = KetiveeAI
+category = settings
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+tile_start = #007AFF
+tile_end = #0055CC
+icon_color = #FFFFFF
+stroke_color = rgba(255,255,255,0.3)
+
+[gradients]
+tileGrad = linear 0,0 64,64 tile_start tile_end
+
+[shapes]
+# Rounded square tile background
+rect x=0 y=0 width=64 height=64 rx=12 fill=tileGrad
+
+# Monitor body
+rect x=14 y=16 width=36 height=24 rx=2 fill=icon_color
+# Monitor screen (cutout)
+rect x=17 y=19 width=30 height=16 rx=1 fill=tile_start
+# Monitor stand
+rect x=28 y=40 width=8 height=4 fill=icon_color
+# Monitor base
+rect x=22 y=44 width=20 height=3 rx=1 fill=icon_color
+
+[style.dark]
+tile_start = #0A84FF
+tile_end = #0066DD

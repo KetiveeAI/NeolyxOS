@@ -1,0 +1,48 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Display Panel Icon - Purple gradient tile with display
+
+[nxi]
+version = 1.0
+name = display
+size = 64
+author = KetiveeAI
+category = settings
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+tile_start = #AF52DE
+tile_end = #9332C4
+icon_color = #FFFFFF
+screen_color = rgba(255,255,255,0.2)
+
+[gradients]
+tileGrad = linear 0,0 64,64 tile_start tile_end
+
+[shapes]
+# Rounded square tile background
+rect x=0 y=0 width=64 height=64 rx=12 fill=tileGrad
+
+# Display frame
+rect x=10 y=14 width=44 height=28 rx=3 fill=icon_color
+# Display screen
+rect x=13 y=17 width=38 height=22 rx=1 fill=tile_start
+# Sun symbol for brightness
+circle center=32 radius=6 y=28 fill=icon_color
+# Sun rays
+line x1=32 y1=20 x2=32 y2=16 stroke=icon_color stroke-width=2
+line x1=32 y1=40 x2=32 y2=36 stroke=icon_color stroke-width=2
+line x1=24 y1=28 x2=20 y2=28 stroke=icon_color stroke-width=2
+line x1=40 y1=28 x2=44 y2=28 stroke=icon_color stroke-width=2
+
+# Stand
+rect x=28 y=42 width=8 height=5 fill=icon_color
+rect x=24 y=47 width=16 height=3 rx=1.5 fill=icon_color
+
+[style.dark]
+tile_start = #BF5AF2
+tile_end = #9332C4

@@ -1,0 +1,75 @@
+{
+    "family": "NX Sans",
+    "version": "1.0.0",
+    "description": "The NeolyxOS system font family",
+    "copyright": "Copyright (c) 2025 KetiveeAI. Font base: Source Sans 3 (Adobe).",
+    "license": "SIL Open Font License",
+    "fonts": [
+        {
+            "name": "NX Sans Text",
+            "file": "NXSans/NXSans-Text.ttf",
+            "weight": 400,
+            "style": "normal",
+            "role": "text",
+            "description": "Default body text, documents, articles"
+        },
+        {
+            "name": "NX Sans UI",
+            "file": "NXSans/NXSans-UI.ttf",
+            "weight": 500,
+            "style": "normal",
+            "role": "ui",
+            "description": "Interface elements, labels, menus"
+        },
+        {
+            "name": "NX Sans Display",
+            "file": "NXSans/NXSans-Display.ttf",
+            "weight": 600,
+            "style": "normal",
+            "role": "display",
+            "description": "Headlines, titles, large text"
+        },
+        {
+            "name": "NX Sans Bold",
+            "file": "NXSans/NXSans-Bold.ttf",
+            "weight": 700,
+            "style": "normal",
+            "role": "emphasis",
+            "description": "Bold emphasis in body text"
+        },
+        {
+            "name": "NX Sans Italic",
+            "file": "NXSans/NXSans-Italic.ttf",
+            "weight": 400,
+            "style": "italic",
+            "role": "emphasis",
+            "description": "Italic emphasis, quotes"
+        },
+        {
+            "name": "NX Sans Mono",
+            "file": "NXSansMono/NXSans-Mono.ttf",
+            "weight": 400,
+            "style": "normal",
+            "role": "mono",
+            "description": "Code, terminal, technical content"
+        }
+    ],
+    "defaults": {
+        "body": "NX Sans Text",
+        "ui": "NX Sans UI",
+        "headlines": "NX Sans Display",
+        "code": "NX Sans Mono"
+    },
+    "sizes": {
+        "caption": 10,
+        "footnote": 11,
+        "small": 12,
+        "body": 14,
+        "callout": 15,
+        "subtitle": 16,
+        "title": 20,
+        "headline": 24,
+        "display": 32,
+        "hero": 48
+    }
+}

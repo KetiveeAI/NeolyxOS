@@ -1,0 +1,39 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Power Panel Icon - Amber gradient tile with battery
+
+[nxi]
+version = 1.0
+name = power
+size = 64
+author = KetiveeAI
+category = settings
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+tile_start = #FFCC00
+tile_end = #E6B800
+icon_color = #FFFFFF
+charge_color = #34C759
+
+[gradients]
+tileGrad = linear 0,0 64,64 tile_start tile_end
+
+[shapes]
+# Rounded square tile background
+rect x=0 y=0 width=64 height=64 rx=12 fill=tileGrad
+
+# Battery body
+rect x=10 y=22 width=40 height=20 rx=4 fill=icon_color
+# Battery terminal
+rect x=50 y=28 width=4 height=8 rx=2 fill=icon_color
+# Battery charge level
+rect x=14 y=26 width=32 height=12 rx=2 fill=charge_color
+
+[style.dark]
+tile_start = #FFD60A
+tile_end = #E6B800

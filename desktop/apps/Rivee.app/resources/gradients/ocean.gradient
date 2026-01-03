@@ -1,0 +1,10 @@
+{
+    "name": "Ocean",
+    "type": "linear",
+    "angle": 180,
+    "stops": [
+        {"position": 0.0, "color": "#0575E6"},
+        {"position": 0.5, "color": "#00A1D9"},
+        {"position": 1.0, "color": "#00F0FF"}
+    ]
+}

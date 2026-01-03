@@ -1,0 +1,83 @@
+# NeolyxOS Permissions Configuration (.nlc)
+# File system access control and SIP protected paths
+# Located at: /System/Config/permissions.nlc
+# Protected by SIP - Cannot be modified except in Recovery Mode
+#
+# Copyright (c) 2025 KetiveeAI
+# 
+# Permission Levels:
+#   system    = Only kernel/system processes (SIP protected)
+#   admin     = Requires administrator privileges
+#   user      = Any authenticated user
+#   public    = Anyone (read-only typically)
+#
+# Access Types:
+#   r = read, w = write, x = execute, d = delete
+
+[sip_protected]
+# System Integrity Protection - These paths are ALWAYS read-only
+# Even root/admin cannot modify without disabling SIP in Recovery
+/System = "system:rx"
+/System/Kernel = "system:rx"
+/System/Drivers = "system:rx"
+/System/Config = "system:r"
+/System/Library = "system:rx"
+/Boot = "system:rx"
+
+[admin_protected]
+# Admin-only paths - Require sudo/admin authentication
+/Applications = "admin:rwxd"
+/Library = "admin:rwxd"
+/Library/Preferences = "admin:rwxd"
+/Library/Application Support = "admin:rwxd"
+/Library/Logs = "admin:rwd"
+/var = "admin:rwxd"
+/var/log = "admin:rwd"
+/etc = "admin:rw"
+
+[user_writable]
+# Per-user directories - Users can fully control their own
+/Users = "user:rx"
+/Users/$USER = "user:rwxd"
+/Users/$USER/Library = "user:rwxd"
+/Users/$USER/Library/Preferences = "user:rwxd"
+/Users/$USER/Library/Application Support = "user:rwxd"
+/Users/$USER/Desktop = "user:rwxd"
+/Users/$USER/Documents = "user:rwxd"
+/Users/$USER/Downloads = "user:rwxd"
+/Users/$USER/Pictures = "user:rwxd"
+/Users/$USER/Music = "user:rwxd"
+/Users/$USER/Videos = "user:rwxd"
+
+[public_access]
+# Public read-only paths
+/System/Library/Wallpapers = "public:r"
+/System/Library/Fonts = "public:r"
+/System/Library/Sounds = "public:r"
+/System/Library/Icons = "public:r"
+
+[temp_access]
+# Temporary and cache paths - Writable but cleaned
+/tmp = "user:rwxd"
+/var/tmp = "user:rwxd"
+/var/cache = "user:rwd"
+
+[special_rules]
+# Special access rules
+kernel_modules = "/System/Drivers/*.nld requires code signing"
+applications = "/Applications/*.app requires code signing"
+preferences = "Apps can only write to own plist in /Library/Preferences"
+user_isolation = "Users cannot access other users' home directories"
+sandbox_apps = "Sandboxed apps limited to app container + explicit grants"
+
+[sip_exceptions]
+# Paths that can be modified with SIP enabled (by installer only)
+/System/Config/boot.nlc = "installer:w"
+/System/Config/host.nlc = "admin:w"
+
+[recovery_mode]
+# These operations require Recovery Mode
+sip_disable = "Disable System Integrity Protection"
+system_modify = "Modify /System directory contents"
+kernel_replace = "Replace kernel binary"
+driver_install = "Install unsigned drivers"

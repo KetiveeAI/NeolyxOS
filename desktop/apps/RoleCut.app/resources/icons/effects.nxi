@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Effects Icon - NeolyxOS Native Icon Format -->
+<nxi version="1.0" width="64" height="64">
+  <metadata>
+    <name>Effects</name>
+    <author>KetiveeAI</author>
+  </metadata>
+  
+  <defs>
+    <linearGradient id="sparkle" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffd93d"/>
+      <stop offset="100%" stop-color="#ffb347"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Magic wand -->
+  <rect x="8" y="40" width="40" height="8" rx="2" fill="#5a5a5a" transform="rotate(-45 28 44)"/>
+  <rect x="40" y="8" width="16" height="8" rx="2" fill="url(#sparkle)" transform="rotate(-45 48 12)"/>
+  
+  <!-- Sparkles -->
+  <g fill="url(#sparkle)">
+    <polygon points="48,8 50,14 56,16 50,18 48,24 46,18 40,16 46,14"/>
+    <polygon points="56,24 57,27 60,28 57,29 56,32 55,29 52,28 55,27" transform="scale(0.7) translate(20, 10)"/>
+    <polygon points="36,16 37,19 40,20 37,21 36,24 35,21 32,20 35,19" transform="scale(0.6) translate(30, -5)"/>
+  </g>
+</nxi>

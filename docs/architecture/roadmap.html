@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Development Roadmap - NeolyxOS Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-code: #1c2128;
+            --text-primary: #c9d1d9;
+            --accent: #58a6ff;
+            --border: #30363d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        nav {
+            margin-bottom: 2rem;
+        }
+
+        nav a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin: 2rem 0 1rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        p {
+            margin-bottom: 1rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        .complete {
+            color: #56d364;
+        }
+
+        .progress {
+            color: #e3b341;
+        }
+
+        .planned {
+            color: #8b949e;
+        }
+
+        ul {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        li {
+            margin-bottom: 0.25rem;
+        }
+    </style>
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        
+
+        <h1>📋 Development Roadmap</h1>
+        <p>NeolyxOS kernel development phases and status.</p>
+
+        <h2>Phase Overview</h2>
+        <table>
+            <tr>
+                <th>Phase</th>
+                <th>Name</th>
+                <th>Status</th>
+            </tr>
+            <tr>
+                <td>1</td>
+                <td>Core Foundation</td>
+                <td class="complete">✅ Complete</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>Memory Management</td>
+                <td class="progress">🔄 In Progress</td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td>Interrupts & Exceptions</td>
+                <td class="complete">✅ Complete</td>
+            </tr>
+            <tr>
+                <td>4</td>
+                <td>Filesystem</td>
+                <td class="complete">✅ Complete</td>
+            </tr>
+            <tr>
+                <td>5</td>
+                <td>Process Management</td>
+                <td class="complete">✅ Complete</td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td>System Calls</td>
+                <td class="complete">✅ Complete</td>
+            </tr>
+            <tr>
+                <td>7</td>
+                <td>Device Drivers</td>
+                <td class="progress">🔄 In Progress</td>
+            </tr>
+            <tr>
+                <td>8</td>
+                <td>Network Stack</td>
+                <td class="planned">📋 Planned</td>
+            </tr>
+            <tr>
+                <td>9</td>
+                <td>Real Terminal</td>
+                <td class="planned">📋 Planned</td>
+            </tr>
+            <tr>
+                <td>10</td>
+                <td>Desktop Environment</td>
+                <td class="planned">📋 Planned</td>
+            </tr>
+            <tr>
+                <td>11</td>
+                <td>ARM/AArch64 Support</td>
+                <td class="planned">📋 Future</td>
+            </tr>
+        </table>
+
+        <h2>Phase 1: Core Foundation ✅</h2>
+        <ul>
+            <li>UEFI bootloader</li>
+            <li>64-bit kernel entry</li>
+            <li>Framebuffer graphics</li>
+            <li>Serial debug output</li>
+            <li>PS/2 keyboard/mouse</li>
+        </ul>
+
+        <h2>Phase 2: Memory Management 🔄</h2>
+        <ul>
+            <li class="complete">✅ Physical Memory Manager (bitmap allocator)</li>
+            <li class="complete">✅ Heap allocator (kmalloc/kfree)</li>
+            <li class="planned">📋 4-level page tables (PML4)</li>
+            <li class="planned">📋 Higher-half kernel mapping</li>
+        </ul>
+
+        <h2>Phase 7: Device Drivers 🔄</h2>
+        <ul>
+            <li class="complete">✅ NVMe driver (queues, PRP, MSI-X)</li>
+            <li class="complete">✅ Block layer abstraction</li>
+            <li class="complete">✅ AHCI/ATA drivers</li>
+            <li class="complete">✅ GPU detection (Intel/AMD/NVIDIA)</li>
+            <li class="complete">✅ Intel e1000 network</li>
+            <li class="planned">📋 USB HID driver</li>
+        </ul>
+
+        <h2>Phase 8: Network Stack 📋</h2>
+        <ul>
+            <li>Ethernet frame handling</li>
+            <li>ARP implementation</li>
+            <li>IP/UDP/TCP stack</li>
+            <li>Socket API</li>
+            <li>DNS/DHCP clients</li>
+        </ul>
+
+        <h2>Phase 9: Real Terminal 📋</h2>
+        <ul>
+            <li>VT100 escape codes (done)</li>
+            <li>Multiple TTYs</li>
+            <li>PTY support</li>
+            <li>External shell process</li>
+        </ul>
+
+        <h2>Phase 10: Desktop 📋</h2>
+        <ul>
+            <li>Window compositor</li>
+            <li>NXRender integration</li>
+            <li>Window manager</li>
+            <li>App launcher</li>
+        </ul>
+
+        <h2>Current Focus</h2>
+        <p>Phase 7 → Phase 9 → Phase 10</p>
+        <p>Priority: Finish Terminal Emulator, then Desktop Environment</p>
+
+    </div>
+</body>
+
+</html>

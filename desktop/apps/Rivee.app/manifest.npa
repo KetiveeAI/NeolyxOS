@@ -1,0 +1,36 @@
+{
+    "name": "Rivee",
+    "version": "1.0.0",
+    "bundle_id": "com.neolyx.rivee",
+    "tagline": "Draw your imagination",
+    "category": "Graphics",
+    "description": "Professional vector graphics editor for NeolyxOS. Create stunning illustrations, icons, and designs with precision tools and powerful rendering.",
+    
+    "binary": "bin/rivee",
+    "library": "lib/librivee.so",
+    "icon": "resources/rivee.nxi",
+    
+    "permissions": [
+        "filesystem.read",
+        "filesystem.write",
+        "clipboard"
+    ],
+    
+    "requirements": {
+        "os_version": "1.0.0",
+        "drivers": ["nxgfx", "nxrender"],
+        "frameworks": ["ReoxUI", "NXRender"]
+    },
+    
+    "features": {
+        "vector_tools": ["select", "rectangle", "ellipse", "line", "pen", "text"],
+        "export_formats": ["nxi", "png", "svg"],
+        "layers": true,
+        "gradients": true,
+        "effects": ["shadow", "blur", "glow"]
+    },
+    
+    "author": "KetiveeAI",
+    "copyright": "Copyright (c) 2025 KetiveeAI",
+    "license": "Proprietary"
+}

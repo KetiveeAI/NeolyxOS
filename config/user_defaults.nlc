@@ -1,0 +1,79 @@
+# NeolyxOS User Defaults Configuration (.nlc)
+# Default user preferences template - Copied to user directory
+# Located at: /System/Config/user_defaults.nlc (template)
+# User copy at: /Users/<name>/Library/Preferences/user.nlc (writable)
+#
+# Copyright (c) 2025 KetiveeAI
+
+[desktop]
+# Desktop appearance
+theme = "dark"
+accent_color = "0x0000B4D8"
+wallpaper = "/System/Library/Wallpapers/default.nix"
+dock_position = "bottom"
+dock_autohide = "false"
+dock_magnification = "false"
+menubar_transparency = "true"
+
+[dock]
+# Dock settings
+icon_size = "48"
+show_recent = "true"
+minimize_effect = "scale"
+show_indicators = "true"
+bounce_on_launch = "true"
+
+[window]
+# Window behavior
+double_click_action = "maximize"
+minimize_to_dock = "true"
+close_to_tray = "false"
+snap_enabled = "true"
+animations_enabled = "true"
+animation_speed = "normal"
+
+[keyboard]
+# Keyboard settings
+key_repeat_rate = "30"
+key_repeat_delay = "400"
+caps_lock_action = "capslock"
+fn_key_standard = "false"
+
+[mouse]
+# Mouse settings
+tracking_speed = "5"
+natural_scrolling = "false"
+secondary_click = "right"
+double_click_speed = "500"
+cursor_size = "normal"
+
+[trackpad]
+# Trackpad settings
+tap_to_click = "true"
+scroll_direction = "natural"
+three_finger_drag = "false"
+pinch_zoom = "true"
+
+[sounds]
+# Sound settings
+output_volume = "50"
+mute = "false"
+alert_sound = "default"
+startup_sound = "true"
+ui_sounds = "true"
+
+[notifications]
+# Notification settings
+do_not_disturb = "false"
+show_previews = "always"
+notification_center = "true"
+badge_app_icon = "true"
+
+[terminal]
+# Terminal preferences
+font_family = "Monospace"
+font_size = "14"
+cursor_style = "block"
+cursor_blink = "true"
+background_opacity = "100"
+scrollback_lines = "10000"

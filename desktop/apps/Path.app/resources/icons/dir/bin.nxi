@@ -1,0 +1,60 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Bin/Trash Folder Icon - with trash can emblem
+
+[nxi]
+version = 1.0
+name = bin
+size = 32
+author = KetiveeAI
+category = directory
+viewbox = 0 0 32 32
+
+[canvas]
+width = 32
+height = 32
+background = transparent
+
+[colors]
+shadow = #000000
+folder_base = #F2D6C9
+folder_dark = #DDAE98
+trash = #DDAE98
+
+[paths]
+# Shadow layer
+shadow = M0,4 L0,26 L30,26 L30,6 L15,6 L13,4 Z
+
+# Back folder tab
+back_tab = M0,5 L0,27 L31,27 L31,7 L16,7 L14,5 Z
+
+# Front folder body
+front = M0,8 L0,28 L32,28 L32,10 L18,10 L16,8 Z
+
+# Trash can lid
+lid = M10,12 L22,12 L22,14 L10,14 Z
+lid_handle = M14,11 L18,11 L18,12 L14,12 Z
+
+# Trash can body
+can = M11,14 L12,24 L20,24 L21,14 Z
+
+# Trash lines
+line1 = M14,16 L14,22
+line2 = M16,16 L16,22
+line3 = M18,16 L18,22
+
+[style]
+shadow.fill = shadow
+shadow.opacity = 0.3
+back_tab.fill = folder_base
+front.fill = folder_base
+lid.fill = trash
+lid_handle.fill = trash
+can.stroke = trash
+can.fill = none
+line1.stroke = trash
+line2.stroke = trash
+line3.stroke = trash
+
+[style.dark]
+folder_base = #C4A99E
+trash = #B8988A

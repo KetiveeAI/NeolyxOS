@@ -1,0 +1,224 @@
+// Reox stdlib: UI Controls
+// Complete set of UI widgets for building applications
+
+/// Button - clickable control with label
+struct Button {
+    label: string,
+    enabled: bool,
+    on_click: fn()
+}
+
+fn button(label: string) -> Button {
+    return Button { 
+        label: label, 
+        enabled: true, 
+        on_click: fn() {} 
+    };
+}
+
+/// Text label display
+struct Label {
+    text: string,
+    color: Color,
+    font_size: int,
+    bold: bool
+}
+
+fn label(text: string) -> Label {
+    return Label {
+        text: text,
+        color: Color { r: 255, g: 255, b: 255, a: 255 },
+        font_size: 16,
+        bold: false
+    };
+}
+
+/// Text input field
+struct TextField {
+    value: string,
+    placeholder: string,
+    password: bool,
+    on_change: fn(string)
+}
+
+fn text_field(placeholder: string) -> TextField {
+    return TextField {
+        value: "",
+        placeholder: placeholder,
+        password: false,
+        on_change: fn(s: string) {}
+    };
+}
+
+/// Toggle switch
+struct Switch {
+    value: bool,
+    on_color: Color,
+    on_change: fn(bool)
+}
+
+fn toggle(initial: bool) -> Switch {
+    return Switch {
+        value: initial,
+        on_color: Color { r: 0, g: 122, b: 255, a: 255 },
+        on_change: fn(b: bool) {}
+    };
+}
+
+/// Checkbox with label
+struct Checkbox {
+    checked: bool,
+    label: string,
+    on_change: fn(bool)
+}
+
+fn checkbox(label: string) -> Checkbox {
+    return Checkbox {
+        checked: false,
+        label: label,
+        on_change: fn(b: bool) {}
+    };
+}
+
+/// Slider for numeric input
+struct Slider {
+    value: float,
+    min: float,
+    max: float,
+    step: float,
+    on_change: fn(float)
+}
+
+fn slider(min: float, max: float) -> Slider {
+    return Slider {
+        value: min,
+        min: min,
+        max: max,
+        step: 1.0,
+        on_change: fn(v: float) {}
+    };
+}
+
+/// Progress bar
+struct ProgressBar {
+    value: float,           // 0.0 to 1.0
+    indeterminate: bool,
+    color: Color
+}
+
+fn progress(value: float) -> ProgressBar {
+    return ProgressBar {
+        value: value,
+        indeterminate: false,
+        color: Color { r: 0, g: 122, b: 255, a: 255 }
+    };
+}
+
+fn progress_indeterminate() -> ProgressBar {
+    return ProgressBar {
+        value: 0.0,
+        indeterminate: true,
+        color: Color { r: 0, g: 122, b: 255, a: 255 }
+    };
+}
+
+/// Dropdown / Select menu
+struct Dropdown {
+    items: [string],
+    selected: int,
+    on_select: fn(int)
+}
+
+fn dropdown(items: [string]) -> Dropdown {
+    return Dropdown {
+        items: items,
+        selected: 0,
+        on_select: fn(i: int) {}
+    };
+}
+
+/// Scrollable list view
+struct ListView {
+    items: [View],
+    item_height: int,
+    on_select: fn(int)
+}
+
+fn list_view(items: [View]) -> ListView {
+    return ListView {
+        items: items,
+        item_height: 44,
+        on_select: fn(i: int) {}
+    };
+}
+
+/// Tab view with multiple pages
+struct TabView {
+    tabs: [TabItem],
+    selected: int,
+    on_change: fn(int)
+}
+
+struct TabItem {
+    title: string,
+    icon: string,
+    content: View
+}
+
+fn tab_view() -> TabView {
+    return TabView {
+        tabs: [],
+        selected: 0,
+        on_change: fn(i: int) {}
+    };
+}
+
+/// Image display
+struct Image {
+    src: string,
+    width: int,
+    height: int,
+    fit: ImageFit
+}
+
+enum ImageFit {
+    Contain,
+    Cover,
+    Fill,
+    None
+}
+
+fn image(src: string) -> Image {
+    return Image {
+        src: src,
+        width: -1,  // Auto
+        height: -1,
+        fit: ImageFit.Contain
+    };
+}
+
+/// Spacer - flexible empty space
+fn spacer() -> View {
+    // Returns a flexible spacer
+}
+
+/// Divider line
+fn divider() -> View {
+    // Returns a horizontal divider
+}
+
+// Layout containers
+fn hstack(gap: int, children: [View]) -> View;
+fn vstack(gap: int, children: [View]) -> View;
+fn zstack(children: [View]) -> View;
+
+// Container with padding
+fn padding(amount: int, child: View) -> View;
+fn padding_h(amount: int, child: View) -> View;
+fn padding_v(amount: int, child: View) -> View;
+
+// Background and styling
+fn background(color: Color, child: View) -> View;
+fn corner_radius(radius: int, child: View) -> View;
+fn border(width: int, color: Color, child: View) -> View;
+fn shadow(blur: int, color: Color, child: View) -> View;

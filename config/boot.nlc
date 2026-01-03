@@ -1,0 +1,50 @@
+# NeolyxOS Boot Configuration (.nlc)
+# Installation and boot settings - Written by installer
+# Located at: /System/Config/boot.nlc
+# Protected by SIP - Read-only after installation
+#
+# Copyright (c) 2025 KetiveeAI
+
+[installation]
+# Installation metadata
+installed = "false"
+install_date = ""
+install_time = ""
+installer_version = "1.0.0"
+edition = "desktop"                 # desktop | server
+
+[disk]
+# Boot disk information
+boot_disk_uuid = ""
+boot_partition = ""
+root_partition = ""
+boot_device = "/dev/sda"            # AHCI port 0
+root_device = "/dev/sdb"            # AHCI port 1
+filesystem = "nxfs"                 # nxfs | fat32
+
+[boot]
+# Boot parameters
+timeout = "5"
+default_entry = "neolyx_os"
+fallback_entry = "recovery"
+kernel_path = "/System/Kernel/kernel.bin"
+kernel_params = "quiet splash"
+safe_mode = "false"
+verbose_boot = "false"
+single_user = "false"
+debug_mode = "false"
+
+[system]
+# System identity
+uuid = ""
+machine_id = ""
+architecture = "x86_64"
+kernel_version = "1.0.0"
+
+[recovery]
+# Recovery configuration
+recovery_enabled = "true"
+recovery_partition = ""
+last_recovery = ""
+boot_failures = "0"
+max_failures = "3"

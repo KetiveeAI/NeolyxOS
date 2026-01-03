@@ -1,0 +1,34 @@
+# NXAudio Systemd Service
+# Copyright (c) 2025 KetiveeAI - KETIVEEAI License
+
+[Unit]
+Description=NXAudio System Daemon
+Documentation=man:nxaudiod(8)
+After=sound.target systemd-udev-settle.service
+Wants=sound.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/nxaudiod
+Restart=on-failure
+RestartSec=5
+Nice=-11
+
+# Real-time scheduling priority
+LimitRTPRIO=95
+LimitMEMLOCK=infinity
+
+# Security
+User=nxaudio
+Group=audio
+SupplementaryGroups=realtime
+
+# Sandboxing
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadWritePaths=/var/log /run
+
+[Install]
+WantedBy=multi-user.target

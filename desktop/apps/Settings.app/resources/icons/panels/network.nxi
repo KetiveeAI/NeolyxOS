@@ -1,0 +1,51 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Network Panel Icon - Green gradient tile with wifi
+
+[nxi]
+version = 1.0
+name = network
+size = 64
+author = KetiveeAI
+category = settings
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+tile_start = #34C759
+tile_end = #28A745
+icon_color = #FFFFFF
+
+[gradients]
+tileGrad = linear 0,0 64,64 tile_start tile_end
+
+[shapes]
+# Rounded square tile background
+rect x=0 y=0 width=64 height=64 rx=12 fill=tileGrad
+
+[paths]
+# WiFi arcs (3 layers)
+arc1 = M32,48 m-20,-8 a24,24 0 0,1 40,0
+arc2 = M32,48 m-14,-6 a18,18 0 0,1 28,0
+arc3 = M32,48 m-8,-4 a12,12 0 0,1 16,0
+# WiFi dot
+dot = M32,46 a3,3 0 1,0 0,-6 a3,3 0 1,0 0,6
+
+[style]
+arc1.stroke = icon_color
+arc1.stroke-width = 4
+arc1.fill = none
+arc2.stroke = icon_color
+arc2.stroke-width = 4
+arc2.fill = none
+arc3.stroke = icon_color
+arc3.stroke-width = 4
+arc3.fill = none
+dot.fill = icon_color
+
+[style.dark]
+tile_start = #30D158
+tile_end = #28A745

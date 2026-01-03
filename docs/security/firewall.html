@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firewall Subsystem - NeolyxOS</title>
+    
+    <script src="../assets/navbar.js"></script>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+    </script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    
+
+    <div class="container">
+        <h1>🛡️ Kernel Firewall</h1>
+        <p>A comprehensive, rule-based packet filtering subsystem integrated directly into the NeolyxOS kernel.</p>
+
+        <span class="badge badge-new">NEW in Phase 16</span>
+        <span class="badge badge-success">Implemented</span>
+
+        <h2>Packet Flow Diagram</h2>
+        <div class="mermaid-container">
+            <pre class="mermaid">
+flowchart TD
+    A[Network Interface] --> B{Direction?}
+    
+    B -- Input --> C{Firewall Enabled?}
+    B -- Output --> D{Firewall Enabled?}
+    
+    C -- No --> E[Allow Packet]
+    D -- No --> E
+    
+    C -- Yes --> F[Check Input Rules]
+    D -- Yes --> G[Check Output Rules]
+    
+    F --> H{Match Rule?}
+    G --> I{Match Rule?}
+    
+    H -- Yes --> J[Check Action]
+    H -- No --> K[Default Input Policy]
+    
+    I -- Yes --> L[Check Action]
+    I -- No --> M[Default Output Policy]
+    
+    J -- Allow --> E
+    J -- Deny --> N[Drop Packet]
+    J -- Log --> O[Log & Continue]
+    
+    K --> E
+    
+    L -- Allow --> E
+    
+    O --> H
+            </pre>
+        </div>
+
+        <h2>Implementation Details</h2>
+        <p>The firewall is implemented in <code>kernel/src/security/firewall.c</code> and provides a robust filtering
+            mechanism for all network traffic.</p>
+
+        <div class="card">
+            <h3>Key Features</h3>
+            <ul>
+                <li><strong>Rule-Based Filtering:</strong> Supports up to 256 active rules.</li>
+                <li><strong>Direction Control:</strong> Separate chains for INPUT, OUTPUT, and FORWARD.</li>
+                <li><strong>Protocol Filtering:</strong> Filter by TCP, UDP, ICMP, or ANY.</li>
+                <li><strong>Granular Control:</strong> Match source/destination IP ranges and port ranges.</li>
+                <li><strong>App-Level Control:</strong> Restrict network access per application process.</li>
+                <li><strong>Telemetry:</strong> Tracks packet match counts and total bytes per rule.</li>
+            </ul>
+        </div>
+
+        <h2>Rule Structure</h2>
+        <pre><code class="language-c">typedef struct {
+    uint32_t id;
+    uint8_t  direction;     /* INPUT/OUTPUT/FORWARD */
+    uint8_t  action;        /* ALLOW/DENY/LOG */
+    uint8_t  protocol;      /* TCP/UDP/ICMP/ANY */
+    
+    uint32_t src_ip;        /* Source IP */
+    uint32_t src_mask;      /* Netmask */
+    uint32_t dst_ip;        /* Destination IP */
+    uint32_t dst_mask;      
+    
+    uint16_t src_port_min;  /* Port ranges */
+    uint16_t src_port_max;
+    uint16_t dst_port_min;
+    uint16_t dst_port_max;
+} firewall_rule_t;</code></pre>
+
+        <h2>API Reference</h2>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Function</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>firewall_init()</code></td>
+                    <td>Initialize the firewall subsystem.</td>
+                </tr>
+                <tr>
+                    <td><code>firewall_enable()</code></td>
+                    <td>Enable packet filtering globally.</td>
+                </tr>
+                <tr>
+                    <td><code>firewall_add_rule(rule)</code></td>
+                    <td>Add a new filtering rule. Returns Rule ID.</td>
+                </tr>
+                <tr>
+                    <td><code>firewall_check_packet(pkt)</code></td>
+                    <td>Core logic called by network stack to verdict a packet.</td>
+                </tr>
+                <tr>
+                    <td><code>firewall_get_stats(stats)</code></td>
+                    <td>Retrieve filtered packet counters and byte counts.</td>
+                </tr>
+                <tr>
+                    <td><code>firewall_register_app(pid, flags)</code></td>
+                    <td>Register app with network permissions (IN/OUT/BLOCKED).</td>
+                </tr>
+                <tr>
+                    <td><code>firewall_app_allow_port(pid, port)</code></td>
+                    <td>Allow specific outgoing port for an app.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>Performance</h2>
+        <p>The firewall is designed for low latency. Rules are linear-scanned array for simplicity (O(N)), which is
+            efficient for typical rule counts (< 100). Future optimizations may include hash maps for connection
+                tracking.</p>
+
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const container = document.querySelector('.mermaid-container');
+
+            // Create lightbox element
+            const lightbox = document.createElement('div');
+            lightbox.className = 'lightbox';
+            document.body.appendChild(lightbox);
+
+            lightbox.addEventListener('click', () => {
+                lightbox.classList.remove('active');
+                lightbox.innerHTML = '';
+            });
+
+            container.addEventListener('click', () => {
+                const svg = container.querySelector('svg');
+                if (svg) {
+                    const clone = svg.cloneNode(true);
+                    // Reset dimensions for scaling
+                    clone.removeAttribute('height');
+                    clone.removeAttribute('width');
+                    clone.removeAttribute('style');
+                    clone.style.width = 'auto';
+                    clone.style.height = 'auto';
+                    clone.style.maxWidth = '90vw';
+                    clone.style.maxHeight = '90vh';
+
+                    lightbox.appendChild(clone);
+                    lightbox.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>

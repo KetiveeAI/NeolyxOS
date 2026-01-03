@@ -1,0 +1,63 @@
+# ReoLab Configuration File
+# Copyright (c) 2024 KetiveeAI and its branches. Licensed under the KetiveeAI License.
+
+[storage]
+base_path = "/var/lib/reolab"
+default_disk_format = "qcow2"
+enable_compression = true
+
+[virtualization]
+default_hypervisor = "qemu"
+enable_kvm = true
+enable_gpu_passthrough = false
+enable_usb_passthrough = false
+
+[network]
+default_bridge = "virbr0"
+enable_nat = true
+dhcp_range = "192.168.122.2,192.168.122.254"
+
+[gui]
+theme = "dark"
+window_size = [1024, 768]
+enable_animations = true
+
+# VM Templates
+[[templates]]
+name = "Windows 11"
+os_type = "windows"
+min_cores = 2
+recommended_cores = 4
+min_memory_mb = 4096
+recommended_memory_mb = 8192
+min_disk_gb = 64
+recommended_disk_gb = 128
+network_enabled = true
+gpu_passthrough = false
+usb_passthrough = false
+
+[[templates]]
+name = "Ubuntu"
+os_type = "ubuntu"
+min_cores = 1
+recommended_cores = 2
+min_memory_mb = 1024
+recommended_memory_mb = 2048
+min_disk_gb = 10
+recommended_disk_gb = 20
+network_enabled = true
+gpu_passthrough = false
+usb_passthrough = false
+
+[[templates]]
+name = "Gaming VM"
+os_type = "gaming"
+min_cores = 4
+recommended_cores = 8
+min_memory_mb = 8192
+recommended_memory_mb = 16384
+min_disk_gb = 100
+recommended_disk_gb = 256
+network_enabled = true
+gpu_passthrough = true
+usb_passthrough = true 

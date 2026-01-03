@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings Drivers API - NeolyxOS</title>
+    
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="nav">
+        <a href="index.html" class="btn">← Driver Index</a>
+        <a href="nxtouch_api.html" class="btn">NXTouch</a>
+        <a href="nxbacklight_api.html" class="btn">NXBacklight</a>
+        <a href="nxdisplay_advanced_api.html" class="btn">Display Advanced</a>
+        <a href="settings_drivers_api.html" class="btn active">Settings API</a>
+    </div>
+
+    <h1>Settings App Driver API</h1>
+    <p><strong>Unified driver access for the Settings application</strong><br>
+        Wraps kernel drivers for safe userspace access</p>
+
+    <h2>Available Modules</h2>
+    <table>
+        <tr>
+            <th>Module</th>
+            <th>Functions</th>
+        </tr>
+        <tr>
+            <td>Display</td>
+            <td>Resolution, brightness, HDR, DDC/CI</td>
+        </tr>
+        <tr>
+            <td>Audio</td>
+            <td>Volume, devices, effects</td>
+        </tr>
+        <tr>
+            <td>Network</td>
+            <td>WiFi, Bluetooth, Ethernet</td>
+        </tr>
+        <tr>
+            <td>Power</td>
+            <td>Battery, performance modes</td>
+        </tr>
+        <tr>
+            <td>Touch</td>
+            <td>Gestures, trackpad, stylus</td>
+        </tr>
+        <tr>
+            <td>Laptop</td>
+            <td>Backlight, keyboard backlight</td>
+        </tr>
+    </table>
+
+    <h2>Display Functions</h2>
+    <pre><code>#include "settings_drivers.h"
+
+// Basic display
+display_get_count();
+display_get_info(0, &amp;info);
+display_set_mode(0, 1920, 1080, 144);
+display_set_brightness(0, 80);
+
+// DDC/CI (external monitors)
+display_ddc_supported(0);
+display_ddc_set_brightness(0, 70);
+display_ddc_set_contrast(0, 50);
+
+// Night Light
+display_night_light_enable(0, 3400);  // Kelvin
+display_night_light_disable(0);
+
+// Gaming Mode
+display_gaming_mode_enable(0);
+display_gaming_mode_disable(0);
+display_register_game("game.exe");</code></pre>
+
+    <h2>Laptop Brightness</h2>
+    <pre><code>// Check if laptop
+if (laptop_is_laptop()) {
+    laptop_set_brightness(80);
+    laptop_set_brightness_smooth(50, 300);  // 300ms
+}
+
+// Auto-brightness
+if (laptop_ambient_available()) {
+    laptop_auto_brightness_enable(true);
+}
+
+// Keyboard backlight
+if (laptop_keyboard_backlight_available()) {
+    laptop_keyboard_backlight_set(50);
+}</code></pre>
+
+    <h2>Touch Gestures</h2>
+    <pre><code>// Check capabilities
+touch_available();
+touch_is_touchscreen();
+touch_is_touchpad();
+
+// Settings
+touch_set_natural_scroll(true);
+touch_set_scroll_speed(5);
+touch_set_palm_rejection(true);
+
+// 3-finger actions (0=up, 1=down, 2=left, 3=right)
+touch_set_three_finger_action(0, NXACTION_VOLUME_UP);
+
+// 4-finger actions
+touch_set_four_finger_action(0, NXACTION_MISSION_CONTROL);
+
+// Edge gestures (0=left, 1=right, 2=top, 3=bottom)
+touch_set_edge_gesture(3, NXACTION_APP_DRAWER);
+
+// App switcher (Android-style)
+touch_enable_app_switcher(true);</code></pre>
+
+    <h2>Audio Functions</h2>
+    <pre><code>audio_get_output_devices(devices, 16);
+audio_set_master_volume(80);
+audio_set_mute(false);
+audio_get_settings(&amp;settings);</code></pre>
+
+    <h2>Network Functions</h2>
+    <pre><code>// WiFi
+settings_wifi_scan(networks, 32);
+settings_wifi_connect("SSID", "password");
+settings_wifi_disconnect();
+
+// Network settings
+network_get_settings(&amp;settings);
+network_set_airplane_mode(true);</code></pre>
+
+    <h2>Power Functions</h2>
+    <pre><code>power_get_info(&amp;info);  // Battery level, charging
+power_set_mode(POWER_MODE_BALANCED);</code></pre>
+
+    <h2>Header Location</h2>
+    <p><code>apps/Settings.app/drivers/settings_drivers.h</code></p>
+
+    <p style="margin-top: 2rem; color: #8b949e;">© 2025 KetiveeAI</p>
+</body>
+
+</html>

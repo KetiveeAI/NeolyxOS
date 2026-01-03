@@ -1,0 +1,148 @@
+# RoleCut Application Manifest
+# NeolyxOS Native Package Archive
+
+[package]
+name = "RoleCut"
+identifier = "com.neolyx.rolecut"
+version = "1.0.0"
+build = 1
+type = "professional"
+
+[display]
+name = "RoleCut"
+tagline = "Edit your story"
+description = "Professional video editor for NeolyxOS - GPU-accelerated, 4K ready, ships with the OS."
+category = "Graphics"
+subcategory = "Video Editing"
+
+[author]
+name = "KetiveeAI"
+identifier = "ketivee"
+website = "https://ketivee.com/neolyxos"
+support = "https://ketivee.com/neolyxos/support"
+
+[executable]
+binary = "bin/rolecut"
+command = "rolecut"
+
+[resources]
+icon = "resources/icons/rolecut.nxi"
+themes = "resources/themes"
+presets = "resources/presets"
+effects = "resources/effects"
+transitions = "resources/transitions"
+luts = "resources/luts"
+
+[library]
+core = "lib/librolecut_core.so"
+render = "lib/librolecut_render.so"
+audio = "lib/librolecut_audio.so"
+codecs = "lib/codecs"
+
+[requirements]
+min_os_version = "1.0.0"
+architecture = ["x86_64", "aarch64"]
+
+[permissions]
+filesystem = ["read", "write"]
+media = ["video", "audio", "camera"]
+gpu = ["encode", "decode", "compute"]
+
+[theme]
+primary_color = "#ff6b6b"
+accent_color = "#ffd93d"
+style = "cinematic"
+
+# ============================================================================
+# Two Editions: Free (ships with OS) and Pro (LyxStore upgrade)
+# ============================================================================
+
+[editions]
+
+[editions.free]
+name = "RoleCut"
+description = "Full video editor - 4K@30fps, basic VFX, NXAudio"
+watermark = false
+max_fps = 30
+max_resolution = 2160
+features = [
+    # Core
+    "timeline", "multitrack", "trim_split",
+    # Effects (After Effects level basics)
+    "color_basic", "blur_basic", "stylize_basic",
+    "transform", "keyframes", "text_titles", "speed_basic",
+    # Transitions
+    "transitions_basic",
+    # Audio (NXAudio enhanced)
+    "audio_mix", "audio_eq", "audio_gain", "waveform"
+]
+
+[editions.pro]
+name = "RoleCut Pro"
+description = "For creators - AI tools, motion tracking, advanced color"
+price = 49.99
+watermark = false
+max_fps = 120
+max_resolution = 4320
+features = [
+    # Everything in Free +
+    "export_4k60", "export_8k",
+    # Advanced Color
+    "color_wheels", "curves", "lut_support", "hsl_secondary",
+    # Advanced VFX
+    "chroma_key", "motion_tracking", "ai_mask", "ai_denoise", "stabilize",
+    # Advanced Audio
+    "audio_spatial", "audio_fx_all", "audio_ducking",
+    # Motion & Camera
+    "speed_ramp", "camera_shake", "transitions_all"
+]
+
+[license]
+type = "Proprietary"
+holder = "KetiveeAI"
+year = 2025
+license_path = "/System/Library/Licenses/com.ketivee.neolyx.rolecut.lic"
+
+# ============================================================================
+# Self-Contained Bundle
+# ============================================================================
+
+[bundle]
+self_contained = true
+portable = true
+cache_dir = "cache"
+plugins_dir = "plugins"
+
+[bundle.included]
+effects = 80
+transitions = 18
+luts = 10
+presets = 8
+
+[bundle.system_plugins]
+audio = "/System/Library/AudioPlugins"
+
+# ============================================================================
+# Render & Audio Backend
+# ============================================================================
+
+[render]
+backend = "nxgfx"
+gpu_acceleration = true
+realtime_preview = true
+
+[audio]
+backend = "nxaudio"
+spatial = "ketivee_oohm"
+waveform_display = true
+
+[export]
+formats = ["mp4", "mov", "avi", "webm", "mkv", "prores"]
+resolutions = ["720p", "1080p", "1440p", "4k", "8k"]
+framerates = [24, 25, 30, 50, 60, 120]
+presets = [
+    "youtube_1080p", "youtube_4k",
+    "instagram_feed", "instagram_story",
+    "tiktok", "twitter",
+    "prores_master", "web_optimized"
+]

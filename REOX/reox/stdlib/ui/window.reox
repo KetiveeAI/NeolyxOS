@@ -1,0 +1,99 @@
+// Reox stdlib: Window Management
+// Provides window creation, manipulation, and lifecycle
+
+/// Window creation options
+struct WindowOptions {
+    title: string,
+    width: int,
+    height: int,
+    resizable: bool,
+    fullscreen: bool,
+    centered: bool
+}
+
+/// Default window options
+fn window_options_default() -> WindowOptions {
+    return WindowOptions {
+        title: "Window",
+        width: 800,
+        height: 600,
+        resizable: true,
+        fullscreen: false,
+        centered: true
+    };
+}
+
+/// Create a new window with default options
+fn window(title: string) -> Window {
+    return window_create(title, 800, 600);
+}
+
+/// Create window with specific size
+fn window_sized(title: string, width: int, height: int) -> Window {
+    return window_create(title, width, height);
+}
+
+/// Create window with full options
+fn window_with_options(options: WindowOptions) -> Window {
+    let win = window_create(options.title, options.width, options.height);
+    window_set_resizable(win, options.resizable);
+    if options.fullscreen {
+        window_fullscreen(win);
+    }
+    if options.centered {
+        window_center(win);
+    }
+    return win;
+}
+
+// Window manipulation
+extern fn window_create(title: string, w: int, h: int) -> Window;
+extern fn window_set_title(win: Window, title: string);
+extern fn window_set_size(win: Window, w: int, h: int);
+extern fn window_set_position(win: Window, x: int, y: int);
+extern fn window_set_resizable(win: Window, resizable: bool);
+
+// Window state
+extern fn window_maximize(win: Window);
+extern fn window_minimize(win: Window);
+extern fn window_restore(win: Window);
+extern fn window_fullscreen(win: Window);
+extern fn window_center(win: Window);
+extern fn window_close(win: Window);
+
+// Window properties
+extern fn window_get_title(win: Window) -> string;
+extern fn window_get_width(win: Window) -> int;
+extern fn window_get_height(win: Window) -> int;
+extern fn window_is_visible(win: Window) -> bool;
+extern fn window_is_focused(win: Window) -> bool;
+extern fn window_is_maximized(win: Window) -> bool;
+
+// Window event handlers
+extern fn window_on_close(win: Window, handler: fn());
+extern fn window_on_resize(win: Window, handler: fn(int, int));
+extern fn window_on_focus(win: Window, handler: fn(bool));
+
+/// Show window and run event loop
+fn window_show(win: Window) {
+    // Internal: triggers window display
+}
+
+/// Application main window builder (SwiftUI-style)
+window MainWindow {
+    title: "My App"
+    size: (800, 600)
+    resizable: true
+    
+    on_load: {
+        print("Window loaded");
+    }
+    
+    on_close: {
+        print("Window closing");
+    }
+    
+    view {
+        // Content goes here
+    }
+}

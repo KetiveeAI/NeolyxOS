@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS - App Development Guide</title>
+    
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    
+
+    <div class="container">
+        <h1>📦 NeolyxOS App Development Guide</h1>
+        <p style="color: var(--text-secondary);">Simple structure for developers to create apps for NeolyxOS.</p>
+
+        <h2>App Structure (Not a Bundle)</h2>
+        <p>NeolyxOS apps are simple directories with a standard layout. No special packaging required.</p>
+
+        <div class="card">
+            <h3>Minimal App Structure</h3>
+            <div class="tree">
+                <span class="folder">MyApp/</span>
+                ├── <span class="file">MyApp</span> <i style="color:var(--text-secondary);">— Executable binary</i>
+                ├── <span class="file">Info.plist</span> <i style="color:var(--text-secondary);">— App metadata
+                    (required)</i>
+                ├── <span class="folder">Resources/</span>
+                │ ├── <span class="file">icon.png</span> <i style="color:var(--text-secondary);">— App icon
+                    (256x256)</i>
+                │ ├── <span class="file">en.lproj/</span> <i style="color:var(--text-secondary);">— English strings</i>
+                │ └── <span class="file">assets/</span> <i style="color:var(--text-secondary);">— Images, sounds,
+                    etc.</i>
+                └── <span class="folder">lib/</span> <i style="color:var(--text-secondary);">— Bundled libraries
+                    (optional)</i>
+            </div>
+        </div>
+
+        <h2>Info.plist (Required)</h2>
+        <p>Simple metadata file describing your app.</p>
+
+        <div class="card">
+            <pre><code>{
+    "NXAppName": "My App",
+    "NXAppId": "com.developer.myapp",
+    "NXAppVersion": "1.0.0",
+    "NXExecutable": "MyApp",
+    "NXIcon": "Resources/icon.png",
+    
+    "NXCapabilities": [
+        "filesystem.user",
+        "network.client"
+    ],
+    
+    "NXMinOS": "1.0"
+}</code></pre>
+        </div>
+
+        <h2>Where App Data is Stored</h2>
+        <p>Apps should store data in standard locations, not in the app directory.</p>
+
+        <div class="card">
+            <table>
+                <tr>
+                    <th>Data Type</th>
+                    <th>Location</th>
+                    <th>Notes</th>
+                </tr>
+                <tr>
+                    <td>Settings/Preferences</td>
+                    <td><code>~/Library/Preferences/com.developer.myapp.plist</code></td>
+                    <td>JSON or plist format</td>
+                </tr>
+                <tr>
+                    <td>App Data (Databases, files)</td>
+                    <td><code>~/Library/Application Support/MyApp/</code></td>
+                    <td>User-specific data</td>
+                </tr>
+                <tr>
+                    <td>Cache (Temporary)</td>
+                    <td><code>~/Library/Caches/com.developer.myapp/</code></td>
+                    <td>Can be deleted anytime</td>
+                </tr>
+                <tr>
+                    <td>Logs</td>
+                    <td><code>~/Library/Logs/MyApp/</code></td>
+                    <td>Debug output</td>
+                </tr>
+                <tr>
+                    <td>App State (Resume)</td>
+                    <td><code>~/Library/Saved Application State/com.developer.myapp/</code></td>
+                    <td>Window positions, state</td>
+                </tr>
+                <tr>
+                    <td>Sandboxed Data</td>
+                    <td><code>~/Library/Containers/com.developer.myapp/</code></td>
+                    <td>For sandboxed apps</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>System Paths</h2>
+        <p>Where to install and find system resources.</p>
+
+        <div class="card">
+            <table>
+                <tr>
+                    <th>Purpose</th>
+                    <th>Path</th>
+                </tr>
+                <tr>
+                    <td>System Apps</td>
+                    <td><code>/Applications/</code></td>
+                </tr>
+                <tr>
+                    <td>User Apps</td>
+                    <td><code>~/Applications/</code></td>
+                </tr>
+                <tr>
+                    <td>System PATH Binaries</td>
+                    <td><code>/Library/Bin/</code></td>
+                </tr>
+                <tr>
+                    <td>User PATH Binaries</td>
+                    <td><code>~/.local/bin/</code></td>
+                </tr>
+                <tr>
+                    <td>Frameworks</td>
+                    <td><code>/Library/Frameworks/</code></td>
+                </tr>
+                <tr>
+                    <td>Python Runtime</td>
+                    <td><code>/Library/Runtimes/Python/</code></td>
+                </tr>
+                <tr>
+                    <td>VST Plugins</td>
+                    <td><code>/Library/Audio/Plugins/VST/</code></td>
+                </tr>
+                <tr>
+                    <td>Public Shared Data</td>
+                    <td><code>/Public/</code></td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>Capabilities</h2>
+        <p>Apps declare what they need access to.</p>
+
+        <div class="card">
+            <table>
+                <tr>
+                    <th>Capability</th>
+                    <th>Description</th>
+                </tr>
+                <tr>
+                    <td><code>filesystem.user</code></td>
+                    <td>Access user's Documents, Pictures, etc.</td>
+                </tr>
+                <tr>
+                    <td><code>filesystem.full</code></td>
+                    <td>Full filesystem access (requires admin)</td>
+                </tr>
+                <tr>
+                    <td><code>network.client</code></td>
+                    <td>Make outbound network connections</td>
+                </tr>
+                <tr>
+                    <td><code>network.server</code></td>
+                    <td>Listen on ports</td>
+                </tr>
+                <tr>
+                    <td><code>audio.playback</code></td>
+                    <td>Play audio</td>
+                </tr>
+                <tr>
+                    <td><code>audio.record</code></td>
+                    <td>Record from microphone</td>
+                </tr>
+                <tr>
+                    <td><code>gpu.render</code></td>
+                    <td>Use GPU for rendering</td>
+                </tr>
+                <tr>
+                    <td><code>camera</code></td>
+                    <td>Access camera</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>Quick Start: Hello World App</h2>
+        <div class="card">
+            <h3>1. Create Directory</h3>
+            <pre><code>make dir ~/Applications/HelloWorld</code></pre>
+
+            <h3>2. Create Info.plist</h3>
+            <pre><code>{
+    "NXAppName": "Hello World",
+    "NXAppId": "com.example.helloworld",
+    "NXAppVersion": "1.0.0",
+    "NXExecutable": "hello",
+    "NXCapabilities": []
+}</code></pre>
+
+            <h3>3. Compile Your App</h3>
+            <pre><code># C example
+nxcc -o ~/Applications/HelloWorld/hello hello.c</code></pre>
+
+            <h3>4. Run</h3>
+            <pre><code>~/Applications/HelloWorld/hello</code></pre>
+        </div>
+
+        <h2>Path Constants (For C Developers)</h2>
+        <div class="card">
+            <pre><code>#include &lt;fs/fs_init.h&gt;
+
+// System paths
+FS_PATH_APPLICATIONS  // "/Applications"
+FS_PATH_LIBRARY       // "/Library"
+FS_PATH_BIN           // "/Library/Bin"
+FS_PATH_FRAMEWORKS    // "/Library/Frameworks"
+FS_PATH_PYTHON        // "/Library/Runtimes/Python"
+FS_PATH_VST           // "/Library/Audio/Plugins/VST"
+FS_PATH_PUBLIC        // "/Public"
+
+// Get user directories
+fs_get_user_dir(username, FS_DIR_DOCUMENTS, path, sizeof(path));
+fs_get_user_dir(username, FS_DIR_DESKTOP, path, sizeof(path));</code></pre>
+        </div>
+
+        <footer
+            style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-secondary); text-align: center;">
+            NeolyxOS © 2025 KetiveeAI | App Development Guide
+        </footer>
+    </div>
+</body>
+
+</html>

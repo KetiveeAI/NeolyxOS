@@ -1,0 +1,67 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Settings App Icon - Gear/Cog
+
+[nxi]
+version = 1.0
+name = settings
+size = 64
+author = KetiveeAI
+category = system
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+gear_outer = #6C6C70
+gear_inner = #3A3A3C
+gear_center = #AEAEB2
+gear_stroke = #48484A
+
+[gradients]
+gearGrad = radial 32,32 32 gear_outer gear_inner
+
+[shapes]
+# Outer gear body
+circle center=32,32 radius=24 fill=gear_outer stroke=gear_stroke stroke-width=1
+
+# Inner circle (gear center)
+circle center=32,32 radius=12 fill=gear_inner
+
+# Center dot
+circle center=32,32 radius=4 fill=gear_center
+
+[paths]
+# Gear teeth (8 teeth around the edge)
+tooth1 = M30,4 L34,4 L34,12 L30,12 Z
+tooth2 = M30,52 L34,52 L34,60 L30,60 Z
+tooth3 = M4,30 L12,30 L12,34 L4,34 Z
+tooth4 = M52,30 L60,30 L60,34 L52,34 Z
+tooth5 = M11,11 L17,17 L14,20 L8,14 Z
+tooth6 = M47,47 L53,53 L50,56 L44,50 Z
+tooth7 = M47,17 L53,11 L56,14 L50,20 Z
+tooth8 = M11,53 L17,47 L20,50 L14,56 Z
+
+[style]
+tooth1.fill = gear_outer
+tooth2.fill = gear_outer
+tooth3.fill = gear_outer
+tooth4.fill = gear_outer
+tooth5.fill = gear_outer
+tooth6.fill = gear_outer
+tooth7.fill = gear_outer
+tooth8.fill = gear_outer
+
+[style.dark]
+gear_outer = #8E8E93
+gear_inner = #48484A
+gear_center = #C7C7CC
+gear_stroke = #636366
+
+[style.light]
+gear_outer = #8E8E93
+gear_inner = #C7C7CC
+gear_center = #48484A
+gear_stroke = #AEAEB2

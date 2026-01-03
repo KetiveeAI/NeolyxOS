@@ -1,0 +1,481 @@
+# Neolyx OS Extensions and System Configuration
+# Copyright (c) 2024 KetiveeAI and its branches. Licensed under the KetiveeAI License.
+
+# =============================================================================
+# CORE SYSTEM EXTENSIONS
+# =============================================================================
+
+core_extensions:
+  # Kernel and Boot Extensions
+  kernel:
+    nlk: "Neolyx Kernel Binary"
+    nlb: "Neolyx Bootloader"
+    nld: "Neolyx Driver"
+    nlc: "Neolyx Configuration"
+  
+  # System Executables
+  executables:
+    nxt: "Neolyx Terminal Executable"
+    npa: "Neolyx Package Application"
+    nsm: "Neolyx System Manager"
+    nvm: "Neolyx Virtual Machine"
+    nfs: "Neolyx File System"
+    nnt: "Neolyx Network Tool"
+    nsc: "Neolyx Security Checker"
+    nlg: "Neolyx Log Manager"
+
+# =============================================================================
+# APPLICATION EXTENSIONS
+# =============================================================================
+
+application_extensions:
+  # Development Tools
+  development:
+    nrs: "Neolyx Rust Source"
+    ncc: "Neolyx C/C++ Source"
+    npy: "Neolyx Python Script"
+    njs: "Neolyx JavaScript"
+    nts: "Neolyx TypeScript"
+    nsh: "Neolyx Shell Script"
+    nmk: "Neolyx Makefile"
+    ncm: "Neolyx CMake"
+    
+  # Documentation
+  documentation:
+    nmd: "Neolyx Markdown"
+    nht: "Neolyx HTML"
+    ncs: "Neolyx CSS"
+    njs: "Neolyx JSON"
+    nml: "Neolyx YAML"
+    ntx: "Neolyx Text"
+    nlg: "Neolyx Log"
+    nrd: "Neolyx README"
+    
+  # Configuration Files
+  configuration:
+    ncf: "Neolyx Config"
+    ncn: "Neolyx Configuration"
+    nst: "Neolyx Settings"
+    npr: "Neolyx Profile"
+    nenv: "Neolyx Environment"
+    nini: "Neolyx INI"
+    ntoml: "Neolyx TOML"
+    njson: "Neolyx JSON Config"
+
+# =============================================================================
+# MEDIA AND GRAPHICS EXTENSIONS
+# =============================================================================
+
+media_extensions:
+  # Custom Icon Format
+  icons:
+    nix: "Neolyx Icon Format"
+    nix16: "Neolyx Icon 16x16"
+    nix32: "Neolyx Icon 32x32"
+    nix64: "Neolyx Icon 64x64"
+    nix128: "Neolyx Icon 128x128"
+    nix256: "Neolyx Icon 256x256"
+    
+  # Graphics and Images
+  graphics:
+    nvg: "Neolyx Vector Graphics"
+    nbm: "Neolyx Bitmap"
+    nrg: "Neolyx Raster Graphics"
+    n3d: "Neolyx 3D Model"
+    nan: "Neolyx Animation"
+    nfx: "Neolyx Effects"
+    
+  # Audio and Video
+  media:
+    naud: "Neolyx Audio"
+    nvid: "Neolyx Video"
+    nsub: "Neolyx Subtitle"
+    npl: "Neolyx Playlist"
+    nst: "Neolyx Stream"
+
+# =============================================================================
+# VIRTUALIZATION EXTENSIONS
+# =============================================================================
+
+virtualization_extensions:
+  # Virtual Machine Formats
+  vm:
+    nvm: "Neolyx Virtual Machine"
+    nvd: "Neolyx Virtual Disk"
+    nvs: "Neolyx Virtual Snapshot"
+    nvc: "Neolyx Virtual Config"
+    nvt: "Neolyx Virtual Template"
+    
+  # Container Formats
+  containers:
+    nct: "Neolyx Container"
+    nci: "Neolyx Container Image"
+    ncr: "Neolyx Container Registry"
+    ncp: "Neolyx Container Package"
+
+# =============================================================================
+# NETWORK AND SECURITY EXTENSIONS
+# =============================================================================
+
+network_extensions:
+  # Network Configuration
+  network:
+    nnet: "Neolyx Network Config"
+    nfw: "Neolyx Firewall"
+    nvpn: "Neolyx VPN"
+    nssl: "Neolyx SSL Certificate"
+    nkey: "Neolyx Key"
+    ncert: "Neolyx Certificate"
+    
+  # Security
+  security:
+    nsec: "Neolyx Security"
+    nenc: "Neolyx Encrypted"
+    nhash: "Neolyx Hash"
+    nsig: "Neolyx Signature"
+    nauth: "Neolyx Authentication"
+
+# =============================================================================
+# ARCHIVE AND COMPRESSION EXTENSIONS
+# =============================================================================
+
+archive_extensions:
+  # Archives
+  archives:
+    nar: "Neolyx Archive"
+    nzip: "Neolyx ZIP"
+    ntar: "Neolyx TAR"
+    ngz: "Neolyx GZIP"
+    nbz2: "Neolyx BZIP2"
+    n7z: "Neolyx 7-Zip"
+    
+  # Backups
+  backup:
+    nbk: "Neolyx Backup"
+    nrs: "Neolyx Restore"
+    nsn: "Neolyx Snapshot"
+    ncl: "Neolyx Clone"
+
+# =============================================================================
+# DATABASE AND STORAGE EXTENSIONS
+# =============================================================================
+
+database_extensions:
+  # Databases
+  databases:
+    ndb: "Neolyx Database"
+    nsql: "Neolyx SQL"
+    nnosql: "Neolyx NoSQL"
+    nidx: "Neolyx Index"
+    nblob: "Neolyx Blob"
+    
+  # Storage
+  storage:
+    nst: "Neolyx Storage"
+    nvol: "Neolyx Volume"
+    npart: "Neolyx Partition"
+    nfs: "Neolyx File System"
+
+# =============================================================================
+# MIME TYPE MAPPINGS
+# =============================================================================
+
+mime_types:
+  # Core System
+  application/x-neolyx-kernel: ["nlk"]
+  application/x-neolyx-bootloader: ["nlb"]
+  application/x-neolyx-driver: ["nld"]
+  application/x-neolyx-config: ["nlc"]
+  
+  # Executables
+  application/x-neolyx-terminal: ["nxt"]
+  application/x-neolyx-package: ["npa"]
+  application/x-neolyx-system-manager: ["nsm"]
+  application/x-neolyx-virtual-machine: ["nvm"]
+  
+  # Development
+  text/x-neolyx-rust: ["nrs"]
+  text/x-neolyx-c: ["ncc"]
+  text/x-neolyx-python: ["npy"]
+  text/x-neolyx-javascript: ["njs"]
+  text/x-neolyx-typescript: ["nts"]
+  text/x-neolyx-shell: ["nsh"]
+  
+  # Documentation
+  text/x-neolyx-markdown: ["nmd"]
+  text/x-neolyx-html: ["nht"]
+  text/x-neolyx-css: ["ncs"]
+  application/x-neolyx-json: ["njs"]
+  text/x-neolyx-yaml: ["nml"]
+  text/x-neolyx-plain: ["ntx"]
+  
+  # Icons and Graphics
+  image/x-neolyx-icon: ["nix", "nix16", "nix32", "nix64", "nix128", "nix256"]
+  image/x-neolyx-vector: ["nvg"]
+  image/x-neolyx-bitmap: ["nbm"]
+  image/x-neolyx-raster: ["nrg"]
+  model/x-neolyx-3d: ["n3d"]
+  
+  # Virtualization
+  application/x-neolyx-vm: ["nvm"]
+  application/x-neolyx-vdisk: ["nvd"]
+  application/x-neolyx-vsnapshot: ["nvs"]
+  application/x-neolyx-container: ["nct"]
+  
+  # Archives
+  application/x-neolyx-archive: ["nar"]
+  application/x-neolyx-zip: ["nzip"]
+  application/x-neolyx-tar: ["ntar"]
+  application/x-neolyx-gzip: ["ngz"]
+  application/x-neolyx-bzip2: ["nbz2"]
+  application/x-neolyx-7z: ["n7z"]
+  
+  # Security
+  application/x-neolyx-encrypted: ["nenc"]
+  application/x-neolyx-certificate: ["ncert"]
+  application/x-neolyx-key: ["nkey"]
+  application/x-neolyx-signature: ["nsig"]
+
+# =============================================================================
+# SYSTEM COMMANDS AND TOOLS
+# =============================================================================
+
+system_commands:
+  # System Administration
+  nsm:
+    description: "Neolyx System Manager"
+    usage: "nsm <command> [options]"
+    commands:
+      user: "User management (add, remove, list, modify)"
+      service: "Service management (start, stop, restart, status)"
+      system: "System operations (info, update, backup, restore)"
+      network: "Network management (config, status, test)"
+      security: "Security operations (scan, update, audit)"
+      logs: "Log management (view, clear, export)"
+  
+  # Network Tools
+  ip:
+    description: "IP Address Management"
+    usage: "ip <command> [options]"
+    commands:
+      list: "Show all IP addresses"
+      add: "Add IP address to interface"
+      remove: "Remove IP address from interface"
+      show: "Show interface details"
+      ping: "Ping host"
+  
+  # Text Editor
+  nano:
+    description: "Neolyx Text Editor"
+    usage: "nano [options] [file]"
+    options:
+      -w: "Don't wrap long lines"
+      -c: "Show cursor position"
+      -i: "Use auto-indentation"
+      -k: "Cut from cursor to end of line"
+      -m: "Enable mouse support"
+  
+  # Terminal Extensions
+  nxt:
+    description: "Neolyx Terminal Extensions"
+    usage: "nxt <extension> [options]"
+    extensions:
+      theme: "Theme management (list, set, reset)"
+      font: "Font management (list, set, size)"
+      transparency: "Transparency control (on, off, level)"
+      tabs: "Tab management (new, close, switch)"
+      history: "Command history (show, clear, search)"
+      alias: "Command aliases (list, add, remove)"
+      plugin: "Plugin management (list, load, unload)"
+  
+  # Package Manager
+  npa:
+    description: "Neolyx Package Application"
+    usage: "npa <command> [options]"
+    commands:
+      install: "Install application package"
+      remove: "Remove application"
+      list: "List installed applications"
+      search: "Search for applications"
+      update: "Update application"
+      info: "Show package information"
+      verify: "Verify package integrity"
+
+# =============================================================================
+# FILE SYSTEM STRUCTURE
+# =============================================================================
+
+file_system:
+  # System Directories
+  system_dirs:
+    /system:
+      /bin: "System executables (.nxt files)"
+      /lib: "System libraries"
+      /drivers: "System drivers (.nld files)"
+      /config: "System configuration (.nlc files)"
+      /boot: "Boot files (.nlb files)"
+      /kernel: "Kernel files (.nlk files)"
+    
+    /apps:
+      /bin: "Application executables"
+      /packages: "Application packages (.npa files)"
+      /data: "Application data"
+      /config: "Application configuration"
+      /icons: "Application icons (.nix files)"
+    
+    /home:
+      /user: "User home directory"
+      /documents: "User documents"
+      /downloads: "User downloads"
+      /pictures: "User pictures"
+      /music: "User music"
+      /videos: "User videos"
+    
+    /var:
+      /log: "System logs"
+      /cache: "System cache"
+      /tmp: "Temporary files"
+      /backup: "System backups"
+    
+    /etc:
+      /config: "System configuration"
+      /network: "Network configuration"
+      /security: "Security configuration"
+      /users: "User configuration"
+
+# =============================================================================
+# DEVELOPMENT GUIDELINES
+# =============================================================================
+
+development_guidelines:
+  # Naming Conventions
+  naming:
+    extensions: "Use lowercase letters, max 4 characters"
+    files: "Use descriptive names with appropriate extensions"
+    directories: "Use lowercase with hyphens for spaces"
+    
+  # File Organization
+  organization:
+    source_code: "Place in /apps/src/[project]/"
+    executables: "Place in /apps/bin/ or /system/bin/"
+    packages: "Place in /apps/packages/"
+    configuration: "Place in /etc/config/ or /apps/config/"
+    icons: "Place in /apps/icons/ or /system/icons/"
+    
+  # Version Control
+  version_control:
+    source_files: "Track all source files (.nrs, .ncc, .npy, etc.)"
+    configuration: "Track configuration files (.nlc, .ncf)"
+    documentation: "Track documentation files (.nmd, .nrd)"
+    ignore: "Ignore build artifacts, logs, and temporary files"
+
+# =============================================================================
+# SECURITY CONSIDERATIONS
+# =============================================================================
+
+security:
+  # File Permissions
+  permissions:
+    executables: "755 (rwxr-xr-x)"
+    configuration: "644 (rw-r--r--)"
+    sensitive_config: "600 (rw-------)"
+    system_files: "644 (rw-r--r--)"
+    
+  # Digital Signatures
+  signatures:
+    system_executables: "Must be signed by Neolyx OS"
+    third_party_apps: "Must be signed by trusted developers"
+    packages: "Must be verified before installation"
+    
+  # Encryption
+  encryption:
+    sensitive_data: "Use .nenc extension"
+    keys: "Store in /etc/security/keys/"
+    certificates: "Store in /etc/security/certs/"
+
+# =============================================================================
+# BACKUP AND RECOVERY
+# =============================================================================
+
+backup_recovery:
+  # Backup Extensions
+  backup_files:
+    nbk: "Full system backup"
+    nrs: "System restore point"
+    nsn: "System snapshot"
+    ncl: "System clone"
+    
+  # Backup Locations
+  backup_locations:
+    local: "/var/backup/"
+    remote: "/mnt/backup/"
+    cloud: "Configured cloud storage"
+    
+  # Recovery Procedures
+  recovery:
+    system_restore: "Use nsm system restore"
+    file_recovery: "Use nfs recovery tools"
+    data_recovery: "Use specialized recovery tools"
+
+# =============================================================================
+# NETWORK PROTOCOLS
+# =============================================================================
+
+network_protocols:
+  # Custom Protocols
+  neolyx_protocols:
+    ntp: "Neolyx Transfer Protocol"
+    ncp: "Neolyx Control Protocol"
+    nsp: "Neolyx Sync Protocol"
+    nmp: "Neolyx Management Protocol"
+    
+  # Standard Protocols
+  standard_protocols:
+    http: "Hypertext Transfer Protocol"
+    https: "Secure HTTP"
+    ftp: "File Transfer Protocol"
+    sftp: "Secure FTP"
+    ssh: "Secure Shell"
+
+# =============================================================================
+# VERSION INFORMATION
+# =============================================================================
+
+version_info:
+  neolyx_os_version: "1.0.0"
+  kernel_version: "1.0.0"
+  api_version: "1.0"
+  extension_format_version: "1.0"
+  last_updated: "2024-01-01"
+  maintainer: "KetiveeAI"
+  license: "KetiveeAI License"
+
+# =============================================================================
+# QUICK REFERENCE
+# =============================================================================
+
+quick_reference:
+  # Most Common Extensions
+  common_extensions:
+    - "nxt - Terminal executable"
+    - "npa - Application package"
+    - "nix - Icon format"
+    - "nlc - Configuration file"
+    - "nmd - Documentation"
+    - "nrs - Rust source code"
+    
+  # Most Common Commands
+  common_commands:
+    - "nsm - System administration"
+    - "ip - Network management"
+    - "nano - Text editing"
+    - "nxt - Terminal customization"
+    - "npa - Package management"
+    
+  # File Locations
+  important_locations:
+    - "/system/bin/ - System executables"
+    - "/apps/packages/ - Application packages"
+    - "/etc/config/ - System configuration"
+    - "/apps/icons/ - Application icons"
+    - "/var/log/ - System logs" 

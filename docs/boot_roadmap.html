@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS Boot Roadmap</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --text-primary: #f0f6fc;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --border: #30363d;
+            --success: #238636;
+            --warning: #d29922;
+            --error: #f85149;
+            --purple: #a371f7;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.7;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            padding: 2rem 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            color: var(--accent);
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        h2 {
+            color: var(--accent);
+            margin: 2rem 0 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        h3 {
+            color: var(--purple);
+            margin: 1.5rem 0 0.8rem;
+        }
+
+        .status-bar {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 1rem 0;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.4rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .badge-lines {
+            background: var(--accent);
+            color: white;
+        }
+
+        .badge-modules {
+            background: var(--success);
+            color: white;
+        }
+
+        .badge-goal {
+            background: var(--purple);
+            color: white;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--border);
+            padding: 0.6rem;
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        tr:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .priority-p0 {
+            color: var(--error);
+            font-weight: bold;
+        }
+
+        .priority-p1 {
+            color: var(--warning);
+        }
+
+        code {
+            background: var(--bg-tertiary);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+        }
+
+        pre {
+            background: var(--bg-secondary);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            border: 1px solid var(--border);
+            margin: 1rem 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+
+        .phase-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .phase-card h3 {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 0;
+        }
+
+        .phase-critical {
+            border-left: 4px solid var(--error);
+        }
+
+        .phase-milestone {
+            border-left: 4px solid var(--success);
+        }
+
+        .deliverable {
+            background: var(--bg-tertiary);
+            padding: 0.8rem;
+            border-radius: 6px;
+            margin-top: 1rem;
+            border-left: 3px solid var(--success);
+        }
+
+        .checklist {
+            list-style: none;
+        }
+
+        .checklist li {
+            padding: 0.3rem 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .checklist li::before {
+            content: "☐";
+            color: var(--text-secondary);
+        }
+
+        .checklist li.done::before {
+            content: "✓";
+            color: var(--success);
+        }
+
+        .week-section {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+
+        .week-section h4 {
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 2rem 0;
+        }
+
+        .tip-box {
+            background: linear-gradient(135deg, #1a3a1a 0%, #0d1117 100%);
+            border: 1px solid var(--success);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+
+        .warning-box {
+            background: linear-gradient(135deg, #3a2a1a 0%, #0d1117 100%);
+            border: 1px solid var(--warning);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+
+        .success-terminal {
+            background: #000;
+            color: #00ff00;
+            font-family: 'Fira Code', monospace;
+            padding: 1.5rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin: 1rem 0;
+            border: 2px solid #00ff00;
+        }
+
+        a {
+            color: var(--accent);
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+            text-decoration: none;
+        }
+
+        .back-link:hover {
+            color: var(--accent);
+        }
+
+        .priority-matrix {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.8rem;
+            background: var(--bg-secondary);
+            padding: 1rem;
+            border-radius: 8px;
+            white-space: pre;
+            overflow-x: auto;
+        }
+    </style>
+    <script src="assets/navbar.js"></script>
+    <link rel="stylesheet" href="assets/navbar.css">
+    <script src="assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <a href="index.html" class="back-link">← Back to Documentation</a>
+
+        <header>
+            <h1>🚀 NeoLyx OS - Boot to GUI Roadmap</h1>
+            <p style="color: var(--text-secondary);">Mission: Get NeoLyx Booting with GUI and Terminal</p>
+            <div class="status-bar">
+                <span class="status-badge badge-lines">📊 90,000 Lines</span>
+                <span class="status-badge badge-modules">✓ 42 Complete Modules</span>
+                <span class="status-badge badge-goal">🎯 Boot → Kernel → GUI → Terminal</span>
+            </div>
+        </header>
+
+        <h2>🎯 Critical Path (Must Complete)</h2>
+
+        <!-- Phase 1 -->
+        <div class="phase-card phase-critical">
+            <h3>⚡ Phase 1: Boot Integration (Week 1)</h3>
+            <p><strong>Status:</strong> Boot layer exists, kernel exists - <em>CONNECT THEM</em></p>
+            <table>
+                <tr>
+                    <th>Task</th>
+                    <th>File</th>
+                    <th>Priority</th>
+                    <th>Time</th>
+                </tr>
+                <tr>
+                    <td>Verify UEFI bootloader loads kernel</td>
+                    <td><code>boot/main.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>2h</td>
+                </tr>
+                <tr>
+                    <td>Fix boot info handoff</td>
+                    <td><code>kernel/src/core/boot.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>3h</td>
+                </tr>
+                <tr>
+                    <td>Initialize framebuffer properly</td>
+                    <td><code>kernel/src/video/framebuffer.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>2h</td>
+                </tr>
+                <tr>
+                    <td>Enable serial debug output</td>
+                    <td><code>kernel/src/drivers/serial.c</code></td>
+                    <td class="priority-p1">🟡 P1</td>
+                    <td>1h</td>
+                </tr>
+                <tr>
+                    <td>Test boot on QEMU</td>
+                    <td><code>test_boot.sh</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>1h</td>
+                </tr>
+            </table>
+            <div class="deliverable"><strong>Deliverable:</strong> Kernel boots, shows splash screen, serial output
+                works</div>
+        </div>
+
+        <!-- Phase 2 -->
+        <div class="phase-card phase-critical">
+            <h3>⚡ Phase 2: Core Kernel Initialization (Week 1-2)</h3>
+            <table>
+                <tr>
+                    <th>Task</th>
+                    <th>File</th>
+                    <th>Priority</th>
+                    <th>Time</th>
+                </tr>
+                <tr>
+                    <td>Initialize GDT/IDT</td>
+                    <td><code>gdt.c</code>, <code>idt.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>2h</td>
+                </tr>
+                <tr>
+                    <td>Set up interrupt handlers</td>
+                    <td><code>isr_handler.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>3h</td>
+                </tr>
+                <tr>
+                    <td>Initialize PMM</td>
+                    <td><code>pmm.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>2h</td>
+                </tr>
+                <tr>
+                    <td>Initialize VMM</td>
+                    <td><code>vmm.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>3h</td>
+                </tr>
+                <tr>
+                    <td>Set up kernel heap</td>
+                    <td><code>kheap.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>2h</td>
+                </tr>
+                <tr>
+                    <td>Initialize PIT timer</td>
+                    <td><code>timer.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>1h</td>
+                </tr>
+            </table>
+            <div class="deliverable"><strong>Deliverable:</strong> Kernel fully initialized, memory working, interrupts
+                enabled</div>
+        </div>
+
+        <!-- Phase 3 -->
+        <div class="phase-card phase-critical">
+            <h3>⚡ Phase 3: Essential Drivers (Week 2)</h3>
+            <table>
+                <tr>
+                    <th>Task</th>
+                    <th>File</th>
+                    <th>Priority</th>
+                    <th>Time</th>
+                </tr>
+                <tr>
+                    <td>Load keyboard driver</td>
+                    <td><code>keyboard.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>2h</td>
+                </tr>
+                <tr>
+                    <td>Load mouse driver</td>
+                    <td><code>mouse.c</code></td>
+                    <td class="priority-p1">🟡 P1</td>
+                    <td>2h</td>
+                </tr>
+                <tr>
+                    <td>Load graphics driver</td>
+                    <td><code>nxgfx_kdrv.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>4h</td>
+                </tr>
+                <tr>
+                    <td>Load storage driver</td>
+                    <td><code>nxstor_kdrv.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>3h</td>
+                </tr>
+                <tr>
+                    <td>Test driver loading</td>
+                    <td><code>sys kernel load</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>2h</td>
+                </tr>
+            </table>
+            <div class="deliverable"><strong>Deliverable:</strong> Keyboard input works, graphics driver loaded, storage
+                accessible</div>
+        </div>
+
+        <!-- Phase 4-6 -->
+        <div class="phase-card phase-critical">
+            <h3>⚡ Phase 4: Filesystem Mount (Week 2-3)</h3>
+            <table>
+                <tr>
+                    <th>Task</th>
+                    <th>File</th>
+                    <th>Priority</th>
+                    <th>Time</th>
+                </tr>
+                <tr>
+                    <td>Initialize VFS</td>
+                    <td><code>kernel/src/fs/vfs/</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>3h</td>
+                </tr>
+                <tr>
+                    <td>Mount root filesystem (NXFS)</td>
+                    <td><code>kernel/src/fs/nxfs/</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>4h</td>
+                </tr>
+                <tr>
+                    <td>Verify filesystem structure</td>
+                    <td><code>/system</code>, <code>/apps</code>, <code>/users</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>2h</td>
+                </tr>
+                <tr>
+                    <td>Test file operations</td>
+                    <td><code>open</code>, <code>read</code>, <code>write</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>3h</td>
+                </tr>
+            </table>
+            <div class="deliverable"><strong>Deliverable:</strong> Root filesystem mounted, files can be read/written
+            </div>
+        </div>
+
+        <div class="phase-card phase-critical">
+            <h3>⚡ Phase 5: Process Management (Week 3)</h3>
+            <table>
+                <tr>
+                    <th>Task</th>
+                    <th>File</th>
+                    <th>Priority</th>
+                    <th>Time</th>
+                </tr>
+                <tr>
+                    <td>Enable process creation</td>
+                    <td><code>process.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>4h</td>
+                </tr>
+                <tr>
+                    <td>Implement scheduler</td>
+                    <td><code>process.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>4h</td>
+                </tr>
+                <tr>
+                    <td>Enable system calls</td>
+                    <td><code>syscall.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>3h</td>
+                </tr>
+                <tr>
+                    <td>Load ELF executables</td>
+                    <td><code>elf.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>3h</td>
+                </tr>
+                <tr>
+                    <td>Test process launching</td>
+                    <td><code>app_launcher.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>2h</td>
+                </tr>
+            </table>
+            <div class="deliverable"><strong>Deliverable:</strong> Can launch userspace processes, scheduler works</div>
+        </div>
+
+        <div class="phase-card phase-critical">
+            <h3>⚡ Phase 6: Init System (Week 3-4)</h3>
+            <table>
+                <tr>
+                    <th>Task</th>
+                    <th>File</th>
+                    <th>Priority</th>
+                    <th>Time</th>
+                </tr>
+                <tr>
+                    <td>Launch neo-init (PID 1)</td>
+                    <td><code>userspace/init/neo_init.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>3h</td>
+                </tr>
+                <tr>
+                    <td>Start service manager</td>
+                    <td><code>services/service_manager.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>2h</td>
+                </tr>
+                <tr>
+                    <td>Load essential services</td>
+                    <td>Audio, Network, Display</td>
+                    <td class="priority-p1">🟡 P1</td>
+                    <td>4h</td>
+                </tr>
+            </table>
+            <div class="deliverable"><strong>Deliverable:</strong> Init system works, services can start</div>
+        </div>
+
+        <!-- Phase 7 - Milestone -->
+        <div class="phase-card phase-milestone">
+            <h3>🎯 Phase 7: Terminal (Week 4) - MILESTONE</h3>
+            <table>
+                <tr>
+                    <th>Task</th>
+                    <th>Component</th>
+                    <th>Priority</th>
+                    <th>Time</th>
+                </tr>
+                <tr>
+                    <td>Integrate terminal emulator</td>
+                    <td><code>apps/terminal/</code> (Rust)</td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>6h</td>
+                </tr>
+                <tr>
+                    <td>Connect keyboard to terminal</td>
+                    <td>Input handling</td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>2h</td>
+                </tr>
+                <tr>
+                    <td>Implement shell commands</td>
+                    <td><code>sys</code>, <code>list</code>, <code>cd</code>, <code>help</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>4h</td>
+                </tr>
+                <tr>
+                    <td>Test command execution</td>
+                    <td>All CLI commands</td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>3h</td>
+                </tr>
+            </table>
+            <div class="deliverable" style="border-left-color: var(--success); font-size: 1.1rem;">
+                <strong>✅ Deliverable: TERMINAL BOOTS, user can type commands</strong>
+            </div>
+        </div>
+
+        <!-- Phase 8 - Milestone -->
+        <div class="phase-card phase-milestone">
+            <h3>🎯 Phase 8: GUI Desktop (Week 4-5) - MILESTONE</h3>
+            <table>
+                <tr>
+                    <th>Task</th>
+                    <th>Component</th>
+                    <th>Priority</th>
+                    <th>Time</th>
+                </tr>
+                <tr>
+                    <td>Integrate NXRender engine</td>
+                    <td><code>gui/nxrender/</code> (Rust)</td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>8h</td>
+                </tr>
+                <tr>
+                    <td>Load graphics compositor</td>
+                    <td>Window manager</td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>6h</td>
+                </tr>
+                <tr>
+                    <td>Draw desktop environment</td>
+                    <td><code>kernel/src/ui/desktop.c</code></td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>4h</td>
+                </tr>
+                <tr>
+                    <td>Create terminal window</td>
+                    <td>GUI terminal</td>
+                    <td class="priority-p0">🔴 P0</td>
+                    <td>4h</td>
+                </tr>
+                <tr>
+                    <td>Test mouse interaction</td>
+                    <td>Click, drag, resize</td>
+                    <td class="priority-p1">🟡 P1</td>
+                    <td>3h</td>
+                </tr>
+            </table>
+            <div class="deliverable" style="border-left-color: var(--success); font-size: 1.1rem;">
+                <strong>✅ Deliverable: GUI DESKTOP BOOTS, terminal runs in window</strong>
+            </div>
+        </div>
+
+        <hr>
+
+        <h2>🚫 What NOT to Do (Stay Focused!)</h2>
+        <div class="warning-box">
+            <table>
+                <tr>
+                    <th>❌ Don't Touch</th>
+                    <th>Why</th>
+                </tr>
+                <tr>
+                    <td>AMD Zen optimizations</td>
+                    <td>Stubs are fine, optimize later</td>
+                </tr>
+                <tr>
+                    <td>Bluetooth driver</td>
+                    <td>Not critical for boot</td>
+                </tr>
+                <tr>
+                    <td>Network stack completion</td>
+                    <td>TCP/IP works, sockets can wait</td>
+                </tr>
+                <tr>
+                    <td>NTFS/APFS improvements</td>
+                    <td>FAT32 + NXFS is enough</td>
+                </tr>
+                <tr>
+                    <td>3D GPU acceleration</td>
+                    <td>Framebuffer is sufficient</td>
+                </tr>
+                <tr>
+                    <td>Recovery mode polish</td>
+                    <td>Works as-is</td>
+                </tr>
+            </table>
+            <p><strong>Rule:</strong> If it's not on the critical path → SKIP IT</p>
+        </div>
+
+        <hr>
+
+        <h2>📊 Progress Tracking</h2>
+
+        <div class="week-section">
+            <h4>Week 1: Boot + Core Init</h4>
+            <ul class="checklist">
+                <li>UEFI bootloader verified</li>
+                <li>Kernel boots to main</li>
+                <li>Framebuffer displays splash</li>
+                <li>Serial debug working</li>
+                <li>GDT/IDT initialized</li>
+                <li>Memory management active</li>
+                <li>Interrupts enabled</li>
+            </ul>
+        </div>
+
+        <div class="week-section">
+            <h4>Week 2: Drivers + Filesystem</h4>
+            <ul class="checklist">
+                <li>Keyboard input works</li>
+                <li>Graphics driver loaded</li>
+                <li>Storage driver loaded</li>
+                <li>VFS mounted</li>
+                <li>NXFS filesystem working</li>
+                <li>File operations tested</li>
+            </ul>
+        </div>
+
+        <div class="week-section">
+            <h4>Week 3: Processes + Init</h4>
+            <ul class="checklist">
+                <li>Process creation works</li>
+                <li>Scheduler running</li>
+                <li>System calls enabled</li>
+                <li>ELF loader working</li>
+                <li>neo-init launches</li>
+                <li>Service manager starts</li>
+            </ul>
+        </div>
+
+        <div class="week-section">
+            <h4>Week 4-5: Terminal + GUI</h4>
+            <ul class="checklist">
+                <li>Terminal app compiled</li>
+                <li>Keyboard connected</li>
+                <li>Shell commands work</li>
+                <li>✅ <strong>TERMINAL BOOTS</strong></li>
+                <li>NXRender integrated</li>
+                <li>Desktop draws</li>
+                <li>✅ <strong>GUI BOOTS</strong></li>
+            </ul>
+        </div>
+
+        <hr>
+
+        <h2>🔧 Build Commands</h2>
+        <pre><code># Full rebuild
+./build.sh clean
+./build.sh
+
+# Kernel only
+cd kernel && make clean && make
+
+# Boot to QEMU
+./test_boot.sh
+
+# Debug boot
+qemu-system-x86_64 -cdrom neolyx.iso -serial stdio -monitor stdio
+
+# Check kernel size
+ls -lh kernel/build/kernel.elf
+
+# Verify bootloader
+file boot/BOOTX64.EFI</code></pre>
+
+        <hr>
+
+        <h2>🎉 Success Criteria</h2>
+        <p>You know you're done when:</p>
+        <div class="success-terminal">
+            # Power on NeoLyx
+            [UEFI] Loading NeoLyx...
+            [BOOT] Kernel loaded at 0x100000
+            [KERN] NeoLyx OS v0.1-alpha1
+            [KERN] Memory: 8192 MB
+            [KERN] Drivers: nxgfx, nxstor, keyboard
+            [KERN] Filesystem: NXFS mounted on /
+            [INIT] Starting neo-init (PID 1)
+            [INIT] Launching terminal...
+
+            ╔══════════════════════════════════════╗
+            ║ NeoLyx OS Alpha 1 ║
+            ║ Independent Operating System ║
+            ╚══════════════════════════════════════╝
+
+            Terminal ready. Type 'help' for commands.
+
+            user@neolyx:~# _
+        </div>
+        <p style="text-align: center; font-size: 1.2rem; margin-top: 1rem;"><strong>THAT'S THE GOAL. Everything else is
+                polish.</strong></p>
+
+        <hr>
+
+        <h2>🚀 Next Step RIGHT NOW</h2>
+        <div class="tip-box">
+            <p><strong>Run this:</strong></p>
+            <pre><code>cd neolyx-os
+./test_boot.sh</code></pre>
+            <p>What happens? Check the output and fix issues one by one. 🚀</p>
+        </div>
+
+        <hr>
+        <p style="color: var(--text-secondary); text-align: center;">
+            NeoLyx Boot Roadmap v1.0 - Focus on the critical path, ignore distractions.<br>
+            NeolyxOS © 2025 KetiveeAI
+        </p>
+    </div>
+</body>
+
+</html>

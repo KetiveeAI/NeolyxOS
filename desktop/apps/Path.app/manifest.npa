@@ -1,0 +1,75 @@
+{
+    "name": "Path",
+    "version": "1.0.0",
+    "bundle_id": "com.neolyx.path",
+    "category": "Utilities",
+    "description": "NeolyxOS File Manager",
+    
+    "binary": "bin/path",
+    "library": "lib/libpath.so",
+    "icon": "resources/path.nxi",
+    
+    "permissions": [
+        "filesystem.read",
+        "filesystem.write",
+        "filesystem.delete",
+        "storage.volumes"
+    ],
+    
+    "associations": [
+        {
+            "type": "directory",
+            "role": "viewer"
+        }
+    ],
+    
+    "menu": {
+        "file": [
+            { "label": "New Window", "action": "new_window", "shortcut": "Cmd+N" },
+            { "label": "New Tab", "action": "new_tab", "shortcut": "Ctrl+T" },
+            { "label": "Close Tab", "action": "close_tab", "shortcut": "Ctrl+W" },
+            { "separator": true },
+            { "label": "Get Info", "action": "get_info", "shortcut": "Cmd+I" },
+            { "label": "Rename", "action": "rename", "shortcut": "Enter" },
+            { "separator": true },
+            { "label": "Move to Trash", "action": "trash", "shortcut": "Cmd+Delete" }
+        ],
+        "edit": [
+            { "label": "Undo", "action": "undo", "shortcut": "Cmd+Z" },
+            { "label": "Redo", "action": "redo", "shortcut": "Cmd+Shift+Z" },
+            { "separator": true },
+            { "label": "Cut", "action": "cut", "shortcut": "Cmd+X" },
+            { "label": "Copy", "action": "copy", "shortcut": "Cmd+C" },
+            { "label": "Paste", "action": "paste", "shortcut": "Cmd+V" },
+            { "label": "Select All", "action": "select_all", "shortcut": "Cmd+A" }
+        ],
+        "view": [
+            { "label": "as Icons", "action": "view_icons", "shortcut": "Cmd+1" },
+            { "label": "as List", "action": "view_list", "shortcut": "Cmd+2" },
+            { "label": "as Columns", "action": "view_columns", "shortcut": "Cmd+3" },
+            { "label": "as Gallery", "action": "view_gallery", "shortcut": "Cmd+4" },
+            { "separator": true },
+            { "label": "Show Hidden Files", "action": "toggle_hidden", "shortcut": "Cmd+." }
+        ],
+        "go": [
+            { "label": "Back", "action": "go_back", "shortcut": "Cmd+[" },
+            { "label": "Forward", "action": "go_forward", "shortcut": "Cmd+]" },
+            { "label": "Enclosing Folder", "action": "go_up", "shortcut": "Cmd+Up" },
+            { "separator": true },
+            { "label": "Home", "action": "go_home", "shortcut": "Cmd+Shift+H" },
+            { "label": "Desktop", "action": "go_desktop", "shortcut": "Cmd+Shift+D" },
+            { "label": "Documents", "action": "go_documents", "shortcut": "Cmd+Shift+O" },
+            { "label": "Downloads", "action": "go_downloads", "shortcut": "Cmd+Option+L" },
+            { "label": "Applications", "action": "go_apps", "shortcut": "Cmd+Shift+A" }
+        ]
+    },
+    
+    "requirements": {
+        "os_version": "1.0.0",
+        "drivers": ["nxstor", "nxgfx"]
+    },
+    
+    "author": "KetiveeAI",
+    "copyright": "Copyright (c) 2025 KetiveeAI",
+    "license": "Proprietary"
+}

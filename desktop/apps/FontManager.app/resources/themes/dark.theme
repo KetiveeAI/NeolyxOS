@@ -1,0 +1,50 @@
+# FontManager.app Dark Theme
+# NeolyxOS Theme Format
+
+[theme]
+name = "dark"
+variant = "dark"
+author = "KetiveeAI"
+
+[window]
+background = #1E1E2E
+titlebar = #181825
+border = #45475A
+
+[sidebar]
+background = #181825
+section_header = #6C7086
+item = #CDD6F4
+item_hover = #313244
+item_active = #45475A
+
+[font_list]
+background = #1E1E2E
+item_bg = #2D2D3D
+item_hover = #3D3D4D
+item_selected = #4D7FFF
+text = #CDD6F4
+text_dim = #6C7086
+
+[preview]
+background = #1E1E2E
+text = #CDD6F4
+sample_box = #2D2D3D
+
+[toolbar]
+background = #181825
+button = #313244
+button_hover = #45475A
+button_active = #4D7FFF
+
+[icons]
+installed = #A6E3A1
+system = #89B4FA
+user = #F9E2AF
+recently_added = #CBA6F7
+
+[text]
+primary = #CDD6F4
+secondary = #A6ADC8
+dim = #6C7086
+accent = #89B4FA

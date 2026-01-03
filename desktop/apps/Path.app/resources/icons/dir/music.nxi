@@ -1,0 +1,70 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Music Folder Icon - with musical notes emblem
+
+[nxi]
+version = 1.0
+name = music
+size = 32
+author = KetiveeAI
+category = directory
+viewbox = 0 0 32 32
+
+[canvas]
+width = 32
+height = 32
+background = transparent
+
+[colors]
+shadow = #000000
+folder_base = #F2D6C9
+folder_dark = #DDAE98
+note = #DDAE98
+
+[paths]
+# Shadow layer  
+shadow = M0,4 L0,26 L30,26 L30,6 L15,6 L13,4 Z
+
+# Back folder tab
+back_tab = M0,5 L0,27 L31,27 L31,7 L16,7 L14,5 Z
+
+# Front folder body
+front = M0,8 L0,28 L32,28 L32,10 L18,10 L16,8 Z
+
+# Left music note
+note1_stem = M10,12 L10,21
+note1_head = M7,21 a3,2 0 1,0 6,0 a3,2 0 1,0 -6,0
+
+# Right music note  
+note2_stem = M18,11 L18,19
+note2_head = M15,19 a3,2 0 1,0 6,0 a3,2 0 1,0 -6,0
+
+# Connecting beam
+beam = M10,12 L18,11 L18,13 L10,14 Z
+
+# Music waves
+wave1 = M22,14 Q24,16 22,18
+wave2 = M24,13 Q27,16 24,19
+wave3 = M26,12 Q30,16 26,20
+
+[style]
+shadow.fill = shadow
+shadow.opacity = 0.3
+back_tab.fill = folder_base
+front.fill = folder_base
+note1_stem.stroke = note
+note1_stem.stroke-width = 2
+note1_head.fill = note
+note2_stem.stroke = note
+note2_stem.stroke-width = 2
+note2_head.fill = note
+beam.fill = note
+wave1.stroke = note
+wave1.fill = none
+wave2.stroke = note
+wave2.fill = none
+wave3.stroke = note
+wave3.fill = none
+
+[style.dark]
+folder_base = #C4A99E
+note = #B8988A

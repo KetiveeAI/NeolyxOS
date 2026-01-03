@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Trim Icon - NeolyxOS Native Icon Format -->
+<nxi version="1.0" width="64" height="64">
+  <metadata>
+    <name>Trim</name>
+    <author>KetiveeAI</author>
+  </metadata>
+  
+  <!-- Film strip -->
+  <rect x="8" y="16" width="48" height="32" rx="4" fill="#3a3a3a"/>
+  
+  <!-- Sprocket holes -->
+  <rect x="12" y="20" width="6" height="4" rx="1" fill="#2a2a2a"/>
+  <rect x="12" y="40" width="6" height="4" rx="1" fill="#2a2a2a"/>
+  <rect x="46" y="20" width="6" height="4" rx="1" fill="#2a2a2a"/>
+  <rect x="46" y="40" width="6" height="4" rx="1" fill="#2a2a2a"/>
+  
+  <!-- Trim handles -->
+  <rect x="20" y="12" width="4" height="40" rx="2" fill="#ff6b6b"/>
+  <rect x="40" y="12" width="4" height="40" rx="2" fill="#ff6b6b"/>
+  
+  <!-- Arrows -->
+  <polygon points="18,32 12,28 12,36" fill="#ff6b6b"/>
+  <polygon points="46,32 52,28 52,36" fill="#ff6b6b"/>
+</nxi>

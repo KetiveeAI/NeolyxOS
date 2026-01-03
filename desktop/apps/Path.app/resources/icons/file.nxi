@@ -1,0 +1,57 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Document/File Icon
+
+[nxi]
+version = 1.0
+name = file
+size = 32
+author = KetiveeAI
+category = filetype
+viewbox = 0 0 32 32
+
+[canvas]
+width = 32
+height = 32
+background = transparent
+
+[colors]
+paper_start = #CDD6F4
+paper_end = #BAC2DE
+fold = #BAC2DE
+border = #6C7086
+lines = #45475A
+
+[gradients]
+paperGrad = linear 0,0 32,32 paper_start paper_end
+
+[paths]
+# Main document body
+body = M4,0 L22,0 L28,6 L28,32 L4,32 Z
+# Folded corner
+corner = M22,0 L22,6 L28,6 Z
+# Text lines
+line1 = M8,12 L24,12
+line2 = M8,18 L24,18
+line3 = M8,24 L18,24
+
+[style]
+body.fill = paperGrad
+body.stroke = border
+body.stroke-width = 1
+corner.fill = fold
+line1.stroke = lines
+line1.stroke-width = 1
+line1.stroke-linecap = round
+line2.stroke = lines
+line2.stroke-width = 1
+line2.stroke-linecap = round
+line3.stroke = lines
+line3.stroke-width = 1
+line3.stroke-linecap = round
+
+[style.dark]
+paper_start = #3B4252
+paper_end = #2E3440
+fold = #434C5E
+border = #4C566A
+lines = #D8DEE9

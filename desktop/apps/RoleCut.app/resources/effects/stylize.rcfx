@@ -1,0 +1,100 @@
+# RoleCut Effects Package
+# Stylize and look effects
+
+[package]
+name = "Stylize"
+version = "1.0.0"
+category = "stylize"
+
+[effects]
+
+[effects.vignette]
+id = "RC_FX_VIGNETTE"
+name = "Vignette"
+free = true
+params = [
+    { name = "intensity", type = "float", default = 50, min = 0, max = 100 },
+    { name = "softness", type = "float", default = 50, min = 0, max = 100 },
+    { name = "roundness", type = "float", default = 50, min = 0, max = 100 },
+    { name = "center_x", type = "float", default = 0.5, min = 0, max = 1 },
+    { name = "center_y", type = "float", default = 0.5, min = 0, max = 1 }
+]
+
+[effects.film_grain]
+id = "RC_FX_FILM_GRAIN"
+name = "Film Grain"
+free = false
+params = [
+    { name = "intensity", type = "float", default = 25, min = 0, max = 100 },
+    { name = "size", type = "float", default = 1.5, min = 0.5, max = 5 },
+    { name = "softness", type = "float", default = 50, min = 0, max = 100 },
+    { name = "animated", type = "bool", default = true }
+]
+
+[effects.vintage]
+id = "RC_FX_VINTAGE"
+name = "Vintage Film"
+free = false
+params = [
+    { name = "fade", type = "float", default = 20, min = 0, max = 100 },
+    { name = "vignette", type = "float", default = 30, min = 0, max = 100 },
+    { name = "grain", type = "float", default = 15, min = 0, max = 100 },
+    { name = "tint", type = "color", default = "#ffeedd" }
+]
+
+[effects.glitch]
+id = "RC_FX_GLITCH"
+name = "Digital Glitch"
+free = false
+params = [
+    { name = "intensity", type = "float", default = 50, min = 0, max = 100 },
+    { name = "block_size", type = "float", default = 10, min = 1, max = 50 },
+    { name = "rgb_shift", type = "float", default = 5, min = 0, max = 20 },
+    { name = "scan_lines", type = "bool", default = true },
+    { name = "animated", type = "bool", default = true }
+]
+
+[effects.vhs]
+id = "RC_FX_VHS"
+name = "VHS"
+free = false
+params = [
+    { name = "tracking", type = "float", default = 30, min = 0, max = 100 },
+    { name = "noise", type = "float", default = 20, min = 0, max = 100 },
+    { name = "color_bleed", type = "float", default = 50, min = 0, max = 100 },
+    { name = "distortion", type = "float", default = 10, min = 0, max = 100 }
+]
+
+[effects.cinematic]
+id = "RC_FX_CINEMATIC"
+name = "Cinematic Look"
+free = false
+description = "Film-like color grading with letterbox"
+params = [
+    { name = "intensity", type = "float", default = 50, min = 0, max = 100 },
+    { name = "contrast", type = "float", default = 20, min = -50, max = 50 },
+    { name = "saturation", type = "float", default = -10, min = -50, max = 50 },
+    { name = "teal_orange", type = "float", default = 30, min = 0, max = 100 },
+    { name = "letterbox", type = "float", default = 0, min = 0, max = 30 }
+]
+
+[effects.black_white]
+id = "RC_FX_BLACK_WHITE"
+name = "Black & White"
+free = true
+params = [
+    { name = "red", type = "float", default = 40, min = 0, max = 100 },
+    { name = "green", type = "float", default = 40, min = 0, max = 100 },
+    { name = "blue", type = "float", default = 20, min = 0, max = 100 },
+    { name = "contrast", type = "float", default = 0, min = -50, max = 50 }
+]
+
+[effects.duotone]
+id = "RC_FX_DUOTONE"
+name = "Duotone"
+free = false
+params = [
+    { name = "shadow_color", type = "color", default = "#1a1a2e" },
+    { name = "highlight_color", type = "color", default = "#e94560" },
+    { name = "contrast", type = "float", default = 0, min = -50, max = 50 }
+]

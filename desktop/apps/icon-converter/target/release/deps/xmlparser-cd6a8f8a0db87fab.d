@@ -1,0 +1,11 @@
+/home/swana/Documents/NEOLYXOS/neolyx-os/apps/icon-converter/target/release/deps/xmlparser-cd6a8f8a0db87fab.d: /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/lib.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/error.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/stream.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/strspan.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/xmlchar.rs
+
+/home/swana/Documents/NEOLYXOS/neolyx-os/apps/icon-converter/target/release/deps/libxmlparser-cd6a8f8a0db87fab.rlib: /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/lib.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/error.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/stream.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/strspan.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/xmlchar.rs
+
+/home/swana/Documents/NEOLYXOS/neolyx-os/apps/icon-converter/target/release/deps/libxmlparser-cd6a8f8a0db87fab.rmeta: /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/lib.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/error.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/stream.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/strspan.rs /home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/xmlchar.rs
+
+/home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/lib.rs:
+/home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/error.rs:
+/home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/stream.rs:
+/home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/strspan.rs:
+/home/swana/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/xmlparser-0.13.6/src/xmlchar.rs:

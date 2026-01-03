@@ -1,0 +1,57 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Image File Icon
+
+[nxi]
+version = 1.0
+name = image
+size = 32
+author = KetiveeAI
+category = filetype
+viewbox = 0 0 32 32
+
+[canvas]
+width = 32
+height = 32
+background = transparent
+
+[colors]
+frame = #313244
+border_start = #f093fb
+border_end = #f5576c
+sky_start = #74c0fc
+sky_end = #4dabf7
+sun = #F9E2AF
+mountain = #89B4FA
+
+[gradients]
+borderGrad = linear 0,0 32,32 border_start border_end
+skyGrad = linear 0,0 0,32 sky_start sky_end
+
+[shapes]
+# Outer frame
+frame = rect x=2 y=2 width=28 height=28 rx=3
+# Inner image area
+image = rect x=4 y=4 width=24 height=24 rx=2
+# Sun
+sun = circle center=10,10 radius=3
+
+[paths]
+# Mountain landscape
+mountain = M4,28 L12,18 L18,24 L24,16 L28,28 Z
+
+[style]
+frame.fill = frame
+frame.stroke = borderGrad
+frame.stroke-width = 1.5
+image.fill = skyGrad
+sun.fill = sun
+mountain.fill = mountain
+
+[style.dark]
+frame = #1E1E2E
+border_start = #B48EAD
+border_end = #BF616A
+sky_start = #5E81AC
+sky_end = #4C566A
+sun = #EBCB8B
+mountain = #5E81AC

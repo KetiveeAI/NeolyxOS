@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS Desktop Rendering Investigation Report</title>
+    <style>
+        :root {
+            --bg-dark: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --border-color: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-orange: #d29922;
+            --accent-purple: #a371f7;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding: 2rem;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        header {
+            background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        h1 { font-size: 2rem; margin-bottom: 0.5rem; color: var(--accent-blue); }
+        h2 { font-size: 1.5rem; margin: 2rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); color: var(--accent-purple); }
+        h3 { font-size: 1.2rem; margin: 1.5rem 0 0.5rem; color: var(--accent-green); }
+        h4 { font-size: 1rem; margin: 1rem 0 0.5rem; color: var(--text-secondary); }
+        .subtitle { color: var(--text-secondary); font-size: 1rem; }
+        .section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .status-ok { background: rgba(63, 185, 80, 0.2); color: var(--accent-green); }
+        .status-issue { background: rgba(248, 81, 73, 0.2); color: var(--accent-red); }
+        .status-warn { background: rgba(210, 153, 34, 0.2); color: var(--accent-orange); }
+        code {
+            background: var(--bg-tertiary);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 0.9rem;
+        }
+        pre {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+        pre code { background: none; padding: 0; }
+        table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid var(--border-color); }
+        th { background: var(--bg-tertiary); color: var(--accent-blue); }
+        tr:hover { background: rgba(88, 166, 255, 0.1); }
+        ul, ol { margin: 0.5rem 0 0.5rem 1.5rem; }
+        li { margin: 0.25rem 0; }
+        .file-path { color: var(--accent-purple); font-family: monospace; }
+        .finding { background: rgba(248, 81, 73, 0.1); border-left: 3px solid var(--accent-red); padding: 1rem; margin: 1rem 0; }
+        .solution { background: rgba(63, 185, 80, 0.1); border-left: 3px solid var(--accent-green); padding: 1rem; margin: 1rem 0; }
+        .info { background: rgba(88, 166, 255, 0.1); border-left: 3px solid var(--accent-blue); padding: 1rem; margin: 1rem 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🖥️ NeolyxOS Desktop Rendering Investigation Report</h1>
+            <p class="subtitle">Comprehensive Analysis of Framebuffer, Mouse, and Keyboard Issues</p>
+            <p class="subtitle" style="margin-top: 0.5rem;">Generated: December 29, 2025 | Version 1.0</p>
+        </header>
+
+        <div class="section">
+            <h2>📋 Executive Summary</h2>
+            <p>This report documents the investigation into desktop rendering issues in NeolyxOS, specifically:</p>
+            <ul>
+                <li><strong>Framebuffer flickering</strong> and visual corruption</li>
+                <li><strong>Mouse cursor</strong> not visible or not responding</li>
+                <li><strong>Keyboard input</strong> not being processed in desktop UI</li>
+            </ul>
+            
+            <h3>Root Cause Summary</h3>
+            <table>
+                <tr>
+                    <th>Issue</th>
+                    <th>Root Cause</th>
+                    <th>Status</th>
+                </tr>
+                <tr>
+                    <td>Flickering</td>
+                    <td>ELF BSS segment not allocated large enough for 32MB heap</td>
+                    <td><span class="status-badge status-issue">Critical</span></td>
+                </tr>
+                <tr>
+                    <td>Mouse Cursor</td>
+                    <td>Back buffer allocation fails silently → single-buffer flicker</td>
+                    <td><span class="status-badge status-warn">Warning</span></td>
+                </tr>
+                <tr>
+                    <td>Keyboard</td>
+                    <td>Driver works, but desktop event loop may miss events</td>
+                    <td><span class="status-badge status-ok">Minor</span></td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>🔍 Investigation Results</h2>
+            
+            <h3>1. Kernel Drivers (All Working Correctly)</h3>
+            
+            <h4>Keyboard Driver - <span class="status-badge status-ok">OK</span></h4>
+            <p class="file-path">kernel/src/drivers/keyboard.c</p>
+            <ul>
+                <li>IRQ1 handler registered and functioning</li>
+                <li>Ring buffer (64 keys) for key input</li>
+                <li>Scancode-to-ASCII conversion with Shift/Ctrl/Alt/CapsLock</li>
+                <li><code>keyboard_get_event()</code> properly exports events to syscall</li>
+            </ul>
+            <pre><code>// Working: keyboard_irq() reads scancode from port 0x60
+uint8_t scancode = inb(KBD_DATA_PORT);
+buffer_push(keycode);  // Ring buffer storage</code></pre>
+
+            <h4>Mouse Driver - <span class="status-badge status-ok">OK</span></h4>
+            <p class="file-path">kernel/src/drivers/input/mouse.c</p>
+            <ul>
+                <li>IRQ12 handler registered (vector 44)</li>
+                <li>PS/2 packet processing with sign extension fix</li>
+                <li>5-button Intellimouse detection</li>
+                <li>Event queue (32 events) with delta accumulation</li>
+            </ul>
+            <pre><code>// Working: nxmouse_irq_handler processes packets
+g_mouse.delta_x += dx;
+g_mouse.delta_y += dy;
+g_mouse.buttons = buttons;</code></pre>
+
+            <h4>Framebuffer Syscalls - <span class="status-badge status-ok">OK</span></h4>
+            <p class="file-path">kernel/src/core/syscall.c</p>
+            <ul>
+                <li><code>SYS_FB_INFO (121)</code> - Returns 1280×800, 32bpp, BGRA format</li>
+                <li><code>SYS_FB_MAP (120)</code> - Returns framebuffer address 0xC0000000</li>
+                <li><code>SYS_FB_FLIP (122)</code> - Currently no-op (for future VSync)</li>
+                <li><code>SYS_INPUT_POLL (123)</code> - Aggregates keyboard + mouse events</li>
+            </ul>
+
+            <h4>Paging - <span class="status-badge status-ok">OK</span></h4>
+            <p class="file-path">kernel/src/arch/x86_64/paging.c</p>
+            <pre><code>// Framebuffer mapped with correct uncached flags
+paging_map_range(fb_addr, fb_addr, fb_size,
+    PAGE_PRESENT | PAGE_WRITE | PAGE_USER | 
+    PAGE_WRITETHROUGH | PAGE_NOCACHE);</code></pre>
+        </div>
+
+        <div class="section">
+            <h2>🎯 Critical Issues Found</h2>
+
+            <h3>Issue #1: ELF BSS Segment Size Limitation</h3>
+            <div class="finding">
+                <strong>Problem:</strong> The linker loads the desktop ELF, but the BSS segment (uninitialized data) 
+                doesn't get enough physical memory allocated for the 32MB static heap.
+            </div>
+            
+            <p class="file-path">desktop/include/nxsyscall.h</p>
+            <pre><code>// Current implementation: 32MB static heap in BSS
+static uint8_t heap[32*1024*1024];  // 32MB</code></pre>
+            
+            <p class="file-path">desktop/user.ld</p>
+            <pre><code>SECTIONS {
+    . = 0x400000;  /* 4MB mark */
+    .text : { *(.text .text.*) }
+    .rodata : { *(.rodata .rodata.*) }
+    .data : { *(.data .data.*) }
+    .bss : { *(.bss .bss.*) *(COMMON) }  /* 32MB heap here! */
+}</code></pre>
+
+            <p class="file-path">kernel/src/loader/elf_loader.c</p>
+            <pre><code>// ELF loader zeros BSS section:
+if (phdr->p_memsz > phdr->p_filesz) {
+    uint64_t bss_start = load_addr + phdr->p_filesz;
+    uint64_t bss_size = phdr->p_memsz - phdr->p_filesz;
+    mem_set((void*)bss_start, 0, bss_size);
+}
+// BUT: physical pages may not be mapped!</code></pre>
+
+            <div class="solution">
+                <strong>Fix:</strong> Ensure the ELF loader or paging code maps sufficient pages for the entire 
+                p_memsz segment, not just p_filesz. The BSS needs 32MB → 8192 pages.
+            </div>
+
+            <h3>Issue #2: Back Buffer Allocation Silent Failure</h3>
+            <div class="finding">
+                <strong>Problem:</strong> When <code>nx_alloc()</code> cannot allocate the back buffer (due to 
+                insufficient BSS pages), it silently falls back to single-buffer mode.
+            </div>
+            
+            <p class="file-path">desktop/shell/desktop_shell.c</p>
+            <pre><code>g_backbuffer = (uint32_t*)nx_alloc(g_buffer_size);  // ~4MB
+if (!g_backbuffer) {
+    /* Fall back to single buffering if allocation fails */
+    g_backbuffer = (uint32_t*)g_framebuffer;  // CAUSES FLICKER!
+}</code></pre>
+
+            <div class="solution">
+                <strong>Fix:</strong> Add serial debug output to indicate allocation failure:
+                <pre><code>if (!g_backbuffer) {
+    nx_debug_print("[DESKTOP] WARNING: Back buffer alloc failed, single-buffering\\n");
+    g_backbuffer = (uint32_t*)g_framebuffer;
+} else {
+    nx_debug_print("[DESKTOP] Double buffering enabled\\n");
+}</code></pre>
+            </div>
+
+            <h3>Issue #3: Unoptimized Buffer Copy</h3>
+            <div class="finding">
+                <strong>Problem:</strong> The <code>flip_buffer()</code> function uses a naive byte-by-byte copy, 
+                which is slow on 4MB of data (~1280×800×4 bytes).
+            </div>
+            
+            <pre><code>// Current: slow loop copy
+for (uint64_t i = 0; i < pixels; i++) {
+    dst[i] = src[i];
+}</code></pre>
+
+            <div class="solution">
+                <strong>Fix:</strong> Use optimized x86_64 REP MOVSQ for 8-byte transfers:
+                <pre><code>// Optimized: REP MOVSQ (8 bytes at a time)
+static void flip_buffer_fast(void) {
+    uint64_t *src = (uint64_t*)g_backbuffer;
+    uint64_t *dst = (uint64_t*)g_framebuffer;
+    uint64_t count = g_buffer_size / 8;  // 8 bytes per iteration
+    __asm__ volatile(
+        "rep movsq"
+        : "+S"(src), "+D"(dst), "+c"(count)
+        :
+        : "memory"
+    );
+}</code></pre>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📚 Research Findings (OSDev Best Practices)</h2>
+            
+            <div class="info">
+                <strong>Source:</strong> OSDev Wiki, OSDev Forum, Reddit r/osdev
+            </div>
+
+            <h3>UEFI GOP Framebuffer</h3>
+            <ul>
+                <li>GOP framebuffer persists after <code>ExitBootServices()</code></li>
+                <li>Must use uncached memory (PWT+PCD flags or MTRR)</li>
+                <li>No hardware acceleration after boot - software rendering only</li>
+            </ul>
+
+            <h3>Double Buffering Best Practices</h3>
+            <ol>
+                <li><strong>Back buffer in system RAM</strong> - faster than VRAM for CPU writes</li>
+                <li><strong>Optimized memcpy</strong> - Use REP MOVSQ or SSE/AVX for speed</li>
+                <li><strong>VSync synchronization</strong> - Prevents tearing (optional)</li>
+                <li><strong>Dirty rectangle tracking</strong> - Only copy changed regions</li>
+            </ol>
+
+            <h3>QEMU-Specific Issues</h3>
+            <ul>
+                <li>BGA (Bochs Graphics Adapter) may flicker on macOS QEMU builds</li>
+                <li>Use <code>-device VGA</code> or <code>-device virtio-gpu</code> for better compatibility</li>
+                <li>Ensure framebuffer address is correctly mapped in page tables</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>🛠️ Recommended Fixes</h2>
+            
+            <table>
+                <tr>
+                    <th>Priority</th>
+                    <th>Fix</th>
+                    <th>File</th>
+                </tr>
+                <tr>
+                    <td><span class="status-badge status-issue">P0</span></td>
+                    <td>Map BSS pages for 32MB heap in ELF loader</td>
+                    <td>kernel/src/core/main.c or elf_loader.c</td>
+                </tr>
+                <tr>
+                    <td><span class="status-badge status-issue">P0</span></td>
+                    <td>Add debug output for back buffer allocation</td>
+                    <td>desktop/shell/desktop_shell.c</td>
+                </tr>
+                <tr>
+                    <td><span class="status-badge status-warn">P1</span></td>
+                    <td>Use REP MOVSQ for fast buffer copy</td>
+                    <td>desktop/shell/desktop_shell.c</td>
+                </tr>
+                <tr>
+                    <td><span class="status-badge status-warn">P1</span></td>
+                    <td>Verify ELF p_memsz vs p_filesz handling</td>
+                    <td>kernel/src/loader/elf_loader.c</td>
+                </tr>
+                <tr>
+                    <td><span class="status-badge status-ok">P2</span></td>
+                    <td>Implement VSync via PIT or RTC</td>
+                    <td>kernel/src/core/syscall.c (fb_flip)</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>📁 Files Reviewed</h2>
+            <table>
+                <tr><th>File</th><th>Purpose</th><th>Status</th></tr>
+                <tr><td class="file-path">kernel/src/drivers/keyboard.c</td><td>PS/2 keyboard driver</td><td><span class="status-badge status-ok">OK</span></td></tr>
+                <tr><td class="file-path">kernel/src/drivers/input/mouse.c</td><td>PS/2 mouse driver (IRQ12)</td><td><span class="status-badge status-ok">OK</span></td></tr>
+                <tr><td class="file-path">kernel/src/core/syscall.c</td><td>Framebuffer + input syscalls</td><td><span class="status-badge status-ok">OK</span></td></tr>
+                <tr><td class="file-path">kernel/src/arch/x86_64/paging.c</td><td>Page table management</td><td><span class="status-badge status-ok">OK</span></td></tr>
+                <tr><td class="file-path">kernel/src/loader/elf_loader.c</td><td>ELF program loader</td><td><span class="status-badge status-warn">Review BSS</span></td></tr>
+                <tr><td class="file-path">desktop/shell/desktop_shell.c</td><td>Desktop rendering</td><td><span class="status-badge status-warn">Add debug</span></td></tr>
+                <tr><td class="file-path">desktop/include/nxsyscall.h</td><td>32MB static heap</td><td><span class="status-badge status-issue">BSS issue</span></td></tr>
+                <tr><td class="file-path">desktop/user.ld</td><td>Userspace linker script</td><td><span class="status-badge status-ok">OK</span></td></tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>🎬 Next Steps</h2>
+            <ol>
+                <li><strong>Add debug print</strong> in <code>init_framebuffer()</code> to confirm back buffer allocation result</li>
+                <li><strong>Verify ELF BSS mapping</strong> - check if <code>p_memsz</code> is fully allocated</li>
+                <li><strong>Add paging for large BSS</strong> - map 32MB of pages for desktop heap</li>
+                <li><strong>Optimize flip_buffer()</strong> with REP MOVSQ</li>
+                <li><strong>Test with serial output</strong> to trace rendering path</li>
+            </ol>
+        </div>
+
+        <footer style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+            <p>NeolyxOS Investigation Report | Generated by Gemini AI | December 2025</p>
+            <p>Copyright © 2025 KetiveeAI</p>
+        </footer>
+    </div>
+</body>
+</html>

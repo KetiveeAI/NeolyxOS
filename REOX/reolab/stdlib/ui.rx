@@ -1,0 +1,203 @@
+// REOX UI Standard Library Prelude
+// Native UI types and components for NeolyxOS
+// Auto-included when using UI features
+
+// ============================================================================
+// Color Type
+// ============================================================================
+
+struct Color {
+    r: int,
+    g: int,
+    b: int,
+    a: int
+}
+
+// Color constructors
+extern fn color_rgb(r: int, g: int, b: int) -> Color;
+extern fn color_rgba(r: int, g: int, b: int, a: int) -> Color;
+extern fn color_hex(hex: int) -> Color;
+extern fn color_lighten(c: Color, amount: float) -> Color;
+extern fn color_darken(c: Color, amount: float) -> Color;
+extern fn color_blend(a: Color, b: Color, t: float) -> Color;
+
+// System Colors
+extern fn color_primary() -> Color;
+extern fn color_secondary() -> Color;
+extern fn color_accent() -> Color;
+extern fn color_background() -> Color;
+extern fn color_surface() -> Color;
+extern fn color_text() -> Color;
+
+// ============================================================================
+// Geometry Types
+// ============================================================================
+
+struct Point {
+    x: float,
+    y: float
+}
+
+struct Size {
+    w: float,
+    h: float
+}
+
+struct Rect {
+    x: float,
+    y: float,
+    width: float,
+    height: float
+}
+
+struct EdgeInsets {
+    top: float,
+    right: float,
+    bottom: float,
+    left: float
+}
+
+// Geometry constructors
+extern fn point(x: float, y: float) -> Point;
+extern fn size(w: float, h: float) -> Size;
+extern fn rect(x: float, y: float, w: float, h: float) -> Rect;
+extern fn insets(top: float, right: float, bottom: float, left: float) -> EdgeInsets;
+extern fn insets_all(value: float) -> EdgeInsets;
+extern fn insets_symmetric(v: float, h: float) -> EdgeInsets;
+
+// ============================================================================
+// Border Type
+// ============================================================================
+
+struct Border {
+    width: float,
+    color: Color,
+    style: int  // 0=none, 1=solid, 2=dashed, 3=dotted
+}
+
+extern fn border(width: float, color: Color) -> Border;
+extern fn border_none() -> Border;
+
+// ============================================================================
+// Shadow Type
+// ============================================================================
+
+struct Shadow {
+    offset_x: float,
+    offset_y: float,
+    blur: float,
+    color: Color
+}
+
+extern fn shadow(x: float, y: float, blur: float, color: Color) -> Shadow;
+extern fn shadow_none() -> Shadow;
+
+// ============================================================================
+// Box Model (CSS-like)
+// ============================================================================
+
+struct Box {
+    width: float,
+    height: float,
+    padding: EdgeInsets,
+    margin: EdgeInsets,
+    background: Color,
+    border: Border,
+    corner_radius: float,
+    shadow: Shadow
+}
+
+extern fn box_new() -> Box;
+extern fn box_with_size(w: float, h: float) -> Box;
+
+// ============================================================================
+// View Base
+// ============================================================================
+
+// View handle (opaque pointer)
+struct View {
+    handle: int
+}
+
+// View lifecycle
+extern fn view_new() -> View;
+extern fn view_free(v: View) -> void;
+extern fn view_add_child(parent: View, child: View) -> void;
+extern fn view_set_background(v: View, c: Color) -> void;
+extern fn view_set_padding(v: View, p: EdgeInsets) -> void;
+extern fn view_set_margin(v: View, m: EdgeInsets) -> void;
+extern fn view_set_border(v: View, b: Border) -> void;
+extern fn view_set_corner_radius(v: View, r: float) -> void;
+extern fn view_set_shadow(v: View, s: Shadow) -> void;
+extern fn view_set_size(v: View, w: float, h: float) -> void;
+
+// ============================================================================
+// Text View
+// ============================================================================
+
+extern fn text_view(text: string) -> View;
+extern fn text_set_text(v: View, text: string) -> void;
+extern fn text_set_color(v: View, c: Color) -> void;
+extern fn text_set_font_size(v: View, size: float) -> void;
+extern fn text_set_font_weight(v: View, weight: int) -> void;
+
+// ============================================================================
+// Button View
+// ============================================================================
+
+extern fn button_view(label: string) -> View;
+extern fn button_set_on_click(v: View, callback: int) -> void;
+extern fn button_set_style(v: View, normal: Color, hover: Color, pressed: Color) -> void;
+
+// ============================================================================
+// Input View
+// ============================================================================
+
+extern fn input_view(placeholder: string) -> View;
+extern fn input_set_value(v: View, value: string) -> void;
+extern fn input_get_value(v: View) -> string;
+extern fn input_set_password(v: View, is_password: bool) -> void;
+
+// ============================================================================
+// Image View
+// ============================================================================
+
+extern fn image_view(source: string) -> View;
+extern fn image_set_aspect_fit(v: View, fit: bool) -> void;
+
+// ============================================================================
+// Layout Containers
+// ============================================================================
+
+// HStack - horizontal layout
+extern fn hstack(gap: float) -> View;
+
+// VStack - vertical layout  
+extern fn vstack(gap: float) -> View;
+
+// ZStack - overlay layout
+extern fn zstack() -> View;
+
+// ScrollView
+extern fn scroll_view() -> View;
+extern fn scroll_set_direction(v: View, horizontal: bool, vertical: bool) -> void;
+
+// ============================================================================
+// Window & Application
+// ============================================================================
+
+struct Window {
+    handle: int
+}
+
+struct App {
+    handle: int
+}
+
+extern fn app_new(name: string) -> App;
+extern fn app_create_window(app: App, title: string, w: int, h: int) -> Window;
+extern fn app_run(app: App) -> void;
+extern fn app_quit(app: App) -> void;
+extern fn window_set_root(win: Window, view: View) -> void;
+extern fn window_set_title(win: Window, title: string) -> void;
+extern fn window_set_size(win: Window, w: int, h: int) -> void;

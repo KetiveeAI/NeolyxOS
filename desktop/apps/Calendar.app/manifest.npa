@@ -1,0 +1,35 @@
+# NeolyxOS Application Manifest - Calendar.app
+
+[Application]
+Name = Calendar
+Version = 1.0.0
+Author = KetiveeAI
+Description = Full calendar with themes, clock faces, and live icon
+
+[Runtime]
+Binary = calendar
+Type = GUI
+Category = Utilities
+
+[Permissions]
+Network = false
+Background = true
+
+[Features]
+Themes = Midnight, Arctic, Sunset, Forest, Ocean, Sakura, Monochrome
+ClockFaces = Digital, Analog, Minimal, Roman, Binary, Flip
+LiveIcon = true
+LaunchFromNavBar = true
+
+[StartupBehavior]
+AutoStart = false
+ShowInDock = true
+DockPosition = 6
+
+[Icon]
+Path = resources/icons/calendar.nxi
+LiveUpdate = true
+
+[Legal]
+Copyright = Copyright (c) 2025 KetiveeAI
+License = Proprietary

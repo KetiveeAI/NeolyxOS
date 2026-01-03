@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PCI Driver - NeolyxOS Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-code: #1c2128;
+            --text-primary: #c9d1d9;
+            --accent: #58a6ff;
+            --border: #30363d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        nav {
+            margin-bottom: 2rem;
+        }
+
+        nav a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin: 2rem 0 1rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            margin: 1.5rem 0 0.5rem;
+            color: var(--accent);
+        }
+
+        p {
+            margin-bottom: 1rem;
+        }
+
+        code {
+            background: var(--bg-code);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Consolas', monospace;
+        }
+
+        pre {
+            background: var(--bg-code);
+            padding: 1rem;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            padding: 0.5rem;
+            border: 1px solid var(--border);
+            text-align: left;
+            font-size: 0.9em;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        ul {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status.complete {
+            background: #238636;
+            color: white;
+        }
+
+        .file-ref {
+            font-size: 0.9em;
+            color: var(--accent);
+            border-top: 1px solid var(--border);
+            padding-top: 1rem;
+            margin-top: 2rem;
+        }
+    </style>
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        
+
+        <h1>🔌 PCI Driver <span class="status complete">Complete</span></h1>
+        <p>PCI bus enumeration and configuration space access.</p>
+
+        <h2>Files</h2>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><code>kernel/src/drivers/pci/pci.c</code></td>
+                <td>PCI driver</td>
+            </tr>
+            <tr>
+                <td><code>kernel/src/drivers/pci/pci.h</code></td>
+                <td>PCI structures</td>
+            </tr>
+        </table>
+
+        <h2>PCI Device Structure</h2>
+        <pre><code>typedef struct {
+    uint8_t  bus, device, function;
+    uint16_t vendor_id;
+    uint16_t device_id;
+    uint8_t  class_code;
+    uint8_t  subclass;
+    uint8_t  prog_if;
+    uint8_t  revision;
+    uint8_t  interrupt_line;
+    uint8_t  interrupt_pin;
+    
+    // Base Address Registers
+    uint8_t  bar_count;
+    pci_bar_t bars[6];
+} pci_device_t;</code></pre>
+
+        <h2>Device Classes</h2>
+        <table>
+            <tr>
+                <th>Class</th>
+                <th>Subclass</th>
+                <th>Type</th>
+            </tr>
+            <tr>
+                <td>0x01</td>
+                <td>0x01</td>
+                <td>IDE Controller</td>
+            </tr>
+            <tr>
+                <td>0x01</td>
+                <td>0x06</td>
+                <td>AHCI Controller</td>
+            </tr>
+            <tr>
+                <td>0x01</td>
+                <td>0x08</td>
+                <td>NVMe Controller</td>
+            </tr>
+            <tr>
+                <td>0x02</td>
+                <td>0x00</td>
+                <td>Ethernet</td>
+            </tr>
+            <tr>
+                <td>0x03</td>
+                <td>0x00</td>
+                <td>VGA Controller</td>
+            </tr>
+            <tr>
+                <td>0x04</td>
+                <td>0x03</td>
+                <td>Audio Device</td>
+            </tr>
+        </table>
+
+        <h2>API</h2>
+        <pre><code>// Initialize PCI bus
+void pci_init(void);
+
+// Find devices
+pci_device_t *pci_find_device(uint16_t vendor, uint16_t device);
+pci_device_t *pci_find_class(uint8_t class, uint8_t subclass);
+int pci_get_device_count(void);
+
+// Config space access
+uint8_t  pci_read_config8(uint8_t bus, uint8_t dev, uint8_t func, uint8_t off);
+uint16_t pci_read_config16(uint8_t bus, uint8_t dev, uint8_t func, uint8_t off);
+uint32_t pci_read_config32(uint8_t bus, uint8_t dev, uint8_t func, uint8_t off);
+
+void pci_write_config8(uint8_t bus, uint8_t dev, uint8_t func, uint8_t off, uint8_t val);
+void pci_write_config16(uint8_t bus, uint8_t dev, uint8_t func, uint8_t off, uint16_t val);
+void pci_write_config32(uint8_t bus, uint8_t dev, uint8_t func, uint8_t off, uint32_t val);
+
+// Enable device
+void pci_enable_bus_master(pci_device_t *dev);
+void pci_enable_memory(pci_device_t *dev);</code></pre>
+
+        <h2>Config Space Registers</h2>
+        <table>
+            <tr>
+                <th>Offset</th>
+                <th>Size</th>
+                <th>Register</th>
+            </tr>
+            <tr>
+                <td>0x00</td>
+                <td>2</td>
+                <td>Vendor ID</td>
+            </tr>
+            <tr>
+                <td>0x02</td>
+                <td>2</td>
+                <td>Device ID</td>
+            </tr>
+            <tr>
+                <td>0x04</td>
+                <td>2</td>
+                <td>Command</td>
+            </tr>
+            <tr>
+                <td>0x06</td>
+                <td>2</td>
+                <td>Status</td>
+            </tr>
+            <tr>
+                <td>0x08</td>
+                <td>1</td>
+                <td>Revision</td>
+            </tr>
+            <tr>
+                <td>0x09</td>
+                <td>1</td>
+                <td>Prog IF</td>
+            </tr>
+            <tr>
+                <td>0x0A</td>
+                <td>1</td>
+                <td>Subclass</td>
+            </tr>
+            <tr>
+                <td>0x0B</td>
+                <td>1</td>
+                <td>Class Code</td>
+            </tr>
+            <tr>
+                <td>0x10-0x24</td>
+                <td>4 each</td>
+                <td>BAR 0-5</td>
+            </tr>
+            <tr>
+                <td>0x3C</td>
+                <td>1</td>
+                <td>Interrupt Line</td>
+            </tr>
+            <tr>
+                <td>0x3D</td>
+                <td>1</td>
+                <td>Interrupt Pin</td>
+            </tr>
+        </table>
+
+        <h2>Usage Example</h2>
+        <pre><code>// Find NVMe controller
+pci_device_t *nvme = pci_find_class(0x01, 0x08);
+if (nvme) {
+    pci_enable_bus_master(nvme);
+    pci_enable_memory(nvme);
+    
+    // Get BAR0 (MMIO registers)
+    uint64_t bar0 = nvme->bars[0].base;
+    volatile uint32_t *regs = (volatile uint32_t*)bar0;
+}</code></pre>
+
+        <div class="file-ref">
+            <strong>Source:</strong> <a href="../../kernel/src/drivers/pci/pci.c">kernel/src/drivers/pci/pci.c</a>
+        </div>
+    </div>
+</body>
+
+</html>

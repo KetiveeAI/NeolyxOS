@@ -1,0 +1,1481 @@
+swana@swana:~/Documents/NEOLYXOS/neolyx-os$ tree
+.
+├── apps
+│   ├── APP_STRUCTURE.md
+│   ├── Calculator.app
+│   │   ├── bin
+│   │   │   └── calculator
+│   │   ├── buttons.c
+│   │   ├── buttons.o
+│   │   ├── calc.h
+│   │   ├── display.c
+│   │   ├── display.o
+│   │   ├── engine.c
+│   │   ├── engine.o
+│   │   ├── history.c
+│   │   ├── history.o
+│   │   ├── lib
+│   │   ├── main.c
+│   │   ├── main.o
+│   │   ├── Makefile
+│   │   ├── manifest.npa
+│   │   ├── nxaudio_feedback.c
+│   │   ├── nxaudio_feedback.h
+│   │   ├── nxaudio_feedback.o
+│   │   ├── nxrender.h
+│   │   ├── README.md
+│   │   ├── resources
+│   │   ├── scientific.c
+│   │   └── scientific.o
+│   ├── Calendar.app
+│   │   ├── animation.c
+│   │   ├── animation.h
+│   │   ├── bin
+│   │   ├── calendar.h
+│   │   ├── lib
+│   │   ├── LICENSE
+│   │   ├── main.c
+│   │   ├── Makefile
+│   │   ├── manifest.npa
+│   │   ├── README.md
+│   │   ├── regions.c
+│   │   ├── regions.h
+│   │   ├── render.c
+│   │   ├── render.h
+│   │   └── resources
+│   │       ├── clock_faces
+│   │       ├── icons
+│   │       │   └── calendar.nxi
+│   │       └── themes
+│   │           ├── arctic.theme
+│   │           ├── forest.theme
+│   │           ├── midnight.theme
+│   │           ├── monochrome.theme
+│   │           ├── ocean.theme
+│   │           ├── sakura.theme
+│   │           └── sunset.theme
+│   ├── Clock.app
+│   │   ├── bin
+│   │   ├── clock.h
+│   │   ├── lib
+│   │   ├── LICENSE
+│   │   ├── main.c
+│   │   ├── Makefile
+│   │   ├── manifest.npa
+│   │   ├── ntp_client.c
+│   │   ├── README.md
+│   │   └── resources
+│   │       └── icons
+│   │           └── clock.nxi
+│   ├── desktop.xml
+│   ├── disk_manager
+│   │   ├── disk_manager.rx
+│   │   └── Makefile
+│   ├── FontManager.app
+│   │   ├── bin
+│   │   ├── font_install.c
+│   │   ├── font_service.h
+│   │   ├── lib
+│   │   │   └── Fonts
+│   │   │       ├── 8514fixe.fon
+│   │   │       ├── 8514fix.fon
+│   │   │       ├── 8514fixg.fon
+│   │   │       ├── 8514fixr.fon
+│  
+│   │   │       ├── YuGothL.ttc
+│   │   │       ├── YuGothM.ttc
+│   │   │       ├── YuGothR.ttc
+│   │   │       └── ZWAdobeF.TTF
+│   │   ├── main.c
+│   │   ├── Makefile
+│   │   ├── manifest.npa
+│   │   ├── nxrender.h
+│   │   ├── README.md
+│   │   ├── reox.c
+│   │   ├── reox.h
+│   │   ├── resources
+│   │   │   ├── fonts
+│   │   │   ├── icons
+│   │   │   │   └── fontmanager.nxi
+│   │   │   └── themes
+│   │   │       ├── dark.theme
+│   │   │       └── light.theme
+│   │   ├── state.h
+│   │   ├── ttf.c
+│   │   ├── ttf.h
+│   │   ├── ui.c
+│   │   └── ui.h
+
+│   ├── nxhttp
+│   │   └── build
+│   │       └── libnxhttp.a
+│   ├── Path.app
+│   │   ├── bin
+│   │   ├── context_menu.c
+│   │   ├── drag_drop.c
+│   │   ├── file_view.c
+│   │   ├── get_info.c
+│   │   ├── lib
+│   │   ├── main.c
+│   │   ├── Makefile
+│   │   ├── manifest.npa
+│   │   ├── nxrender.h
+│   │   ├── quick_look.c
+│   │   ├── README.md
+│   │   ├── resources
+│   │   │   ├── icons
+│   │   │   │   ├── Bin.svg
+│   │   │   │   ├── close.nxi
+│   │   │   │   ├── close.svg
+│   │   │   │   ├── expand.nxi
+│   │   │   │   ├── expand.svg
+│   │   │   │   ├── ExternalSsd.svg
+│   │   │   │   ├── file.nxi
+│   │   │   │   ├── film.svg
+│   │   │   │   ├── folder.nxi
+│   │   │   │   ├── gallery.nxi
+│   │   │   │   ├── Gallery.svg
+│   │   │   │   ├── help.svg
+│   │   │   │   ├── icon.svg
+│   │   │   │   ├── image.nxi
+│   │   │   │   ├── layout.svg
+│   │   │   │   ├── Mic.svg
+│   │   │   │   ├── minimize.nxi
+│   │   │   │   ├── minimize.svg
+│   │   │   │   ├── NoWifi.svg
+│   │   │   │   ├── NucleusDisk.svg
+│   │   │   │   ├── path_app.nxi
+│   │   │   │   ├── pc.svg
+│   │   │   │   ├── Search.svg
+│   │   │   │   ├── setting.svg
+│   │   │   │   ├── Terminal.svg
+│   │   │   │   ├── TextCursor.svg
+│   │   │   │   └── Wifi.svg
+│   │   │   ├── path.nxi
+│   │   │   └── themes
+│   │   │       ├── dark.theme
+│   │   │       └── light.theme
+│   │   ├── search.c
+│   │   ├── sidebar.c
+│   │   ├── status_bar.c
+│   │   ├── tab_bar.c
+│   │   ├── toolbar.c
+│   │   └── vfs_ops.c
+│   ├── README.md
+│   ├── reolab.app
+│  
+│   ├── Rivee.app
+│   │   ├── bin
+
+│   │       └── userdata.c
+│   ├── RoleCut.app
+│   │   ├── include
+│   │   │   ├── rc_audio.h
+│   │   │   ├── rc_effects.h
+│   │   │   └── transitions
+│   │   │       └── transitions.rctx
+│   │   └── src
+│   │       └── main.c
+│   ├── Settings.app
+│   │   ├── bin
+│   │   ├── drivers
+│   │   │   ├── settings_drivers.c
+│   │   │   └── settings_drivers.h
+│   │   ├── lib
+│   │   ├── main.c
+│   │   ├── Makefile
+│   │   ├── manifest.npa
+│   │   ├── nxrender.h
+│   │   ├── panels
+│   │   │   ├── about_panel.c
+│   │   │   ├── accounts_panel.c
+│   │   │   ├── appearance_panel.c
+│   │   │   ├── apps_panel.c
+│   │   │   ├── bluetooth_panel.c
+│   │   │   ├── bootloader_panel.c
+│   │   │   ├── color_panel.c
+│   │   │   ├── developer_panel.c
+│   │   │   ├── device_panel.c
+│   │   │   ├── display_manager_panel.c
+│   │   │   ├── display_panel.c
+│   │   │   ├── extensions_panel.c
+│   │   │   ├── keyboard_panel.c
+│   │   │   ├── network_panel.c
+│   │   │   ├── panel_common.h
+│   │   │   ├── power_panel.c
+│   │   │   ├── privacy_panel.c
+│   │   │   ├── processes_panel.c
+│   │   │   ├── scheduler_panel.c
+│   │   │   ├── security_panel.c
+│   │   │   ├── sound_panel.c
+│   │   │   ├── startup_panel.c
+│   │   │   ├── storage_panel.c
+│   │   │   ├── system_panel.c
+│   │   │   ├── trackpad_panel.c
+│   │   │   └── updates_panel.c
+│   │   ├── README.md
+│   │   ├── resources
+│   │   │   ├── icons
+│   │   │   │   ├── panels
+│   │   │   │   │   ├── about.nxi
+│   │   │   │   │   ├── accounts.nxi
+│   │   │   │   │   ├── appearance.nxi
+│   │   │   │   │   ├── bluetooth.nxi
+│   │   │   │   │   ├── display.nxi
+│   │   │   │   │   ├── keyboard.nxi
+│   │   │   │   │   ├── network.nxi
+│   │   │   │   │   ├── power.nxi
+│   │   │   │   │   ├── privacy.nxi
+│   │   │   │   │   ├── security.nxi
+│   │   │   │   │   ├── sound.nxi
+│   │   │   │   │   ├── storage.nxi
+│   │   │   │   │   └── system.nxi
+│   │   │   │   ├── settings_icon.nxi
+│   │   │   │   ├── settings_icons.h
+│   │   │   │   └── settings.nxi
+│   │   │   └── themes
+│   │   │       ├── dark.theme
+│   │   │       └── light.theme
+│   │   ├── search.c
+│   │   ├── settings.h
+│   │   └── sidebar.c
+│   ├── Terminal.app
+│   │   ├── bin
+│   │   ├── context_menu.c
+│   │   ├── lib
+│   │   ├── main.c
+│   │   ├── Makefile
+│   │   ├── manifest.npa
+│   │   ├── nxrender.h
+│   │   ├── README.md
+│   │   ├── resources
+│   │   │   ├── icons
+│   │   │   ├── terminal_icon.nxi
+│   │   │   ├── terminal.nxi
+│   │   │   └── themes
+│   │   │       ├── dark.theme
+│   │   │       └── light.theme
+│   │   └── terminal_view.c
+│   └── zeprabrowser
+│       ├── Architecture.md
+
+│                   └── zepra_test.lastbuildstate
+├── Architecture.md
+├── boot
+│   ├── boot.c
+│   ├── bootloader.so
+│   ├── boot_menu.c
+│   ├── boot_menu.h
+│   ├── boot_menu.o
+│   ├── BOOTX64.EFI
+│   ├── config.c
+│   ├── efilib.c
+│   ├── elf.h
+│   ├── graphics.c
+│   ├── graphics.h
+│   ├── graphics.o
+│   ├── inc
+│   │   ├── config.h
+│   │   ├── efi.h.bak
+│   │   ├── efilib.h
+│   │   └── nxfs.h
+│   ├── linker.ld
+│   ├── logo.h
+│   ├── main.c
+│   ├── main.o
+│   ├── main_simple.c
+│   ├── Makefile
+│   ├── Makefile_simple
+│   ├── nxfs.c
+│   ├── README.md
+│   ├── splash
+│   │   └── logo.bmp
+│   ├── test.c
+│   └── test_compile.bat
+├── bootloader
+│   ├── boot.asm
+│   ├── build.bat
+│   ├── build_msys2.sh
+│   ├── build_working.bat
+│   ├── elf.h
+│   ├── graphics.h
+│   ├── main.c
+│   ├── Makefile
+│   ├── nul
+│   ├── run_build_msys2.bat
+│   ├── stage1.asm
+│   ├── stage2.asm
+│   ├── test_simple.bat
+│   └── test_simple.c
+├── boot_test.sh
+├── build
+│   └── README.md
+├── build.sh
+├── config
+│   ├── boot.nlc
+│   ├── host.nlc
+│   ├── neolyx_extensions.yaml
+│   ├── permissions.nlc
+│   ├── quick_reference.md
+│   ├── SysLib.md
+│   ├── system.nlc
+│   └── user_defaults.nlc
+├── desktop
+│   ├── apps
+│   │   └── terminal
+│   │       └── terminal_window.c
+│   ├── include
+│   │   ├── app_drawer.h
+│   │   ├── desktop.h
+│   │   ├── desktop_shell.h
+│   │   ├── terminal_window.h
+│   │   └── widgets.h
+│   ├── Makefile
+│   ├── README.md
+│   ├── shell
+│   │   ├── app_drawer.c
+│   │   ├── compositor.c
+│   │   ├── desktop_shell.c
+│   │   └── main.c
+│   └── widgets
+│       └── widgets.c
+├── docs
+│   ├── apps
+│   │   ├── desktop.md
+│   │   ├── file_manager.html
+│   │   ├── index.html
+│   │   ├── path.app.html
+│   │   ├── path.html
+│   │   ├── pty_syscalls.html
+│   │   └── terminal.html
+│   ├── architecture
+│   │   ├── applications.html
+│   │   ├── arm64.html
+│   │   ├── boot.html
+│   │   ├── filesystem.html
+│   │   ├── overview.html
+│   │   ├── roadmap.html
+│   │   └── user_dirs.html
+│   ├── assets
+│   │   ├── navbar.css
+│   │   └── navbar.js
+│   ├── boot_roadmap.html
+│   ├── developers
+│   │   └── app_structure.html
+│   ├── drivers
+│   │   ├── block.html
+│   │   ├── gpu_3d.html
+│   │   ├── index.html
+│   │   ├── kdrv.html
+│   │   ├── keyboard.html
+│   │   ├── nvme.html
+│   │   ├── nxaudio.html
+│   │   ├── nxbacklight_api.html
+│   │   ├── nxdisplay_advanced_api.html
+│   │   ├── nxdisplay.html
+│   │   ├── nxgame_abi.html
+│   │   ├── nxtouch_api.html
+│   │   ├── pci.html
+│   │   └── settings_drivers_api.html
+│   ├── filesystem
+│   │   ├── nxfs.html
+│   │   └── vfs.html
+│   ├── gui
+│   │   ├── animation.html
+│   │   ├── gpu_driver.html
+│   │   ├── index.html
+│   │   ├── lighting.html
+│   │   └── nxrender.html
+│   ├── index.html
+│   ├── kernel
+│   │   ├── boot_manager.html
+│   │   ├── interrupts.html
+│   │   ├── memory.html
+│   │   ├── process.html
+│   │   └── syscalls.html
+│   ├── network
+│   ├── nix_format.html
+│   ├── nucleus_production_guide.md
+│   ├── nucleus_safety_features.md
+│   ├── phases.html
+│   ├── project_status.html
+│   ├── reox
+│   │   ├── api.html
+│   │   ├── examples.html
+│   │   ├── index.html
+│   │   ├── syntax.html
+│   │   └── ui.html
+│   ├── search.svg
+│   ├── security
+│   │   ├── firewall.html
+│   │   ├── index.html
+│   │   ├── security_hardening.html
+│   │   ├── security_scanner.html
+│   │   └── sip.html
+│   ├── stability
+│   │   └── nxgame_bridge.html
+│   ├── storage_drivers.md
+│   ├── syscalls
+│   └── ui
+├── edk2-x86_64-code.fd
+├── GEMINI.md
+├── gui
+│   ├── debug.md
+│   ├── nxrender_c
+│   │   ├── ARCHITECTURE.md
+│   │   ├── Dev.md
+│   │   ├── GEMINI.md
+│   │   ├── include
+│   │   │   ├── animation
+│   │   │   │   ├── animation_advanced.h
+│   │   │   │   └── animation.h
+│   │   │   ├── input
+│   │   │   ├── layout
+│   │   │   │   └── layout.h
+│   │   │   ├── nxgfx
+│   │   │   │   ├── gpu_driver.h
+│   │   │   │   ├── lighting.h
+│   │   │   │   └── nxgfx.h
+│   │   │   ├── nxrender
+│   │   │   │   ├── application.h
+│   │   │   │   ├── compositor.h
+│   │   │   │   └── window.h
+│   │   │   ├── nxrender.h
+│   │   │   ├── theme
+│   │   │   │   └── theme.h
+│   │   │   └── widgets
+│   │   │       ├── button.h
+│   │   │       ├── container.h
+│   │   │       ├── label.h
+│   │   │       ├── textfield.h
+│   │   │       └── widget.h
+│   │   ├── libnxrender.a
+│   │   ├── Makefile
+│   │   ├── README.md
+│   │   ├── src
+│   │   │   ├── animation
+│   │   │   │   ├── animation_advanced.c
+│   │   │   │   ├── animation_advanced.o
+│   │   │   │   ├── animation.c
+│   │   │   │   └── animation.o
+│   │   │   ├── input
+│   │   │   ├── layout
+│   │   │   │   ├── layout.c
+│   │   │   │   └── layout.o
+│   │   │   ├── nxgfx
+│   │   │   │   ├── context.c
+│   │   │   │   ├── context.o
+│   │   │   │   ├── gpu_driver.c
+│   │   │   │   ├── gpu_driver.o
+│   │   │   │   ├── lighting.c
+│   │   │   │   ├── lighting.o
+│   │   │   │   ├── text.c
+│   │   │   │   └── text.o
+│   │   │   ├── nxrender
+│   │   │   │   ├── application.c
+│   │   │   │   ├── application.o
+│   │   │   │   ├── compositor.c
+│   │   │   │   ├── compositor.o
+│   │   │   │   ├── window.c
+│   │   │   │   └── window.o
+│   │   │   ├── theme
+│   │   │   │   ├── theme.c
+│   │   │   │   └── theme.o
+│   │   │   └── widgets
+│   │   │       ├── button.c
+│   │   │       ├── button.o
+│   │   │       ├── container.c
+│   │   │       ├── container.o
+│   │   │       ├── label.c
+│   │   │       ├── label.o
+│   │   │       ├── textfield.c
+│   │   │       ├── textfield.o
+│   │   │       ├── widget.c
+│   │   │       └── widget.o
+│   │   ├── tests
+│   │   └── TODO.md
+│   ├── nxxml
+│   │   ├── build
+│
+│   ├── README.md
+│   └── roadmap.pdf
+├── hdd_50g.img
+├── icons
+
+│   └── zepra.svg
+├── include
+│   ├── nxcolor.h
+│   ├── nxkeyboard_layout.h
+│   ├── nxnetwork.h
+│   ├── nxtheme.h
+│   ├── stddef.h
+│   ├── stdint.h
+│   └── string.h
+├── initramfs
+│   └── init
+├── iso
+│   └── boot
+│       └── kernel.elf
+├── kernel
+│   ├── ahci_block.o
+│   ├── ahci.o
+│   ├── amd_platform.o
+│   ├── arch.o
+│   ├── arm_platform.o
+│   ├── ata.o
+│   ├── backup_driver
+│   │   ├── heap_dummy.c
+│   │   ├── INSTRUCTIONS.txt
+│   │   ├── io.h
+│   │   ├── keyboard.c
+│   │   └── keyboard.h
+│   ├── bcache.o
+│   ├── block.o
+│   ├── bluetooth.o
+│   ├── boot_firmware.c
+│   ├── boot_firmware.o
+│   ├── boot_guard.o
+│   ├── boot.o
+│   ├── browser_session.c
+│   ├── browser_session.h
+│   ├── browser_session.o
+│   ├── bsp.o
+│   ├── build
+│   │   ├── build_kernel.bat
+│   │   ├── drivers.o
+│   │   ├── io.o
+│   │   ├── kernel.elf
+│   │   ├── keyboard.o
+│   │   ├── log.o
+│   │   ├── main.o
+│   │   ├── network.o
+│   │   ├── storage.o
+│   │   ├── string.o
+│   │   └── video.o
+│   ├── build.log
+│   ├── build.ninja
+│   ├── code_integrity.o
+│   ├── console.o
+│   ├── csr.o
+│   ├── desktop_shell.o
+│   ├── drivers
+│   │   └── README.md
+│   ├── drivers.o
+│   ├── e1000.o
+│   ├── elf.o
+│   ├── ethernet.o
+│   ├── fat.o
+│   ├── fbuffer.o
+│   ├── file.o
+│   ├── font.o
+│   ├── fs_init.o
+│   ├── gdt.o
+│   ├── generic_platform.o
+│   ├── gpu.o
+│   ├── heap.o
+│   ├── idt.o
+│   ├── include
+│   │   ├── arch
+│   │   │   ├── aarch64
+│   │   │   │   ├── arm64.h
+│   │   │   │   └── fdt.h
+│   │   │   ├── io.h
+│   │   │   └── x86_64
+│   │   │       └── idt.h
+│   │   ├── config
+│   │   │   └── nlc_config.h
+│   │   ├── core
+│   │   │   ├── app_launcher.h
+│   │   │   ├── boot_guard.h
+│   │   │   ├── boot.h
+│   │   │   ├── boot_mode.h
+│   │   │   ├── elf.h
+│   │   │   ├── first_boot.h
+│   │   │   ├── graceful_shutdown.h
+│   │   │   ├── installer.h
+│   │   │   ├── kernel.h
+│   │   │   ├── memory.h
+│   │   │   ├── npa_manager.h
+│   │   │   ├── nxpt.h
+│   │   │   ├── panic.h
+│   │   │   ├── panic_handler.h
+│   │   │   ├── power.h
+│   │   │   ├── process.h
+│   │   │   ├── recovery.h
+│   │   │   ├── runtime.h
+│   │   │   ├── safe_mem.h
+│   │   │   ├── security.h
+│   │   │   ├── session_manager.h
+│   │   │   ├── syscall.h
+│   │   │   ├── sysconfig.h
+│   │   │   └── user_auth.h
+│   │   ├── desktop
+│   │   │   ├── desktop_shell.h
+│   │   │   ├── lock_screen.h
+│   │   │   ├── terminal_window.h
+│   │   │   └── widgets.h
+│   │   ├── disk
+│   │   │   └── disk_ops.h
+│   │   ├── drivers
+│   │   │   ├── ahci.h
+│   │   │   ├── ata.h
+│   │   │   ├── block.h
+│   │   │   ├── bluetooth.h
+│   │   │   ├── drivers.h
+│   │   │   ├── e1000.h
+│   │   │   ├── ethernet.h
+│   │   │   ├── gpu.h
+│   │   │   ├── keyboard.h
+│   │   │   ├── mouse.h
+│   │   │   ├── netdrv.h
+│   │   │   ├── nxaudio.h
+│   │   │   ├── nxaudio_kdrv.h
+│   │   │   ├── nxbacklight.h
+│   │   │   ├── nxbridge.h
+│   │   │   ├── nxcam_kdrv.h
+│   │   │   ├── nxdisplay_kdrv.h
+│   │   │   ├── nxfp_kdrv.h
+│   │   │   ├── nxgame
+│   │   │   │   └── nxgame_bridge.h
+│   │   │   ├── nxgfx_accel.h
+│   │   │   ├── nxgfx_kdrv.h
+│   │   │   ├── nxnet_kdrv.h
+│   │   │   ├── nxnfc_kdrv.h
+│   │   │   ├── nxpci_kdrv.h
+│   │   │   ├── nxpen_kdrv.h
+│   │   │   ├── nxpower_kdrv.h
+│   │   │   ├── nxrender_kdrv.h
+│   │   │   ├── nxsensor_kdrv.h
+│   │   │   ├── nxstor_kdrv.h
+│   │   │   ├── nxsysinfo_kdrv.h
+│   │   │   ├── nxtask_kdrv.h
+│   │   │   ├── nxtouch.h
+│   │   │   ├── nxtouch_kdrv.h
+│   │   │   ├── nxusb_kdrv.h
+│   │   │   ├── pit.h
+│   │   │   ├── print.h
+│   │   │   ├── usb.h
+│   │   │   ├── wifi_driver.h
+│   │   │   └── wifi.h
+│   │   ├── fs
+│   │   │   ├── bcache.h
+│   │   │   ├── fat.h
+│   │   │   ├── file.h
+│   │   │   ├── fs_init.h
+│   │   │   ├── npa_archive.h
+│   │   │   ├── ntfs.h
+│   │   │   ├── nxfs.h
+│   │   │   ├── ramfs.h
+│   │   │   ├── sip.h
+│   │   │   └── vfs.h
+│   │   ├── io
+│   │   │   ├── io.h
+│   │   │   ├── kbd_queue.h
+│   │   │   ├── keyboard.h
+│   │   │   └── pty.h
+│   │   ├── mm
+│   │   │   ├── heap.h
+│   │   │   ├── kheap.h
+│   │   │   ├── pmm.h
+│   │   │   └── vmm.h
+│   │   ├── net
+│   │   │   ├── netinfra.h
+│   │   │   ├── network.h
+│   │   │   └── tcpip.h
+│   │   ├── network
+│   │   │   └── network.h
+│   │   ├── platform
+│   │   │   ├── platform_detect.h
+│   │   │   └── platform_kdrv.h
+│   │   ├── security
+│   │   │   ├── app_sandbox.h
+│   │   │   ├── audit.h
+│   │   │   ├── code_integrity.h
+│   │   │   ├── crypto.h
+│   │   │   ├── csr.h
+│   │   │   ├── firewall.h
+│   │   │   ├── security_policy.h
+│   │   │   ├── security_scanner.h
+│   │   │   ├── system_lock.h
+│   │   │   └── task_port.h
+│   │   ├── shell
+│   │   │   └── terminal.h
+│   │   ├── stdint.h
+│   │   ├── storage
+│   │   │   ├── ahci_block.h
+│   │   │   └── storage.h
+│   │   ├── test
+│   │   │   └── stress_test.h
+│   │   ├── ui
+│   │   │   ├── cursors.h
+│   │   │   ├── desktop.h
+│   │   │   ├── disk_icons.h
+│   │   │   ├── font.h
+│   │   │   ├── nxfont.h
+│   │   │   ├── nxicon.h
+│   │   │   ├── vector_icons.h
+│   │   │   └── vector_icons_v2.h
+│   │   ├── utils
+│   │   │   ├── log.h
+│   │   │   ├── nucleus.h
+│   │   │   ├── nucleus_write.h
+│   │   │   └── string.h
+│   │   └── video
+│   │       ├── console.h
+│   │       ├── nx3d.h
+│   │       ├── splash.h
+│   │       ├── terminal.h
+│   │       └── video.h
+│   ├── installer.o
+│   ├── intel_platform.o
+│   ├── isr_handler.o
+│   ├── isr.o
+│   ├── kernel.bin
+│   ├── kernel_main.c
+│   ├── kernel.o
+│   ├── keyboard.o
+│   ├── linker.ld
+│   ├── link.ld
+│   ├── lock_screen.o
+│   ├── log.o
+│   ├── main.o
+│   ├── Makefile
+│   ├── Makefile.minimal
+│   ├── Makefile.platform
+│   ├── Makefile.prod
+│   ├── mouse.o
+│   ├── netinfra.o
+│   ├── network_core.o
+│   ├── nlc_config.o
+│   ├── npa_archive.o
+│   ├── npa_manager.o
+│   ├── nucleus.o
+│   ├── nucleus_write.o
+│   ├── nul
+│   ├── nvme_block.o
+│   ├── nvme.o
+│   ├── nx3d.o
+│   ├── nxaudio_kdrv.o
+│   ├── nxaudio.o
+│   ├── nxaudio_spatial.o
+│   ├── nxbridge.o
+│   ├── nxdisplay_kdrv.o
+│   ├── nxfs.o
+│   ├── nxgame_bridge.o
+│   ├── nxgfx_accel.o
+│   ├── nxgfx_kdrv.o
+│   ├── nxnet_kdrv.o
+│   ├── nxpci_kdrv.o
+│   ├── nxpen_kdrv.o
+│   ├── nxpt.o
+│   ├── nxstor_kdrv.o
+│   ├── nxsysinfo_kdrv.o
+│   ├── nxtask_kdrv.o
+│   ├── nxusb_kdrv.o
+│   ├── paging.o
+│   ├── panic_handler.o
+│   ├── pci.o
+│   ├── pit.o
+│   ├── platform_detect.o
+│   ├── platform_kdrv.o
+│   ├── pmm.o
+│   ├── power.o
+│   ├── print.o
+│   ├── process.o
+│   ├── project_tree.html
+│   ├── ramfs.o
+│   ├── README.md
+│   ├── recovery.o
+│   ├── runtime.o
+│   ├── safe_mem.o
+│   ├── security.o
+│   ├── serial.o
+│   ├── session_manager.o
+│   ├── sip.o
+│   ├── splash.o
+│   ├── src
+│   │   ├── arch
+│   │   │   ├── aarch64
+│   │   │   │   ├── boot.S
+│   │   │   │   ├── fdt.c
+│   │   │   │   └── mmu.c
+│   │   │   └── x86_64
+│   │   │       ├── arch.S
+│   │   │       ├── bsp.c
+│   │   │       ├── gdt.c
+│   │   │       ├── idt.c
+│   │   │       ├── isr_handler.c
+│   │   │       ├── isr.S
+│   │   │       ├── paging.c
+│   │   │       ├── startup.S
+│   │   │       └── startup_uefi.S
+│   │   ├── audio
+│   │   │   ├── ac97_driver.c
+│   │   │   ├── audio.c
+│   │   │   ├── audio.h
+│   │   │   ├── device.c
+│   │   │   ├── device.h
+│   │   │   ├── hda_driver.c
+│   │   │   └── hda_driver.h
+│   │   ├── config
+│   │   │   └── nlc_config.c
+│   │   ├── core
+│   │   │   ├── app_launcher.c
+│   │   │   ├── boot.c
+│   │   │   ├── boot_guard.c
+│   │   │   ├── boot_mode.c
+│   │   │   ├── context.S
+│   │   │   ├── elf.c
+│   │   │   ├── first_boot.c
+│   │   │   ├── graceful_shutdown.c
+│   │   │   ├── init.c
+│   │   │   ├── init.h
+│   │   │   ├── installer.c
+│   │   │   ├── kernel.c
+│   │   │   ├── main.c
+│   │   │   ├── npa_manager.c
+│   │   │   ├── nxpt.c
+│   │   │   ├── panic.c
+│   │   │   ├── panic_handler.c
+│   │   │   ├── power.c
+│   │   │   ├── process.c
+│   │   │   ├── recovery.c
+│   │   │   ├── safe_mem.c
+│   │   │   ├── security.c
+│   │   │   ├── session_manager.c
+│   │   │   ├── stubs.c
+│   │   │   ├── syscall.c
+│   │   │   ├── syscall_entry.S
+│   │   │   ├── sysconfig.c
+│   │   │   └── user_auth.c
+│   │   ├── desktop
+│   │   │   ├── desktop_shell.c
+│   │   │   ├── lock_screen.c
+│   │   │   ├── terminal_window.c
+│   │   │   └── widgets.c
+│   │   ├── disk
+│   │   │   ├── disk_manager.c
+│   │   │   ├── disk_manager.h
+│   │   │   ├── disk_ops.c
+│   │   │   ├── disk_ui.c
+│   │   │   ├── disk_ui.h
+│   │   │   └── font8x16.h
+│   │   ├── drivers
+│   │   │   ├── acpi
+│   │   │   │   ├── acpi.c
+│   │   │   │   ├── acpi.h
+│   │   │   │   ├── include
+│   │   │   │   │   ├── acpi.h
+│   │   │   │   │   ├── arm
+│   │   │   │   │   │   └── psci.h
+│   │   │   │   │   ├── numa.h
+│   │   │   │   │   ├── power
+│   │   │   │   │   │   └── sleep_states.h
+│   │   │   │   │   ├── thermal
+│   │   │   │   │   │   └── energy.h
+│   │   │   │   │   └── x86
+│   │   │   │   │       └── acpi_x86.h
+│   │   │   │   ├── io.h
+│   │   │   │   ├── Makefile
+│   │   │   │   └── src
+│   │   │   │       ├── arch
+│   │   │   │       │   ├── arm
+│   │   │   │       │   │   └── psci.c
+│   │   │   │       │   └── x86
+│   │   │   │       │       ├── io.c
+│   │   │   │       │       └── pm.c
+│   │   │   │       ├── core
+│   │   │   │       │   ├── acpi_core.c
+│   │   │   │       │   ├── numa.c
+│   │   │   │       │   └── tables.c
+│   │   │   │       ├── modern
+│   │   │   │       │   └── cxl.c
+│   │   │   │       └── thermal
+│   │   │   │           └── energy.c
+│   │   │   ├── ahci.c
+│   │   │   ├── audio
+│   │   │   │   ├── nxaudio_kdrv.c
+│   │   │   │   └── nxaudio_spatial.c
+│   │   │   ├── biometric
+│   │   │   │   └── nxfp_kdrv.c
+│   │   │   ├── block
+│   │   │   │   ├── block.c
+│   │   │   │   ├── block.h
+│   │   │   │   └── nvme_block.c
+│   │   │   ├── bluetooth.c
+│   │   │   ├── camera
+│   │   │   │   └── nxcam_kdrv.c
+│   │   │   ├── cpu
+│   │   │   │   └── zen
+│   │   │   │       ├── amd_microcode.c
+│   │   │   │       ├── amd_numa.c
+│   │   │   │       ├── amd_rapl.c
+│   │   │   │       ├── zen_apic.c
+│   │   │   │       ├── zen_hpet.c
+│   │   │   │       ├── zen_init.c
+│   │   │   │       ├── zen_pstate.c
+│   │   │   │       └── zen_smp.c
+│   │   │   ├── display
+│   │   │   │   └── nxdisplay_kdrv.c
+│   │   │   ├── drivers.c
+│   │   │   ├── e1000.c
+│   │   │   ├── gpu.c
+│   │   │   ├── graphics
+│   │   │   │   ├── nxbridge.c
+│   │   │   │   ├── nxgfx_accel.c
+│   │   │   │   ├── nxgfx_kdrv.c
+│   │   │   │   └── nxrender_kdrv.c
+│   │   │   ├── input
+│   │   │   │   ├── mouse.c
+│   │   │   │   ├── nxpen_kdrv.c
+│   │   │   │   └── nxtouch_kdrv.c
+│   │   │   ├── keyboard.c
+│   │   │   ├── keyboard.h
+│   │   │   ├── network
+│   │   │   │   ├── ethernet.c
+│   │   │   │   ├── nxnet_kdrv.c
+│   │   │   │   └── wifi.c
+│   │   │   ├── nxaudio.c
+│   │   │   ├── nxdisplay_advanced.c
+│   │   │   ├── nxgame
+│   │   │   │   └── nxgame_bridge.c
+│   │   │   ├── pci
+│   │   │   │   ├── nxpci_kdrv.c
+│   │   │   │   ├── pci.c
+│   │   │   │   └── pci.h
+│   │   │   ├── pit.c
+│   │   │   ├── power
+│   │   │   │   └── nxpower_kdrv.c
+│   │   │   ├── print.c
+│   │   │   ├── README.md
+│   │   │   ├── sensors
+│   │   │   │   └── nxsensor_kdrv.c
+│   │   │   ├── serial.c
+│   │   │   ├── serial.h
+│   │   │   ├── storage
+│   │   │   │   ├── ata.c
+│   │   │   │   ├── nvme.c
+│   │   │   │   ├── nvme.h
+│   │   │   │   └── nxstor_kdrv.c
+│   │   │   ├── system
+│   │   │   │   ├── nxsysinfo_kdrv.c
+│   │   │   │   └── nxtask_kdrv.c
+│   │   │   ├── timer.c
+│   │   │   ├── usb
+│   │   │   │   ├── nxusb_kdrv.c
+│   │   │   │   ├── usb.c
+│   │   │   │   └── usb.h
+│   │   │   ├── usb.c
+│   │   │   ├── wifi.c
+│   │   │   └── wireless
+│   │   │       └── nxnfc_kdrv.c
+│   │   ├── fs
+│   │   │   ├── apfs
+│   │   │   │   ├── file.c
+│   │   │   │   ├── Makefile
+│   │   │   │   ├── node.c
+│   │   │   │   └── super.c
+│   │   │   ├── bcache.c
+│   │   │   ├── fat.c
+│   │   │   ├── file.c
+│   │   │   ├── fs.c
+│   │   │   ├── fs_init.c
+│   │   │   ├── Makefile
+│   │   │   ├── npa_archive.c
+│   │   │   ├── ntfs.c
+│   │   │   ├── nxfs
+│   │   │   │   ├── dir.c
+│   │   │   │   ├── file.c
+│   │   │   │   ├── inode.c
+│   │   │   │   ├── io.c
+│   │   │   │   ├── nxfs.c
+│   │   │   │   ├── nxfs.h
+│   │   │   │   ├── storagesystem.md
+│   │   │   │   └── super.c
+│   │   │   ├── nxfs.c
+│   │   │   ├── ramfs_binaries.h
+│   │   │   ├── ramfs.c
+│   │   │   ├── sip.c
+│   │   │   ├── vfs
+│   │   │   │   ├── dentry.c
+│   │   │   │   ├── file.c
+│   │   │   │   ├── inode.c
+│   │   │   │   ├── super.c
+│   │   │   │   └── vfs.h
+│   │   │   └── vfs.c
+│   │   ├── io
+│   │   │   ├── io.h
+│   │   │   ├── keyboard.h
+│   │   │   └── pty.c
+│   │   ├── loader
+│   │   │   ├── elf_loader.c
+│   │   │   └── elf_loader.h
+│   │   ├── mm
+│   │   │   ├── heap.c
+│   │   │   ├── kheap.c
+│   │   │   ├── pmm.c
+│   │   │   └── vmm.c
+│   │   ├── net
+│   │   │   ├── netinfra.c
+│   │   │   ├── network.c
+│   │   │   └── tcpip.c
+│   │   ├── network
+│   │   │   └── network.c
+│   │   ├── platform
+│   │   │   ├── amd
+│   │   │   │   └── amd_platform.c
+│   │   │   ├── arm
+│   │   │   │   └── arm_platform.c
+│   │   │   ├── generic
+│   │   │   │   └── generic_platform.c
+│   │   │   ├── intel
+│   │   │   │   └── intel_platform.c
+│   │   │   ├── platform_detect.c
+│   │   │   └── platform_kdrv.c
+│   │   ├── runtime
+│   │   │   └── runtime.c
+│   │   ├── security
+│   │   │   ├── app_sandbox.c
+│   │   │   ├── audit.c
+│   │   │   ├── code_integrity.c
+│   │   │   ├── crypto.c
+│   │   │   ├── csr.c
+│   │   │   ├── firewall.c
+│   │   │   ├── meson.build
+│   │   │   ├── security_policy.c
+│   │   │   ├── security_scanner.c
+│   │   │   ├── system_lock.c
+│   │   │   └── task_port_protection.c
+│   │   ├── services
+│   │   │   ├── service_manager.c
+│   │   │   └── service_manager.h
+│   │   ├── shell
+│   │   │   ├── terminal.c
+│   │   │   └── terminal_shell.c
+│   │   ├── storage
+│   │   │   ├── ahci_block.c
+│   │   │   └── storage.c
+│   │   ├── test
+│   │   │   └── stress_test.c
+│   │   ├── ui
+│   │   │   ├── desktop.c
+│   │   │   ├── font.c
+│   │   │   └── nxicon.c
+│   │   ├── utils
+│   │   │   ├── log.c
+│   │   │   ├── log.h
+│   │   │   ├── nucleus.c
+│   │   │   ├── nucleus_write.c
+│   │   │   └── string.c
+│   │   └── video
+│   │       ├── console.c
+│   │       ├── font.h
+│   │       ├── framebuffer.c
+│   │       ├── nx3d.c
+│   │       ├── splash.c
+│   │       ├── terminal.c
+│   │       └── video.c
+│   ├── startup.o
+│   ├── storage.o
+│   ├── stress_test.o
+│   ├── string.o
+│   ├── stubs.o
+│   ├── syscall.o
+│   ├── sysconfig.o
+│   ├── task_port_protection.o
+│   ├── tcpip.o
+│   ├── terminal.o
+│   ├── terminal_shell.o
+│   ├── test_folder
+│   ├── tests
+│   │   └── test_simple.c
+│   ├── timer.o
+│   ├── uefi_bootloader.c
+│   ├── usb.o
+│   ├── user_auth.o
+│   ├── vfs.o
+│   ├── video_minimal.c
+│   ├── video.o
+│   ├── vmm.o
+│   └── wifi_drv.o
+├── lib
+│   ├── lyxstore
+│   │   ├── api
+│   │   │   └── v1
+│   │   ├── include
+│   │   │   └── lyxstore.h
+│   │   ├── Makefile
+│   │   ├── sdk
+│   │   └── src
+│   │       └── store_client.c
+│   ├── vulkan
+│   │   └── vulkan_nxgfx.c
+│   └── zeprascript
+│       ├── bindings
+│       │   ├── lyxstore
+│       │   │   ├── lyxstore_bindings.c
+│       │   │   └── lyxstore_bindings.h
+│       │   └── nxapi
+│       │       ├── nxapi.c
+│       │       └── nxapi.h
+│       ├── build
+│       │   └── test_zeprascript
+│       ├── examples
+│       │   └── nxapi_demo.c
+│       ├── include
+│       │   └── zeprascript.h
+│       ├── lib
+│       ├── Makefile
+│       ├── src
+│       │   ├── builtins
+│       │   ├── bytecode
+│       │   ├── engine.c
+│       │   ├── frontend
+│       │   ├── gc
+│       │   ├── jit
+│       │   └── runtime
+│       ├── sync_from_browser.sh
+│       └── tests
+│           └── basic_tests.c
+├── LICENSE
+├── Makefile
+├── mime.types
+├── neolyx_fresh.img
+├── neolyx.img
+├── neolyx.img.d
+│   └── kernel.bin
+├── neolyx.iso
+├── note.ai
+├── nxaudio
+│   ├── audio
+│   │   ├── nxaudio_test
+│   │   ├── nxaudio_test.c
+│   │   ├── WA AcousticPiano 90BPM 01 Emin.wav
+│   │   └── WA Musicloop PianoArp 130BPM Dmin.wav
+│   ├── bench
+│   │   └── nx_engine_bench.c
+│   ├── build
+│   │   ├── CMakeCache.txt
+│   │   ├── CMakeFiles
+│   │   │   ├── 4.1.2
+
+│   │   ├── cmake_install.cmake
+│   │   ├── examples
+│   │   ├── libnxaudio.so -> libnxaudio.so.1
+│   │   ├── libnxaudio.so.1 -> libnxaudio.so.1.0.0
+│   │   ├── libnxaudio.so.1.0.0
+│   │   ├── libnxaudio_static.a
+│   │   ├── Makefile
+│   │   ├── nxaudio.pc
+│   │   └── tests
+│   ├── CMakeLists.txt
+│   ├── data
+│   │   └── hrtf
+│   ├── docs
+│   │   └── spatial.md
+│   ├── examples
+│   │   └── spatial_demo.c
+│   ├── include
+│   │   └── nxaudio
+│   │       ├── nxaudio.h
+│   │       └── ring_ipc.h
+│   ├── nxaudio.pc.in
+│   ├── packaging
+│   │   └── nxaudiod.service
+│   ├── src
+│   │   ├── codecs
+│   │   │   ├── aiff.c
+│   │   │   ├── aiff.h
+│   │   │   ├── flac.c
+│   │   │   ├── flac.h
+│   │   │   ├── loader.c
+│   │   │   ├── loader.h
+│   │   │   ├── mp3.c
+│   │   │   ├── mp3.h
+│   │   │   ├── ogg.c
+│   │   │   ├── ogg.h
+│   │   │   ├── wav.c
+│   │   │   └── wav.h
+│   │   ├── core
+│   │   │   └── init.c
+│   │   ├── daemon
+│   │   │   └── nxaudiod.c
+│   │   ├── drivers
+│   │   │   └── hda.c
+│   │   ├── dsp
+│   │   │   ├── effects.c
+│   │   │   ├── effects.h
+│   │   │   ├── engine.c
+│   │   │   ├── engine.h
+│   │   │   ├── mixer.c
+│   │   │   ├── mixer.h
+│   │   │   ├── resample.c
+│   │   │   ├── resample.h
+│   │   │   ├── stream.c
+│   │   │   └── stream.h
+│   │   ├── metadata
+│   │   │   ├── metadata.c
+│   │   │   └── metadata.h
+│   │   ├── nxaudio_player
+│   │   ├── player.c
+│   │   └── spatial
+│   │       ├── hrtf.c
+│   │       ├── mixer.c
+│   │       ├── nx_spatial.c
+│   │       └── nx_spatial.h
+│   └── tests
+│       └── spatial_test.c
+├── nxrt
+│   ├── build
+│   │   ├── CMakeCache.txt
+
+│   │   ├── cmake_install.cmake
+│   │   ├── libnxrt.a
+│   │   ├── libnxrt.so -> libnxrt.so.1
+│   │   ├── libnxrt.so.1 -> libnxrt.so.1.0.0
+│   │   ├── libnxrt.so.1.0.0
+│   │   ├── Makefile
+│   │   └── nxrt.pc
+│   ├── CMakeLists.txt
+│   ├── examples
+│   │   ├── hello_nxrt.cpp
+│   │   └── manifest.json
+│   ├── include
+│   │   └── nxrt
+│   │       ├── nxrt_cpp.hpp
+│   │       ├── nxrt.h
+│   │       └── security.h
+│   ├── nxrt.pc.in
+│   └── src
+│       ├── app
+│       ├── core
+│       │   └── runtime.c
+│       ├── ipc
+│       │   └── ipc.c
+│       ├── security
+│       │   └── security.c
+│       └── services
+├── nxvideo
+│   ├── build
+│   │   ├── CMakeCache.txt
+│
+│   ├── nxvideo.pc.in
+│   └── src
+│       ├── core
+│       │   ├── init.c
+│       │   └── player.c
+│       ├── decode
+│       └── render
+├── pkg
+│   └── README.md
+├── PROJECT_STRUCTURE.md
+├── project_tree.html
+├── README.md
+├── REOX
+│   ├── all.md
+│   ├── architecture.md
+│   ├── docs
+│   │   ├── REOX_API_GUIDE.md
+│   │   └── REOX_LANGUAGE.md
+│   ├── reolab
+│   │   ├── benchmarks
+│   │   │   ├── fib.c
+│   │   │   ├── fib_c
+│   │   │   ├── fib_reox
+│   │   │   ├── fib_reox.c
+│   │   │   ├── fib.rs
+│   │   │   ├── fib_rust
+│   │   │   ├── fib.rx
+│   │   │   └── run_benchmark.sh
+│   │   ├── Cargo.lock
+│   │   ├── Cargo.toml
+│   │   ├── examples
+│   │   │   ├── animation_demo
+│   │   │   ├── animation_demo.c
+│   │   │   ├── animation_demo.rx
+│   │   │   ├── bridge_demo
+│   │   │   ├── bridge_demo.c
+│   │   │   ├── display_settings
+│   │   │   ├── display_settings.c
+│   │   │   ├── display_settings.rx
+│   │   │   ├── state_diff_demo
+│   │   │   ├── state_diff_demo.c
+│   │   │   ├── system_monitor
+│   │   │   ├── system_monitor.c
+│   │   │   └── system_monitor.rx
+│   │   ├── runtime
+│   │   │   ├── libreox_runtime.a
+│   │   │   ├── Makefile
+│   │   │   ├── reox_accessibility.h
+│   │   │   ├── reox_animation.c
+│   │   │   ├── reox_animation.h
+│   │   │   ├── reox_anim_flow.h
+│   │   │   ├── reox_color_system.c
+│   │   │   ├── reox_color_system.h
+│   │   │   ├── reox_cpp.hpp
+│   │   │   ├── reox_desktop.c
+│   │   │   ├── reox_desktop.h
+│   │   │   ├── reox_display.c
+│   │   │   ├── reox_display.h
+│   │   │   ├── reox_forms.h
+│   │   │   ├── reox_gestures.h
+│   │   │   ├── reox_grid.h
+│   │   │   ├── reox_image_system.h
+│   │   │   ├── reox_lighting.h
+│   │   │   ├── reox_nxrender_bridge.h
+│   │   │   ├── reox_project.c
+│   │   │   ├── reox_project.h
+│   │   │   ├── reox_project.o
+│   │   │   ├── reox_runtime.c
+│   │   │   ├── reox_runtime.h
+│   │   │   ├── reox_runtime.o
+│   │   │   ├── reox_state.h
+│   │   │   ├── reox_theme.c
+│   │   │   ├── reox_theme.h
+│   │   │   ├── reox_transitions.c
+│   │   │   ├── reox_transitions.h
+│   │   │   ├── reox_ui.c
+│   │   │   ├── reox_ui.h
+│   │   │   ├── reox_ui.o
+│   │   │   ├── reox_widgets_ext.h
+│   │   │   ├── reox_wrappers.c
+│   │   │   └── reox_wrappers.o
+│   │   ├── src
+│   │   │   ├── cli.rs
+│   │   │   ├── codegen
+│   │   │   │   └── mod.rs
+│   │   │   ├── interpreter
+│   │   │   │   └── mod.rs
+│   │   │   ├── lexer
+│   │   │   │   ├── mod.rs
+│   │   │   │   └── token.rs
+│   │   │   ├── lib.rs
+│   │   │   ├── main.rs
+│   │   │   ├── parser
+│   │   │   │   ├── ast.rs
+│   │   │   │   └── mod.rs
+│   │   │   ├── profiler
+│   │   │   │   ├── instrumentation.rs
+│   │   │   │   ├── mod.rs
+│   │   │   │   └── reporter.rs
+│   │   │   ├── runtime
+│   │   │   │   └── mod.rs
+│   │   │   ├── stdlib
+│   │   │   │   └── mod.rs
+│   │   │   └── typechecker
+│   │   │       ├── mod.rs
+│   │   │       └── types.rs
+│   │   ├── stdlib
+│   │   │   ├── prelude.rx
+│   │   │   └── ui.rx
+│   │   ├── target
+│
+│   │   │   │   │       │   └── work-products.bin
+│   │   │   │   │       └── s-hdypw5ca3x-1ozugk2.lock
+│   │   │   │   ├── libreoxc.d
+│   │   │   │   ├── libreoxc.rlib
+│   │   │   │   ├── reolab
+│   │   │   │   ├── reolab.d
+│   │   │   │   ├── reoxc
+│   │   │   │   └── reoxc.d
+│   │   │   ├── release
+│   │   │   │   ├── build
+│   │   │   │   ├── deps
+│   │   │   │   │   ├── libreoxc-e561fcf5d7770129.rlib
+│   │   │   │   │   ├── libreoxc-e561fcf5d7770129.rmeta
+│   │   │   │   │   ├── reoxc-5bfb1979594fd68e
+│   │   │   │   │   ├── reoxc-5bfb1979594fd68e.d
+│   │   │   │   │   └── reoxc-e561fcf5d7770129.d
+│   │   │   │   ├── examples
+│   │   │   │   ├── incremental
+│   │   │   │   ├── libreoxc.d
+│   │   │   │   ├── libreoxc.rlib
+│   │   │   │   ├── reoxc
+│   │   │   │   └── reoxc.d
+│   │   │   └── tmp
+│   │   └── tests
+│   │       ├── calc.c
+│   │       ├── calc.rx
+│   │       ├── hello.rx
+│   │       ├── smoke.rs
+│   │       ├── test_runtime
+│   │       ├── test_runtime.c
+│   │       ├── test_runtime_opt
+│   │       └── test_runtime.rx
+│   ├── reox
+│   │   ├── compiler
+│   │   │   └── main.reox
+│   │   └── stdlib
+│   │       ├── ai
+│   │       │   ├── assistant.reox
+│   │       │   └── ml.reox
+│   │       ├── core
+│   │       │   ├── math.reox
+│   │       │   ├── mem.reox
+│   │       │   ├── print.reox
+│   │       │   └── string.reox
+│   │       ├── io
+│   │       │   ├── file.reox
+│   │       │   ├── network.reox
+│   │       │   └── serial.reox
+│   │       └── ui
+│   │           ├── controls.reox
+│   │           ├── graphics.reox
+│   │           └── window.reox
+│   ├── reox-spec.md
+│   ├── structure.rx
+│   └── Timeline.md
+├── scripts
+│   ├── create_image.sh
+│   └── neo-updater.sh
+├── serial.log
+├── services
+│   ├── audio
+│   ├── compositor
+│   ├── fs
+│   ├── input
+│   ├── nxaudio-server
+│   │   ├── CMakeLists.txt
+│   │   ├── nxaudiod.service.in
+│   │   ├── nxaudio_server.c
+│   │   └── nxaudio_server.h
+│   ├── README.md
+│   └── render
+├── tests
+│   ├── kernel_tests.c
+│   ├── README.md
+│   ├── run_tests.sh
+│   └── test_output.log
+├── todo.md
+├── tools
+│   ├── generate_logo.c
+│   ├── gen_logo
+│   └── README.md
+├── userland
+│   ├── hello
+│   │   ├── hello
+│   │   ├── hello.c
+│   │   ├── hello.o
+│   │   ├── linker.ld
+│   │   └── Makefile
+│   ├── include
+│   │   └── syscall.h
+│   ├── init
+│   │   ├── init
+│   │   ├── init.c
+│   │   ├── init.o
+│   │   ├── linker.ld
+│   │   └── Makefile
+│   ├── nxsh
+│   │   ├── linker.ld
+│   │   ├── Makefile
+│   │   ├── nxsh
+│   │   ├── nxsh.c
+│   │   └── nxsh.o
+│   └── README.md
+└── userspace
+    └── init
+        └── neo_init.c
+
+1398 directories, 6538 files
+swana@swana:~/Documents/NEOLYXOS/neolyx-os$ 

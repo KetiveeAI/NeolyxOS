@@ -1,0 +1,17 @@
+// test_runtime.rx - Test REOX runtime integration
+// Compile: reoxc test_runtime.rx -o test_runtime.c
+// Build: gcc -o test_runtime test_runtime.c -L. -lreox_runtime -lm
+
+fn main() -> int {
+    println("Hello from REOX!");
+    
+    let x: int = 42;
+    let y: int = 8;
+    let sum: int = x + y;
+    
+    println("Testing arithmetic:");
+    print_int(sum);
+    println("");
+    
+    return 0;
+}

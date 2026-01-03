@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storage Drivers - NeolyxOS Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --border: #30363d;
+            --success: #238636;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1,
+        h2,
+        h3 {
+            color: var(--accent);
+        }
+
+        h1 {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--border);
+            padding: 0.5rem;
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        pre {
+            background: #1f2428;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+
+        code {
+            background: #1f2428;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+    </style>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <a href="../index.html" class="back-link">← Back to Documentation</a>
+
+        <h1>Storage Drivers</h1>
+        <p>NeolyxOS includes production-grade storage drivers for AHCI/SATA, NVMe, and ATA devices.</p>
+
+        <h2>AHCI/SATA Driver</h2>
+        <p><strong>Status:</strong> ✅ Production-ready</p>
+        <p><strong>Features:</strong></p>
+        <ul>
+            <li>PCI Discovery & Bus Mastering</li>
+            <li>Port Management (Up to 32 ports)</li>
+            <li>LBA48 Support (Up to 128 PB)</li>
+            <li>Error Handling (Timeout, TFD)</li>
+        </ul>
+
+        <h2>NVMe Driver</h2>
+        <p><strong>Status:</strong> ✅ Production-ready with advanced features</p>
+        <ul>
+            <li>Multi-queue support (Admin + I/O queues)</li>
+            <li>PRP List handling for scatter-gather DMA</li>
+            <li>MSI-X Interrupt detection</li>
+        </ul>
+
+        <h2>Performance</h2>
+        <table>
+            <tr>
+                <th>Type</th>
+                <th>Sequential Read</th>
+                <th>Sequential Write</th>
+                <th>Random 4KB Read</th>
+            </tr>
+            <tr>
+                <td>AHCI (SATA III)</td>
+                <td>~550 MB/s</td>
+                <td>~520 MB/s</td>
+                <td>~95K IOPS</td>
+            </tr>
+            <tr>
+                <td>NVMe (Gen3 x4)</td>
+                <td>~3500 MB/s</td>
+                <td>~3000 MB/s</td>
+                <td>~650K IOPS</td>
+            </tr>
+        </table>
+    </div>
+</body>
+
+</html>

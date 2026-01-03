@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS Documentation</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --border: #30363d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding-top: 60px;
+        }
+
+        /* Navbar */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 2rem;
+            z-index: 1000;
+        }
+
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .navbar-links {
+            display: flex;
+            gap: 1.5rem;
+            list-style: none;
+        }
+
+        .navbar-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: color 0.2s;
+        }
+
+        .navbar-links a:hover {
+            color: var(--accent);
+        }
+
+        .search-container {
+            position: relative;
+        }
+
+        .search-input {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.5rem 1rem 0.5rem 2.5rem;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            width: 250px;
+            transition: border-color 0.2s, width 0.2s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            width: 300px;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 0.8rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+        }
+
+        .search-results {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            width: 350px;
+            max-height: 400px;
+            overflow-y: auto;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-top: 0.5rem;
+            display: none;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+
+        .search-results.active {
+            display: block;
+        }
+
+        .search-result-item {
+            padding: 0.8rem 1rem;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .search-result-item:hover {
+            background: var(--bg-primary);
+        }
+
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+
+        .search-result-title {
+            color: var(--accent);
+            font-weight: 500;
+        }
+
+        .search-result-desc {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        .no-results {
+            padding: 1rem;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            padding: 2rem 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1rem;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.2rem;
+            transition: border-color 0.2s;
+        }
+
+        .card:hover {
+            border-color: var(--accent);
+        }
+
+        .card h2 {
+            font-size: 1rem;
+            margin-bottom: 0.3rem;
+        }
+
+        .card h2 a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .card h2 a:hover {
+            text-decoration: underline;
+        }
+
+        .card p {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            margin-left: 0.3rem;
+            vertical-align: middle;
+        }
+
+        .status.complete {
+            background: #238636;
+            color: white;
+        }
+
+        .status.progress {
+            background: #9e6a03;
+            color: white;
+        }
+
+        .status.planned {
+            background: #6e7681;
+            color: white;
+        }
+
+        .section-title {
+            font-size: 1.2rem;
+            margin: 1.5rem 0 0.8rem;
+            padding-bottom: 0.4rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+            border-top: 1px solid var(--border);
+            margin-top: 2rem;
+            font-size: 0.9rem;
+        }
+
+        footer code {
+            background: var(--bg-secondary);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .quick-links {
+            display: flex;
+            gap: 0.4rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+
+        .quick-links a {
+            color: var(--accent);
+            text-decoration: none;
+            padding: 0.3rem 0.6rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+
+        .quick-links a:hover {
+            border-color: var(--accent);
+            background: var(--bg-secondary);
+        }
+    </style>
+    <script src="assets/navbar.js"></script>
+</head>
+
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <a href="index.html" class="navbar-brand">🚀 NeolyxOS Docs</a>
+        <ul class="navbar-links">
+            <li><a href="architecture/overview.html">Architecture</a></li>
+            <li><a href="kernel/syscalls.html">Kernel</a></li>
+            <li><a href="drivers/index.html">Drivers</a></li>
+            <li><a href="gui/index.html">GUI</a></li>
+            <li><a href="drivers/kdrv.html">kdrv</a></li>
+            <li><a href="reox/index.html">REOX</a></li>
+            <li><a href="apps/zeprabrowser.html">Apps</a></li>
+        </ul>
+        <div class="search-container">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 52 52" fill="none"
+                xmlns="http://www.w3.org/2000/svg">
+                <path fill-rule="evenodd" clip-rule="evenodd"
+                    d="M35.4381 30.948L40.271 35.7811C40.271 35.7811 38.4405 36.6873 37.5639 37.5641C36.6871 38.4407 35.7811 40.271 35.7811 40.271L30.948 35.4381C27.7236 37.7583 23.8363 39.1747 19.5873 39.1747C8.76906 39.1747 0 30.4056 0 19.5873C1.8498e-05 8.76909 8.76908 1.82925e-05 19.5873 0C30.4056 0 39.1747 8.76907 39.1747 19.5873C39.1747 23.8363 37.7583 27.7236 35.4381 30.948ZM19.5873 6.0269C12.0839 6.02686 6.02687 12.0839 6.02691 19.5873C6.02687 27.0907 12.0839 33.1478 19.5873 33.1478C27.0907 33.1478 33.1478 27.0907 33.1478 19.5873C33.1478 12.0839 27.0907 6.02692 19.5873 6.0269Z"
+                    fill="#8b949e" />
+                <path
+                    d="M38.8249 46.6193L41.7941 49.5886C44.049 51.8435 47.7048 51.8435 49.9597 49.5886C52.2146 47.3337 52.029 43.8635 49.7741 41.6086L46.8048 38.6394C44.5501 36.3845 40.8942 36.3845 38.6393 38.6394C36.3844 40.8941 36.57 44.3646 38.8249 46.6193Z"
+                    fill="#8b949e" />
+            </svg>
+            <input type="text" class="search-input" id="searchInput" placeholder="Search docs..." autocomplete="off">
+            <div class="search-results" id="searchResults"></div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <header>
+            <h1>🚀 NeolyxOS Documentation</h1>
+            <p class="subtitle">Custom 64-bit Operating System - Developer Reference</p>
+            <div class="quick-links">
+                <a href="project_status.html">📊 Project Status</a>
+                <a href="phases.html">🚀 Phases</a>
+                <a href="reox/index.html">📝 REOX Language</a>
+                <a href="architecture/overview.html">📐 Architecture</a>
+                <a href="drivers/gpu_3d.html">🎮 GPU & 3D</a>
+                <a href="drivers/kdrv.html">🔧 Drivers</a>
+                <a href="kernel/syscalls.html">📞 Syscalls</a>
+                <a href="security/security_hardening.html">🔒 Security</a>
+            </div>
+        </header>
+
+        <h3 class="section-title">📊 Project Status</h3>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="project_status.html">Complete Project Audit</a> <span class="status complete">New</span>
+                </h2>
+                <p>What's implemented, partial, stub, or missing</p>
+            </div>
+            <div class="card">
+                <h2><a href="boot_roadmap.html">Boot Roadmap</a> <span class="status complete">New</span></h2>
+                <p>8-phase plan to boot NeolyxOS with GUI</p>
+            </div>
+            <div class="card">
+                <h2><a href="stability/nxgame_bridge.html">NXGame Bridge</a> <span class="status complete">Phase
+                        9</span></h2>
+                <p>Direct hardware access for games/creative apps</p>
+            </div>
+            <div class="card">
+                <h2><a href="security/sip.html">System Integrity Protection</a> <span class="status complete">Phase
+                        9</span></h2>
+                <p>Protect system files from modification</p>
+            </div>
+            <div class="card">
+                <h2><a href="kernel/syscalls.html">Syscalls Reference</a> <span class="status complete">24
+                        Syscalls</span></h2>
+                <p>Complete syscall list with NXGame Bridge</p>
+            </div>
+        </div>
+
+        <h3 class="section-title">📐 Architecture</h3>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="architecture/overview.html">System Overview</a></h2>
+                <p>Full system stack, directory structure</p>
+            </div>
+            <div class="card">
+                <h2><a href="architecture/filesystem.html">Filesystem Hierarchy</a> <span
+                        class="status complete">New</span></h2>
+                <p>/System, /Applications, /Users, /Volumes</p>
+            </div>
+            <div class="card">
+                <h2><a href="architecture/user_dirs.html">User Directories</a> <span class="status complete">New</span>
+                </h2>
+                <p>Desktop, Documents, Public folder</p>
+            </div>
+            <div class="card">
+                <h2><a href="architecture/applications.html">Applications</a> <span class="status complete">New</span>
+                </h2>
+                <p>App bundles (.nxapp), capabilities</p>
+            </div>
+            <div class="card">
+                <h2><a href="architecture/boot.html">Boot Process</a> <span class="status complete">Complete</span></h2>
+                <p>UEFI → bootloader → kernel handoff</p>
+            </div>
+            <div class="card">
+                <h2><a href="architecture/arm64.html">ARM64 / AArch64</a> <span class="status complete">New</span></h2>
+                <p>Boot, MMU, FDT, GIC, exception vectors</p>
+            </div>
+        </div>
+
+        <h3 class="section-title">🧠 Kernel</h3>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="kernel/boot_manager.html">Boot Manager</a> <span class="status complete">Complete</span>
+                </h2>
+                <p>Graphical boot menu, navigation, source files</p>
+            </div>
+            <div class="card">
+                <h2><a href="kernel/syscalls.html">System Calls</a> <span class="status complete">Complete</span></h2>
+                <p>SYSCALL/SYSRET, process/file/memory calls</p>
+            </div>
+            <div class="card">
+                <h2><a href="kernel/interrupts.html">Interrupts</a> <span class="status complete">Complete</span></h2>
+                <p>IDT, PIC, IRQ handlers, exceptions</p>
+            </div>
+            <div class="card">
+                <h2><a href="kernel/memory.html">Memory Management</a> <span class="status complete">Complete</span>
+                </h2>
+                <p>PMM, VMM paging, address spaces, kmalloc</p>
+            </div>
+            <div class="card">
+                <h2><a href="kernel/process.html">Process Management</a> <span class="status complete">Complete</span>
+                </h2>
+                <p>PCB, scheduler, context switch</p>
+            </div>
+            <div class="card">
+                <h2><a href="kernel/userspace_ram.html">Userspace Memory</a> <span class="status complete">New</span>
+                </h2>
+                <p>ELF loading, BSS handling, heap, stack (Ring 3)</p>
+            </div>
+        </div>
+
+        <h3 class="section-title">💾 Drivers & Apps</h3>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="drivers/kdrv.html">Kernel Drivers (kdrv)</a> <span class="status complete">New</span></h2>
+                <p>All 10 unified drivers with API docs</p>
+            </div>
+            <div class="card">
+                <h2><a href="drivers/keyboard.html">Keyboard Layout</a> <span class="status complete">New</span></h2>
+                <p>ALLOW key, MODE modifier, media shortcuts</p>
+            </div>
+            <div class="card">
+                <h2><a href="drivers/index.html">Driver Index</a> <span class="status complete">74 Files</span></h2>
+                <p>All hardware drivers: display, touch, sensors</p>
+            </div>
+            <div class="card">
+                <h2><a href="drivers/gpu_3d.html">GPU & 3D</a> <span class="status complete">Phase D</span></h2>
+                <p>GPU memory, 2D accel, 3D pipeline</p>
+            </div>
+            <div class="card">
+                <h2><a href="drivers/nxgame_abi.html">NXGame ABI v1.0</a> <span class="status complete">Frozen</span>
+                </h2>
+                <p>Syscall 110-119, capability query</p>
+            </div>
+            <div class="card">
+                <h2><a href="drivers/storage.html">Storage Drivers</a> <span class="status complete">New</span></h2>
+                <p>AHCI, NVMe, ATA specs and performance</p>
+            </div>
+            <div class="card">
+                <h2><a href="filesystem/nucleus_production.html">Nucleus Production</a> <span
+                        class="status complete">New</span></h2>
+                <p>Disk formatting guide & safety features</p>
+            </div>
+            <div class="card">
+                <h2><a href="filesystem/nucleus_safety.html">Nucleus Safety</a> <span class="status complete">New</span>
+                </h2>
+                <p>Boot protection & confirmation dialogs</p>
+            </div>
+        </div>
+
+        <h3 class="section-title">🖼️ GUI Framework</h3>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="gui/desktop.html">Desktop Environment</a> <span class="status complete">Ring 3</span></h2>
+                <p>Userspace shell, WM, Dock, syscalls</p>
+            </div>
+            <div class="card">
+                <h2><a href="gui/nxrender.html">NXRender</a> <span class="status complete">New</span></h2>
+                <p>Pure C GUI framework, 4,747 lines, zero dependencies</p>
+            </div>
+            <div class="card">
+                <h2><a href="gui/animation.html">Animation System</a> <span class="status complete">New</span></h2>
+                <p>Springs, bezier curves, keyframes, timelines</p>
+            </div>
+            <div class="card">
+                <h2><a href="gui/lighting.html">3D Lighting</a> <span class="status complete">New</span></h2>
+                <p>Blinn-Phong, reflections, Fresnel, materials</p>
+            </div>
+            <div class="card">
+                <h2><a href="gui/gpu_driver.html">GPU Driver</a> <span class="status complete">New</span></h2>
+                <p>Command buffers, VSync, textures</p>
+            </div>
+        </div>
+
+        <h3 class="section-title">📁 Filesystem</h3>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="filesystem/vfs.html">Virtual File System</a> <span class="status complete">Complete</span>
+                </h2>
+                <p>VFS nodes, mount, path resolution</p>
+            </div>
+            <div class="card">
+                <h2><a href="filesystem/nxfs.html">NXFS Native FS</a> <span class="status complete">Complete</span></h2>
+                <p>Extents, encryption, checksums</p>
+            </div>
+        </div>
+
+        <h3 class="section-title">📚 Reference</h3>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="../GEMINI.md">GEMINI.md</a></h2>
+                <p>AI developer guide</p>
+            </div>
+            <div class="card">
+                <h2><a href="../todo.md">TODO List</a></h2>
+                <p>Current tasks</p>
+            </div>
+            <div class="card">
+                <h2><a href="../DEVELOPMENT_GUIDE.md">Dev Guide</a></h2>
+                <p>Build, test, contribute</p>
+            </div>
+        </div>
+
+        <footer>
+            <p>NeolyxOS © 2025 KetiveeAI — <strong>27 documentation pages</strong></p>
+            <p style="margin-top: 0.5rem;">Custom 64-bit OS with hardware-accelerated GUI | <a href="drivers/index.html"
+                    style="color: var(--accent);">74 Drivers</a> | <a href="kernel/syscalls.html"
+                    style="color: var(--accent);">24 Syscalls</a></p>
+            <p style="margin-top: 0.5rem;"><kbd
+                    style="background: var(--bg-secondary); padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid var(--border);">Ctrl+K</kbd>
+                or <kbd
+                    style="background: var(--bg-secondary); padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid var(--border);">/</kbd>
+                to search</p>
+        </footer>
+    </div>
+
+    <script>
+        // Documentation search index
+        const docs = [
+            { title: "Project Status", desc: "What's implemented, partial, stub, or missing", url: "project_status.html" },
+            { title: "Boot Roadmap", desc: "8-phase plan to boot NeolyxOS with GUI", url: "boot_roadmap.html" },
+            { title: "NXGame Bridge", desc: "Direct hardware access for games/creative apps", url: "stability/nxgame_bridge.html" },
+            { title: "System Integrity Protection", desc: "Protect system files from modification", url: "security/sip.html" },
+            { title: "Syscalls Reference", desc: "Complete syscall list with NXGame Bridge", url: "kernel/syscalls.html" },
+            { title: "System Overview", desc: "Full system stack, directory structure", url: "architecture/overview.html" },
+            { title: "Filesystem Hierarchy", desc: "/System, /Applications, /Users, /Volumes", url: "architecture/filesystem.html" },
+            { title: "Userspace Memory", desc: "ELF loading, BSS, Heap, Stack layout (Ring 3)", url: "kernel/userspace_ram.html" },
+            { title: "User Directories", desc: "Desktop, Documents, Public folder", url: "architecture/user_dirs.html" },
+            { title: "REOX Language", desc: "NeolyxOS native programming language", url: "reox/index.html" },
+            { title: "REOX Syntax", desc: "Variables, functions, kinds, pattern matching", url: "reox/syntax.html" },
+            { title: "REOX UI System", desc: "Layers, Panels, @Bind, widgets, layouts", url: "reox/ui.html" },
+            { title: "REOX Examples", desc: "Calculator, Todo, System Monitor, File Browser", url: "reox/examples.html" },
+            { title: "REOX API", desc: "Standard library, system APIs, C FFI", url: "reox/api.html" },
+            { title: "GPU Driver", desc: "Mode-setting, buffer, accelerated 2D", url: "drivers/gpu.html" },
+            { title: "GPU 3D Rendering", desc: "OpenGL-like pipeline, shaders, vertex", url: "drivers/gpu_3d.html" },
+            { title: "Audio Driver", desc: "PCM ring buffer, 44.1kHz, mixing", url: "drivers/audio.html" },
+            { title: "KDRV Framework", desc: "Kernel driver framework", url: "drivers/kdrv.html" },
+            { title: "Virtual File System", desc: "VFS nodes, mount, path resolution", url: "filesystem/vfs.html" },
+            { title: "NXFS Native FS", desc: "Extents, encryption, checksums", url: "filesystem/nxfs.html" },
+            { title: "Security Hardening", desc: "Capability-based access control", url: "security/security_hardening.html" },
+            { title: "NXRender GUI", desc: "Pure C GUI framework, widgets, layout, compositor", url: "gui/nxrender.html" },
+            { title: "Animation System", desc: "Springs, bezier curves, keyframes, timelines", url: "gui/animation.html" },
+            { title: "3D Lighting", desc: "Blinn-Phong, Fresnel, materials, reflections", url: "gui/lighting.html" },
+            { title: "GPU Driver Interface", desc: "Command buffers, VSync, textures", url: "gui/gpu_driver.html" },
+            { title: "NXTouch API", desc: "80+ touch gestures, stylus, palm rejection, multi-touch", url: "drivers/nxtouch_api.html" },
+            { title: "NXBacklight API", desc: "Laptop brightness, ambient sensor, keyboard backlight", url: "drivers/nxbacklight_api.html" },
+            { title: "Display Advanced API", desc: "DDC/CI, Adaptive Refresh, Gaming Mode, Night Light", url: "drivers/nxdisplay_advanced_api.html" },
+            { title: "Settings Drivers API", desc: "Unified Settings app driver interface", url: "drivers/settings_drivers_api.html" },
+        ];
+
+        const searchInput = document.getElementById('searchInput');
+        const searchResults = document.getElementById('searchResults');
+
+        searchInput.addEventListener('input', function () {
+            const query = this.value.toLowerCase().trim();
+
+            if (query.length < 2) {
+                searchResults.classList.remove('active');
+                return;
+            }
+
+            const matches = docs.filter(doc =>
+                doc.title.toLowerCase().includes(query) ||
+                doc.desc.toLowerCase().includes(query)
+            );
+
+            if (matches.length === 0) {
+                searchResults.innerHTML = '<div class="no-results">No results found</div>';
+            } else {
+                searchResults.innerHTML = matches.slice(0, 8).map(doc => `
+                    <div class="search-result-item" onclick="window.location.href='${doc.url}'">
+                        <div class="search-result-title">${doc.title}</div>
+                        <div class="search-result-desc">${doc.desc}</div>
+                    </div>
+                `).join('');
+            }
+            searchResults.classList.add('active');
+        });
+
+        searchInput.addEventListener('blur', () => {
+            setTimeout(() => searchResults.classList.remove('active'), 200);
+        });
+
+        searchInput.addEventListener('focus', function () {
+            if (this.value.length >= 2) searchResults.classList.add('active');
+        });
+
+        // Keyboard shortcut: Ctrl+K or / to focus search
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey && e.key === 'k') || (e.key === '/' && document.activeElement !== searchInput)) {
+                e.preventDefault();
+                searchInput.focus();
+            }
+            if (e.key === 'Escape') searchInput.blur();
+        });
+    </script>
+</body>
+
+</html>

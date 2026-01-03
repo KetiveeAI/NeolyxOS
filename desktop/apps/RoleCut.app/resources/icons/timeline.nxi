@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Timeline Icon - NeolyxOS Native Icon Format -->
+<nxi version="1.0" width="64" height="64">
+  <metadata>
+    <name>Timeline</name>
+    <author>KetiveeAI</author>
+  </metadata>
+  
+  <defs>
+    <linearGradient id="trackGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff6b6b"/>
+      <stop offset="100%" stop-color="#ff8a8a"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect x="4" y="4" width="56" height="56" rx="8" fill="#2a2a2a"/>
+  
+  <!-- Tracks -->
+  <rect x="8" y="12" width="48" height="10" rx="2" fill="url(#trackGrad)"/>
+  <rect x="8" y="26" width="32" height="10" rx="2" fill="#4a90d9"/>
+  <rect x="8" y="40" width="44" height="10" rx="2" fill="#50c878"/>
+  
+  <!-- Playhead -->
+  <line x1="28" y1="8" x2="28" y2="54" stroke="#ffd93d" stroke-width="2"/>
+  <polygon points="24,8 32,8 28,4" fill="#ffd93d"/>
+</nxi>

@@ -1,0 +1,21 @@
+# Ocean Theme - Teal/aqua theme
+# NeolyxOS Calendar App
+
+[Theme]
+Name = Ocean
+Type = Dark
+
+[Colors]
+Background = 0x0A1A1A
+TextPrimary = 0xE0FFFF
+TextSecondary = 0x60A0A0
+Accent = 0x20B0B0
+Highlight = 0x40D0D0
+Border = 0x204040
+
+[ClockFace]
+DialColor = 0x1A2A2A
+HandHour = 0xE0FFFF
+HandMinute = 0x20B0B0
+HandSecond = 0xFF6060
+MarkerColor = 0x408080

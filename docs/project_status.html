@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS Project Status - Complete Audit</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --text-primary: #f0f6fc;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --border: #30363d;
+            --success: #238636;
+            --warning: #d29922;
+            --error: #f85149;
+            --partial: #a371f7;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1,
+        h2,
+        h3 {
+            color: var(--accent);
+        }
+
+        h1 {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--border);
+            padding: 0.5rem;
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        .status-complete {
+            color: var(--success);
+            font-weight: bold;
+        }
+
+        .status-partial {
+            color: var(--partial);
+            font-weight: bold;
+        }
+
+        .status-stub {
+            color: var(--warning);
+            font-weight: bold;
+        }
+
+        .status-missing {
+            color: var(--error);
+            font-weight: bold;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-complete {
+            background: var(--success);
+            color: white;
+        }
+
+        .badge-partial {
+            background: var(--partial);
+            color: white;
+        }
+
+        .badge-stub {
+            background: var(--warning);
+            color: black;
+        }
+
+        .badge-missing {
+            background: var(--error);
+            color: white;
+        }
+
+        .summary-box {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+
+        .stat-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            margin: 0;
+            font-size: 2rem;
+        }
+
+        .stat-card p {
+            margin: 0.5rem 0 0 0;
+            color: var(--text-secondary);
+        }
+
+        code {
+            background: #1f2428;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+        }
+    </style>
+    <script src="assets/navbar.js"></script>
+    <link rel="stylesheet" href="assets/navbar.css">
+    <script src="assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <h1>📊 NeolyxOS Project Status</h1>
+        <p><strong>Last Updated:</strong> January 1, 2026</p>
+
+        <div class="grid">
+            <div class="stat-card">
+                <h3 style="color: var(--success);">42</h3>
+                <p>Complete Modules</p>
+            </div>
+            <div class="stat-card">
+                <h3 style="color: var(--partial);">5</h3>
+                <p>Partial</p>
+            </div>
+            <div class="stat-card">
+                <h3 style="color: var(--warning);">8</h3>
+                <p>Stubs Only</p>
+            </div>
+            <div class="stat-card">
+                <h3 style="color: var(--error);">3</h3>
+                <p>Missing</p>
+            </div>
+        </div>
+
+        <h2>Legend</h2>
+        <p>
+            <span class="badge badge-complete">✓ Complete</span> Fully implemented and functional<br>
+            <span class="badge badge-partial">◐ Partial</span> Core functionality works, some features missing<br>
+            <span class="badge badge-stub">○ Stub</span> File exists but contains TODO/placeholder only<br>
+            <span class="badge badge-missing">✗ Missing</span> Not implemented yet
+        </p>
+
+        <hr>
+
+        <h2>🔧 Kernel Core (<code>kernel/src/core/</code>)</h2>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Size</th>
+                <th>Status</th>
+                <th>Notes</th>
+            </tr>
+            <tr>
+                <td>main.c</td>
+                <td>8KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Kernel entry point</td>
+            </tr>
+            <tr>
+                <td>process.c</td>
+                <td>22KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Process management, scheduler</td>
+            </tr>
+            <tr>
+                <td>syscall.c</td>
+                <td>11KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>System call handlers</td>
+            </tr>
+            <tr>
+                <td>syscall_entry.S</td>
+                <td>5KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>SYSCALL/SYSRET entry</td>
+            </tr>
+            <tr>
+                <td>context.S</td>
+                <td>4KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Context switching</td>
+            </tr>
+            <tr>
+                <td>elf.c</td>
+                <td>8KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>ELF loader</td>
+            </tr>
+            <tr>
+                <td>boot.c</td>
+                <td>10KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Boot initialization</td>
+            </tr>
+            <tr>
+                <td>boot_mode.c</td>
+                <td>6KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Boot mode detection</td>
+            </tr>
+            <tr>
+                <td>init.c</td>
+                <td>9KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Kernel init sequence</td>
+            </tr>
+            <tr>
+                <td>power.c</td>
+                <td>16KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Power management</td>
+            </tr>
+            <tr>
+                <td>panic.c</td>
+                <td>3KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Kernel panic handler</td>
+            </tr>
+            <tr>
+                <td>installer.c</td>
+                <td>18KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>OS installer</td>
+            </tr>
+            <tr>
+                <td>recovery.c</td>
+                <td>7KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Recovery mode</td>
+            </tr>
+            <tr>
+                <td>app_launcher.c</td>
+                <td>5KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Application launcher</td>
+            </tr>
+            <tr>
+                <td>sysconfig.c</td>
+                <td>6KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>System configuration</td>
+            </tr>
+            <tr>
+                <td>stubs.c</td>
+                <td>5KB</td>
+                <td class="status-partial">◐ Partial</td>
+                <td>Runtime stubs (placeholders)</td>
+            </tr>
+        </table>
+
+        <h2>💾 Memory Management (<code>kernel/src/mm/</code>)</h2>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Size</th>
+                <th>Status</th>
+                <th>Notes</th>
+            </tr>
+            <tr>
+                <td>pmm.c</td>
+                <td>11KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Physical memory manager</td>
+            </tr>
+            <tr>
+                <td>vmm.c</td>
+                <td>14KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Virtual memory manager</td>
+            </tr>
+            <tr>
+                <td>heap.c</td>
+                <td>3KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Basic heap allocator</td>
+            </tr>
+            <tr>
+                <td>kheap.c</td>
+                <td>9KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Kernel heap (kmalloc/kfree)</td>
+            </tr>
+        </table>
+
+        <h2>🌐 Network Stack (<code>kernel/src/net/</code>)</h2>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Size</th>
+                <th>Status</th>
+                <th>Notes</th>
+            </tr>
+            <tr>
+                <td>tcpip.c</td>
+                <td>21KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>TCP/IP stack</td>
+            </tr>
+            <tr>
+                <td>network.c</td>
+                <td>8KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Network core</td>
+            </tr>
+            <tr>
+                <td>netinfra.c</td>
+                <td>13KB</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Network infrastructure</td>
+            </tr>
+        </table>
+
+        <h2>📁 Filesystem (<code>kernel/src/fs/</code>)</h2>
+        <table>
+            <tr>
+                <th>Component</th>
+                <th>Status</th>
+                <th>Notes</th>
+            </tr>
+            <tr>
+                <td>VFS Layer</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>dentry.c, file.c, inode.c, super.c</td>
+            </tr>
+            <tr>
+                <td>NXFS</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Native filesystem with AES-256</td>
+            </tr>
+            <tr>
+                <td>FAT32</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>fat.c</td>
+            </tr>
+            <tr>
+                <td>NTFS</td>
+                <td class="status-partial">◐ Partial</td>
+                <td>Read-only support</td>
+            </tr>
+            <tr>
+                <td>APFS</td>
+                <td class="status-partial">◐ Partial</td>
+                <td>Basic read support</td>
+            </tr>
+        </table>
+
+        <h2>🔌 Device Drivers</h2>
+
+        <h3>kdrv Unified Drivers</h3>
+        <table>
+            <tr>
+                <th>Driver</th>
+                <th>File</th>
+                <th>Lines</th>
+                <th>Status</th>
+            </tr>
+            <tr>
+                <td>nxgfx_kdrv</td>
+                <td>graphics/nxgfx_kdrv.c</td>
+                <td>242</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>nxaudio_kdrv</td>
+                <td>audio/nxaudio_kdrv.c</td>
+                <td>586</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>nxnet_kdrv</td>
+                <td>network/nxnet_kdrv.c</td>
+                <td>384</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>nxstor_kdrv</td>
+                <td>storage/nxstor_kdrv.c</td>
+                <td>488</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>nxusb_kdrv</td>
+                <td>usb/nxusb_kdrv.c</td>
+                <td>416</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>nxpci_kdrv</td>
+                <td>pci/nxpci_kdrv.c</td>
+                <td>428</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>nxsysinfo_kdrv</td>
+                <td>system/nxsysinfo_kdrv.c</td>
+                <td>580</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>nxdisplay_kdrv</td>
+                <td>display/nxdisplay_kdrv.c</td>
+                <td>680</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>nxpen_kdrv</td>
+                <td>input/nxpen_kdrv.c</td>
+                <td>590</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>nxtask_kdrv</td>
+                <td>system/nxtask_kdrv.c</td>
+                <td>650</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+        </table>
+
+        <h3>Network Drivers (<code>drivers/network/</code>)</h3>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Size</th>
+                <th>Status</th>
+            </tr>
+            <tr>
+                <td>ethernet.c</td>
+                <td>5KB</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>wifi.c</td>
+                <td>11KB</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>nxnet_kdrv.c</td>
+                <td>12KB</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+        </table>
+
+        <h3>USB (<code>drivers/usb/</code>)</h3>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Size</th>
+                <th>Status</th>
+            </tr>
+            <tr>
+                <td>usb.c</td>
+                <td>11KB</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>nxusb_kdrv.c</td>
+                <td>8KB</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+        </table>
+
+        <h3>ACPI (<code>drivers/acpi/</code>)</h3>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Size</th>
+                <th>Status</th>
+            </tr>
+            <tr>
+                <td>acpi.c</td>
+                <td>6KB</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>src/ (8 files)</td>
+                <td>-</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+        </table>
+
+        <h3>CPU / AMD Zen (<code>drivers/cpu/zen/</code>)</h3>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Size</th>
+                <th>Status</th>
+                <th>Notes</th>
+            </tr>
+            <tr>
+                <td>zen_init.c</td>
+                <td>309B</td>
+                <td class="status-stub">○ Stub</td>
+                <td>TODO placeholder</td>
+            </tr>
+            <tr>
+                <td>zen_apic.c</td>
+                <td>303B</td>
+                <td class="status-stub">○ Stub</td>
+                <td>TODO placeholder</td>
+            </tr>
+            <tr>
+                <td>zen_hpet.c</td>
+                <td>305B</td>
+                <td class="status-stub">○ Stub</td>
+                <td>TODO placeholder</td>
+            </tr>
+            <tr>
+                <td>zen_pstate.c</td>
+                <td>322B</td>
+                <td class="status-stub">○ Stub</td>
+                <td>TODO placeholder</td>
+            </tr>
+            <tr>
+                <td>zen_smp.c</td>
+                <td>312B</td>
+                <td class="status-stub">○ Stub</td>
+                <td>TODO placeholder</td>
+            </tr>
+            <tr>
+                <td>amd_microcode.c</td>
+                <td>312B</td>
+                <td class="status-stub">○ Stub</td>
+                <td>TODO placeholder</td>
+            </tr>
+            <tr>
+                <td>amd_numa.c</td>
+                <td>310B</td>
+                <td class="status-stub">○ Stub</td>
+                <td>TODO placeholder</td>
+            </tr>
+            <tr>
+                <td>amd_rapl.c</td>
+                <td>311B</td>
+                <td class="status-stub">○ Stub</td>
+                <td>TODO placeholder</td>
+            </tr>
+        </table>
+
+        <h3>Other Drivers</h3>
+        <table>
+            <tr>
+                <th>Driver</th>
+                <th>Status</th>
+                <th>Notes</th>
+            </tr>
+            <tr>
+                <td>keyboard.c</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>PS/2 keyboard, IRQ1</td>
+            </tr>
+            <tr>
+                <td>mouse.c</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>PS/2 mouse</td>
+            </tr>
+            <tr>
+                <td>print.c</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Printer subsystem</td>
+            </tr>
+            <tr>
+                <td>serial.c</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>COM1 debug</td>
+            </tr>
+            <tr>
+                <td>pit.c / timer.c</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>PIT timer</td>
+            </tr>
+            <tr>
+                <td>e1000.c</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Intel E1000 NIC</td>
+            </tr>
+            <tr>
+                <td>ahci.c</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>AHCI/SATA</td>
+            </tr>
+            <tr>
+                <td>nvme.c</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>NVMe storage</td>
+            </tr>
+            <tr>
+                <td>ata.c</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Legacy ATA</td>
+            </tr>
+            <tr>
+                <td>bluetooth.c</td>
+                <td class="status-partial">◐ Partial</td>
+                <td>Basic framework</td>
+            </tr>
+        </table>
+
+        <h2>🖥️ Video & UI</h2>
+        <table>
+            <tr>
+                <th>Directory</th>
+                <th>Files</th>
+                <th>Status</th>
+            </tr>
+            <tr>
+                <td>video/</td>
+                <td>console.c, framebuffer.c, splash.c, terminal.c, video.c</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>ui/</td>
+                <td>desktop.c, font.c</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>disk/</td>
+                <td>disk_manager.c, disk_ops.c, disk_ui.c</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>shell/</td>
+                <td>terminal.c (17KB)</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+        </table>
+
+        <h2>⚙️ Services & Userspace</h2>
+        <table>
+            <tr>
+                <th>Component</th>
+                <th>File</th>
+                <th>Size</th>
+                <th>Status</th>
+            </tr>
+            <tr>
+                <td>Service Manager</td>
+                <td>services/service_manager.c</td>
+                <td>9KB</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>init (PID 1)</td>
+                <td>userland/init/init.c</td>
+                <td>13KB</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>nxsh (Shell)</td>
+                <td>userland/nxsh/nxsh.c</td>
+                <td>8KB</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+        </table>
+
+        <h2>🛡️ Security Subsystem</h2>
+        <table>
+            <tr>
+                <th>Component</th>
+                <th>File</th>
+                <th>Size</th>
+                <th>Status</th>
+            </tr>
+            <tr>
+                <td>Firewall</td>
+                <td>security/firewall.c</td>
+                <td>9KB</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>App Sandbox</td>
+                <td>security/app_sandbox.c</td>
+                <td>8KB</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>System Lock</td>
+                <td>security/system_lock.c</td>
+                <td>4KB</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>Audit Logging</td>\n <td>security/audit.c</td>
+                <td>3KB</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+        </table>
+
+        <h2>🏗️ Architecture Support</h2>
+        <table>
+            <tr>
+                <th>Architecture</th>
+                <th>Files</th>
+                <th>Status</th>
+            </tr>
+            <tr>
+                <td>x86_64</td>
+                <td>arch.S, gdt.c, idt.c, isr.S, isr_handler.c, paging.c, startup.S (8 files)</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>ARM64/AArch64</td>
+                <td>arm64.h, boot.S, mmu.c, fdt.h, fdt.c (5 files)</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+        </table>
+
+        <hr>
+
+        <h2>❌ Missing / Not Yet Implemented</h2>
+        <table>
+            <tr>
+                <th>Component</th>
+                <th>Notes</th>
+            </tr>
+            <tr>
+                <td><code>kernel/src/network/network.c</code></td>
+                <td>Stub only (7 lines) - "Not implemented yet"</td>
+            </tr>
+            <tr>
+                <td>AMD Zen CPU optimizations</td>
+                <td>All zen_*.c files are stubs (~300B each)</td>
+            </tr>
+            <tr>
+                <td>GPU acceleration</td>
+                <td>nxgfx_kdrv is framebuffer only, no 3D</td>
+            </tr>
+        </table>
+
+        <h2>📋 Summary by Phase</h2>
+        <div class="summary-box">
+            <ul>
+                <li><strong>Phase 1-3:</strong> Boot, Memory, Interrupts - <span class="status-complete">✓ 100%
+                        Complete</span></li>
+                <li><strong>Phase 4:</strong> Filesystem (VFS, NXFS, FAT32, NTFS) - <span class="status-complete">✓ 95%
+                        Complete</span></li>
+                <li><strong>Phase 5:</strong> Process Management - <span class="status-complete">✓ 100% Complete</span>
+                </li>
+                <li><strong>Phase 6:</strong> System Calls - <span class="status-complete">✓ 100% Complete</span></li>
+                <li><strong>Phase 7:</strong> Device Drivers (10 kdrv) - <span class="status-complete">✓ 100%
+                        Complete</span></li>
+                <li><strong>Phase 8-10:</strong> Network Stack - <span class="status-partial">◐ 80% Complete</span>
+                    (tcpip done, socket API needed)</li>
+                <li><strong>Phase 11:</strong> ARM64 Support - <span class="status-complete">✓ 100% Complete</span></li>
+                <li><strong>Phase 12:</strong> GUI/Desktop - <span class="status-complete">✓ 100% Complete</span>
+                    (Userspace shell running, WM/Dock active)</li>
+                <li><strong>Phase 13:</strong> Storage Integration - <span class="status-complete">✓ 100%
+                        Complete</span></li>
+                <li><strong>Phase 14:</strong> Userspace Support - <span class="status-complete">✓ 100% Complete</span>
+                </li>
+                <li><strong>Phase 15:</strong> Userland Shell & Init - <span class="status-complete">✓ 100%
+                        Complete</span></li>
+                <li><strong>Phase 16:</strong> System Security - <span class="status-complete">✓ 100%
+                        Complete</span></li>
+            </ul>
+        </div>
+
+        <h2>📈 Lines of Code</h2>
+        <table>
+            <tr>
+                <th>Component</th>
+                <th>Lines</th>
+            </tr>
+            <tr>
+                <td>Kernel (C/ASM)</td>
+                <td>~50,000</td>
+            </tr>
+            <tr>
+                <td>GUI/NXRender (Rust)</td>
+                <td>~20,000</td>
+            </tr>
+            <tr>
+                <td>Boot (C/ASM)</td>
+                <td>~5,000</td>
+            </tr>
+            <tr>
+                <td>Apps (Rust)</td>
+                <td>~15,000</td>
+            </tr>
+            <tr>
+                <td><strong>Total</strong></td>
+                <td><strong>~90,000</strong></td>
+            </tr>
+        </table>
+
+        <hr>
+        <p style="color: var(--text-secondary);">
+            NeolyxOS &copy; 2025 KetiveeAI | Last Updated: December 20, 2025
+        </p>
+    </div>
+</body>
+
+</html>

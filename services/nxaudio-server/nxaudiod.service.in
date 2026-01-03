@@ -1,0 +1,15 @@
+[Unit]
+Description=NXAudio Server - NeolyxOS Audio Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/nxaudio-server
+Restart=always
+RestartSec=1
+Nice=-10
+LimitRTPRIO=99
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,219 @@
+# NeolyxOS Kernel - Ninja Build File
+# Fast, low-resource parallel builds
+# Copyright (c) 2025 KetiveeAI
+
+# Compiler and flags
+cc = gcc
+as = as
+ld = ld
+objcopy = objcopy
+
+cflags = -ffreestanding -nostdlib -mno-red-zone -Wall -Wextra -m64 -fno-pie -no-pie $
+    -Iinclude -I../include -I../include/core -I../include/utils -I../include/fs $
+    -I../include/drivers -I../include/mm -I../include/io -I../include/video $
+    -I../include/network -I../include/storage -I../include/runtime -I../include/net $
+    -I../include/ui -Iinclude/config -Isrc/core -Isrc/video -Isrc/drivers -Isrc/network -Isrc/storage $
+    -Isrc/utils -Isrc/io -Isrc/arch/x86_64 -Isrc/mm -Isrc/runtime -Isrc/net -Isrc/ui $
+    -Isrc/drivers/network -Isrc/drivers/storage -Isrc/drivers/input -Isrc/drivers/nxgame $
+    -Isrc/desktop -Isrc/fs -Isrc/security -Isrc/config
+
+
+ldflags = -T linker.ld -static
+
+# Build rules
+rule cc
+    command = $cc $cflags -c $in -o $out
+    description = CC $out
+
+rule as
+    command = $as -o $out $in
+    description = AS $out
+
+rule ld
+    command = $ld $ldflags $in -o $out
+    description = LD $out
+
+rule bin
+    command = $objcopy -O binary $in $out
+    description = BIN $out
+
+# === Entry point (FIRST) ===
+build startup.o: as src/arch/x86_64/startup.S
+
+# === Core ===
+build boot_firmware.o: cc boot_firmware.c
+# Note: kernel_main.c contains duplicate kernel_main - boot_firmware.c is correct entry point
+build main.o: cc src/core/main.c
+build kernel.o: cc src/core/kernel.c
+build boot.o: cc src/core/boot.c
+build power.o: cc src/core/power.c
+build installer.o: cc src/core/installer.c
+build sysconfig.o: cc src/core/sysconfig.c
+build nlc_config.o: cc src/config/nlc_config.c
+
+# === Architecture ===
+build gdt.o: cc src/arch/x86_64/gdt.c
+build idt.o: cc src/arch/x86_64/idt.c
+build paging.o: cc src/arch/x86_64/paging.c
+build arch.o: as src/arch/x86_64/arch.S
+build isr.o: as src/arch/x86_64/isr.S
+build isr_handler.o: cc src/arch/x86_64/isr_handler.c
+
+# === Memory Management ===
+build heap.o: cc src/mm/heap.c
+build pmm.o: cc src/mm/pmm.c
+build vmm.o: cc src/mm/vmm.c
+
+# === Process Management ===
+build syscall.o: cc src/core/syscall.c
+build process.o: cc src/core/process.c
+build elf.o: cc src/core/elf.c
+build runtime.o: cc src/runtime/runtime.c
+build recovery.o: cc src/core/recovery.c
+build stubs.o: cc src/core/stubs.c
+build boot_guard.o: cc src/core/boot_guard.c
+build session_manager.o: cc src/core/session_manager.c
+build app_launcher.o: cc src/core/app_launcher.c
+
+# === Security ===
+build security.o: cc src/core/security.c
+build safe_mem.o: cc src/core/safe_mem.c
+build panic_handler.o: cc src/core/panic_handler.c
+build nxpt.o: cc src/core/nxpt.c
+
+# === Fault Tolerance ===
+build emergency_stack.o: cc src/core/emergency_stack.c
+build fault_router.o: cc src/core/fault_router.c
+build reboot_guard.o: cc src/core/reboot_guard.c
+build watchdog.o: cc src/core/watchdog.c
+
+# === Core Drivers ===
+build drivers.o: cc src/drivers/drivers.c
+build timer.o: cc src/drivers/timer.c
+build pit.o: cc src/drivers/pit.c
+build serial.o: cc src/drivers/serial.c
+build keyboard.o: cc src/drivers/keyboard.c
+build kbd_queue.o: cc src/io/kbd_queue.c
+build pty.o: cc src/io/pty.c
+build mouse.o: cc src/drivers/input/mouse.c
+build pci.o: cc src/drivers/pci/pci.c
+build print.o: cc src/drivers/print.c
+
+# === Storage Drivers ===
+build ahci.o: cc src/drivers/ahci.c
+build ata.o: cc src/drivers/storage/ata.c
+build nvme.o: cc src/drivers/storage/nvme.c
+
+# === Network Drivers ===
+build e1000.o: cc src/drivers/e1000.c
+build wifi_drv.o: cc src/drivers/wifi.c
+build bluetooth.o: cc src/drivers/bluetooth.c
+build ethernet.o: cc src/drivers/network/ethernet.c
+
+# === kdrv Drivers ===
+build nxgfx_kdrv.o: cc src/drivers/graphics/nxgfx_kdrv.c
+build nxgfx_accel.o: cc src/drivers/graphics/nxgfx_accel.c
+build nxrender_kdrv.o: cc src/drivers/graphics/nxrender_kdrv.c
+build nxaudio.o: cc src/drivers/nxaudio.c
+build nxaudio_kdrv.o: cc src/drivers/audio/nxaudio_kdrv.c
+build nxnet_kdrv.o: cc src/drivers/network/nxnet_kdrv.c
+build nxusb_kdrv.o: cc src/drivers/usb/nxusb_kdrv.c
+build nxpci_kdrv.o: cc src/drivers/pci/nxpci_kdrv.c
+build nxstor_kdrv.o: cc src/drivers/storage/nxstor_kdrv.c
+build nxsysinfo_kdrv.o: cc src/drivers/system/nxsysinfo_kdrv.c
+build nxdisplay_kdrv.o: cc src/drivers/display/nxdisplay_kdrv.c
+build nxpen_kdrv.o: cc src/drivers/input/nxpen_kdrv.c
+build nxtask_kdrv.o: cc src/drivers/system/nxtask_kdrv.c
+build nxgame_bridge.o: cc src/drivers/nxgame/nxgame_bridge.c
+
+# === New Hardware Drivers ===
+build nxtouch_kdrv.o: cc src/drivers/input/nxtouch_kdrv.c
+build nxfp_kdrv.o: cc src/drivers/biometric/nxfp_kdrv.c
+build nxpower_kdrv.o: cc src/drivers/power/nxpower_kdrv.c
+build nxcam_kdrv.o: cc src/drivers/camera/nxcam_kdrv.c
+build nxsensor_kdrv.o: cc src/drivers/sensors/nxsensor_kdrv.c
+build nxnfc_kdrv.o: cc src/drivers/wireless/nxnfc_kdrv.c
+
+# === GPU/Video ===
+build gpu.o: cc src/drivers/gpu.c
+build usb.o: cc src/drivers/usb/usb.c
+build video.o: cc src/video/video.c
+build console.o: cc src/video/console.c
+build splash.o: cc src/video/splash.c
+build fbuffer.o: cc src/video/framebuffer.c
+build nx3d.o: cc src/video/nx3d.c
+
+# === Network Subsystem ===
+build network_core.o: cc src/net/network.c
+build tcpip.o: cc src/net/tcpip.c
+build netinfra.o: cc src/net/netinfra.c
+
+# === Filesystem ===
+build file.o: cc src/fs/file.c
+build nxfs.o: cc src/fs/nxfs.c
+build vfs.o: cc src/fs/vfs.c
+build bcache.o: cc src/fs/bcache.c
+build sip.o: cc src/fs/sip.c
+build fs_init.o: cc src/fs/fs_init.c
+build ramfs.o: cc src/fs/ramfs.c
+build fat.o: cc src/fs/fat.c
+build ahci_block.o: cc src/storage/ahci_block.c
+
+# === Storage Subsystem ===
+build storage.o: cc src/storage/storage.c
+build block.o: cc src/drivers/block/block.c
+build nvme_block.o: cc src/drivers/block/nvme_block.c
+
+# === UI/Desktop ===
+build font.o: cc src/ui/font.c
+# REMOVED: desktop runs in userspace now
+# build desktop.o: cc src/ui/desktop.c
+
+build log.o: cc src/utils/log.c
+build string.o: cc src/utils/string.c
+build nucleus.o: cc src/utils/nucleus.c
+
+# === Shell ===
+build terminal.o: cc src/shell/terminal.c
+build terminal_shell.o: cc src/shell/terminal_shell.c
+build stress_test.o: cc src/test/stress_test.c
+
+# === Link kernel ===
+# === Security ===
+build firewall.o: cc src/security/firewall.c
+build app_sandbox.o: cc src/security/app_sandbox.c
+build system_lock.o: cc src/security/system_lock.c
+build crypto.o: cc src/security/crypto.c
+build audit.o: cc src/security/audit.c
+build security_scanner.o: cc src/security/security_scanner.c
+
+build kernel.elf: ld $
+    startup.o boot_firmware.o main.o kernel.o boot.o power.o installer.o sysconfig.o nlc_config.o $
+    gdt.o idt.o paging.o arch.o isr.o isr_handler.o $
+    heap.o pmm.o vmm.o $
+    syscall.o process.o elf.o runtime.o recovery.o stubs.o boot_guard.o session_manager.o app_launcher.o $
+    security.o safe_mem.o panic_handler.o nxpt.o $
+    emergency_stack.o fault_router.o reboot_guard.o watchdog.o $
+    drivers.o timer.o pit.o serial.o keyboard.o kbd_queue.o pty.o mouse.o pci.o print.o $
+    ahci.o ata.o nvme.o $
+    e1000.o wifi_drv.o bluetooth.o ethernet.o $
+    nxgfx_kdrv.o nxgfx_accel.o nxrender_kdrv.o nxaudio.o nxaudio_kdrv.o $
+    nxnet_kdrv.o nxusb_kdrv.o nxpci_kdrv.o nxstor_kdrv.o $
+    nxsysinfo_kdrv.o nxdisplay_kdrv.o nxpen_kdrv.o nxtask_kdrv.o nxgame_bridge.o $
+    nxtouch_kdrv.o nxfp_kdrv.o nxpower_kdrv.o nxcam_kdrv.o nxsensor_kdrv.o nxnfc_kdrv.o $
+    gpu.o usb.o video.o console.o splash.o fbuffer.o nx3d.o $
+    network_core.o tcpip.o netinfra.o $
+    file.o nxfs.o vfs.o bcache.o sip.o fs_init.o ramfs.o fat.o $
+    storage.o block.o nvme_block.o ahci_block.o $
+    font.o $
+    log.o string.o nucleus.o $
+    terminal.o terminal_shell.o stress_test.o kernel_tests.o $
+    app_sandbox.o system_lock.o crypto.o audit.o security_scanner.o
+
+# === Tests ===
+build kernel_tests.o: cc ../tests/kernel_tests.c
+
+build kernel.bin: bin kernel.elf
+
+# Default target
+default kernel.bin

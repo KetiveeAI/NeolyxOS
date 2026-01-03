@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!-- Creator: CorelDRAW -->
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" width="0.787402in" height="0.787402in" version="1.1" style="shape-rendering:geometricPrecision; text-rendering:geometricPrecision; image-rendering:optimizeQuality; fill-rule:evenodd; clip-rule:evenodd"
+viewBox="0 0 787.4 787.4"
+ xmlns:xlink="http://www.w3.org/1999/xlink"
+ xmlns:xodm="http://www.corel.com/coreldraw/odm/2003">
+ <defs>
+  <font id="FontID0" horiz-adv-x="666" font-variant="normal" style="fill-rule:nonzero" font-weight="700">
+	<font-face 
+		font-family="Helvetica Rounded">
+		<font-face-src>
+			<font-face-name name="HelveticaRounded-Bold"/>
+		</font-face-src>
+	</font-face>
+   <missing-glyph><path d="M0 0z"/></missing-glyph>
+   <glyph unicode="1" horiz-adv-x="407" d="M170.998 75.0037c0,-51.9983 20.0002,-88.0032 76.0054,-88.0032 55.9939,0 75.9941,36.0049 75.9941,88.0032l0 567.997c0,54.0017 -25.9992,68.003 -57.9973,68.003 -84.9981,0 -54.0017,-114.002 -164.999,-138.009l-37.0066 -7.99109c-51.9983,-10.0057 -71.9986,-20.0002 -71.9986,-57.0068 0,-41.0021 18.0081,-53 51.0079,-53l128.994 0 0 -379.993z"/>
+   <glyph unicode="3" horiz-adv-x="592" d="M30.9964 160.002c0,-56.0051 58.999,-173.001 247.003,-173.001 148.004,0 269.997,75.9941 269.997,234.004 0,74.9924 -31.9981,134.993 -107.002,155.995 56.0051,30.006 85.0094,76.0054 85.0094,140.002 0,96.996 -64.0075,194.003 -237.009,194.003 -96.996,0 -241.995,-52.0096 -241.995,-174.003 0,-44.9977 32.9998,-60.0007 67.0013,-60.0007 78.9992,0 50.9966,114.002 172,114.002 53,0 100.001,-28.0026 100.001,-88.0032 0,-45.9994 -25.9992,-75.0037 -76.0054,-77.9975 -56.9956,-3.0051 -87.0015,-14.0013 -87.0015,-65.9996 0,-45.9994 55.0034,-51.0079 83.006,-54.0017 68.9935,-7.00064 89.9954,-42.0038 89.9954,-89.9954 0,-62.0041 -40.0005,-108.003 -114.993,-108.003 -138.009,0 -90.0066,122.995 -179,122.995 -41.0021,0 -71.0081,-28.993 -71.0081,-69.9952z"/>
+  </font>
+  <style type="text/css">
+   <![CDATA[
+    @font-face { font-family:"Helvetica Rounded";font-variant:normal;font-weight:bold;src:url("#FontID0") format(svg)}
+    .fil6 {fill:none}
+    .fil5 {fill:#FFFBD6}
+    .fil7 {fill:#9D98CA}
+    .fil3 {fill:#493D4A}
+    .fil0 {fill:#E0DAE7}
+    .fil4 {fill:#E6E6E6}
+    .fil1 {fill:url(#id1)}
+    .fil2 {fill:url(#id2)}
+    .fnt0 {font-weight:bold;font-size:349.8px;font-family:'Helvetica Rounded'}
+   ]]>
+  </style>
+    <clipPath id="id0">
+     <path d="M100.41 508.05l583.62 6.02c6.07,0.06 12.19,-8.29 11.11,-18.2l-33.05 -304.46c-1.07,-9.91 -4.91,-18.42 -10.98,-18.43l-515.13 -0.52c-6.07,-0.01 -9.94,8.33 -11.11,18.2l-35.44 298.96c-1.17,9.87 4.91,18.37 10.98,18.43z"/>
+    </clipPath>
+  <linearGradient id="id1" gradientUnits="userSpaceOnUse" x1="402.76" y1="613.3" x2="384" y2="217.84">
+   <stop offset="0" style="stop-opacity:1; stop-color:#AAA1D1"/>
+   <stop offset="1" style="stop-opacity:1; stop-color:#FEFEFE"/>
+  </linearGradient>
+  <linearGradient id="id2" gradientUnits="userSpaceOnUse" x1="404.45" y1="577.02" x2="377.79" y2="173.51">
+   <stop offset="0" style="stop-opacity:1; stop-color:#6C6080"/>
+   <stop offset="1" style="stop-opacity:1; stop-color:#FEFEFE"/>
+  </linearGradient>
+ </defs>
+ <g id="Layer_x0020_1">
+  <metadata id="CorelCorpID_0Corel-Layer"/>
+  <g id="_2505792115360">
+   <path class="fil0" d="M69.45 636.8l642.37 6.82c6.69,0.07 13.42,-9.39 12.24,-20.63l-36.37 -345c-1.19,-11.24 -5.41,-20.88 -12.09,-20.88l-566.99 -0.59c-6.68,-0 -10.95,9.44 -12.23,20.63l-39.01 338.78c-1.29,11.19 5.39,20.81 12.08,20.88z"/>
+   <path class="fil1" d="M74.64 602.3l637.35 6.82c6.63,0.07 13.31,-9.39 12.14,-20.63l-36.09 -345c-1.17,-11.24 -5.37,-20.88 -11.99,-20.88l-562.56 -0.59c-6.63,-0 -10.86,9.44 -12.14,20.63l-38.7 338.78c-1.28,11.19 5.35,20.81 11.99,20.88z"/>
+   <path class="fil2" d="M78.03 561.99l626.06 6.82c6.52,0.07 13.08,-9.39 11.93,-20.63l-35.45 -345c-1.15,-11.23 -5.27,-20.87 -11.78,-20.88l-552.59 -0.59c-6.51,-0.01 -10.67,9.44 -11.93,20.63l-38.02 338.77c-1.25,11.19 5.26,20.81 11.78,20.88z"/>
+   <path class="fil3" d="M82.13 529.99l618.87 6.82c6.44,0.07 12.93,-9.39 11.78,-20.63l-35.04 -345c-1.14,-11.23 -5.21,-20.88 -11.64,-20.88l-546.24 -0.59c-6.43,-0.01 -10.54,9.44 -11.78,20.62l-37.58 338.78c-1.24,11.19 5.2,20.81 11.64,20.88z"/>
+   <path class="fil4" d="M100.41 508.05l583.62 6.02c6.07,0.06 12.19,-8.29 11.11,-18.2l-33.05 -304.46c-1.07,-9.91 -4.91,-18.42 -10.98,-18.43l-515.13 -0.52c-6.07,-0.01 -9.94,8.33 -11.11,18.2l-35.44 298.96c-1.17,9.87 4.91,18.37 10.98,18.43z"/>
+   <g style="clip-path:url(#id0)">
+    <g>
+     <circle class="fil5" cx="596.5" cy="292.24" r="36.05"/>
+    </g>
+   </g>
+   <path class="fil6" d="M100.41 508.05l583.62 6.02c6.07,0.06 12.19,-8.29 11.11,-18.2l-33.05 -304.46c-1.07,-9.91 -4.91,-18.42 -10.98,-18.43l-515.13 -0.52c-6.07,-0.01 -9.94,8.33 -11.11,18.2l-35.44 298.96c-1.17,9.87 4.91,18.37 10.98,18.43z"/>
+   <g transform="matrix(0.990463 0.0515686 0.0127327 1.01029 -200.824 37.9126)">
+    <text x="393.7" y="393.7"  class="fil7 fnt0">31</text>
+   </g>
+  </g>
+ </g>
+</svg>

@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS - GPU & 3D Rendering</title>
+
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+
+    <!-- MermaidJS -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <!-- SVG Pan Zoom -->
+    <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom/dist/svg-pan-zoom.min.js"></script>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            securityLevel: 'loose',
+            fontFamily: 'Inter, system-ui, sans-serif'
+        });
+
+        // Initialize Pan/Zoom after Mermaid renders
+        window.addEventListener('load', function () {
+            // Need a slight delay or callback to ensure Mermaid has finished
+            // However, mermaid.init returns a promise in newer versions, or we can use the callback
+            // For simplicity with startOnLoad, we'll try a timeout or mutation observer if needed.
+            // But let's try strict workflow:
+            setTimeout(() => {
+                const graphs = document.querySelectorAll('.mermaid svg');
+                graphs.forEach(graph => {
+                    // Set distinct ID if missing
+                    if (!graph.id) graph.id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
+
+                    // Initialize Pan Zoom
+                    svgPanZoom('#' + graph.id, {
+                        zoomEnabled: true,
+                        controlIconsEnabled: true,
+                        fit: true,
+                        center: true,
+                        minZoom: 0.5,
+                        maxZoom: 10
+                    });
+                });
+            }, 500); // 500ms delay to ensure render
+        });
+    </script>
+    <style>
+        .mermaid {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            overflow: hidden;
+            /* Important for pan/zoom container */
+            border: 1px solid var(--border);
+            height: 400px;
+            /* Fixed height for zoomable area */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Override generic diagram style */
+        .diagram {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>🎮 GPU & 3D Rendering (Phase D)</h1>
+        <p style="color: var(--text-secondary);">Hardware-accelerated graphics with game-first design.</p>
+
+        <!-- Existing Info -->
+        <h2>Why Game Developers Trust NeolyxOS</h2>
+        <div class="card card-trust">
+            <ul class="guarantee-list">
+                <li><strong>No blue screens by design</strong> — GPU faults never crash the kernel</li>
+                <li><strong>Exclusive GPU ownership per game</strong> — No compositor interference</li>
+                <li><strong>Predictable memory failure behavior</strong> — Allocation fails gracefully</li>
+                <li><strong>Desktop never interferes with render loop</strong> — Games are first-class</li>
+            </ul>
+        </div>
+
+        <h2>GPU Driver Architecture</h2>
+        <p>NXRender includes a GPU driver interface for hardware-accelerated rendering. The driver communicates with the
+            NeolyxOS kernel GPU subsystem via command buffers.</p>
+
+        <div class="mermaid">
+            graph TD
+            subgraph UserSpace [USER SPACE (NXRender)]
+            direction TB
+            Widgets --> Compositor
+            Compositor --> GPUDriverUser[GPU Driver]
+            GPUDriverUser --> CmdBufferUser[Command Buffer]
+            end
+
+            subgraph KernelSpace [KERNEL SPACE]
+            direction TB
+            DevGPU[/dev/gpu] --> GPUDriverKernel[GPU Driver nxgfx]
+            GPUDriverKernel --> DMA[DMA Engine]
+            end
+
+            subgraph Hardware [GPU HARDWARE]
+            direction TB
+            CmdParser[Cmd Parser] --> Shaders
+            Shaders --> VRAM[(VRAM)]
+            end
+
+            CmdBufferUser -->|SYSCALL| DevGPU
+            DMA -->|PCIe/DMA| CmdParser
+
+            classDef default fill:#161b22,stroke:#30363d,stroke-width:1px,color:#c9d1d9
+            classDef cluster fill:#0d1117,stroke:#30363d,stroke-width:2px,color:#fff
+        </div>
+
+        <h2>Command Buffer</h2>
+        <p>NXRender uses a ring buffer to queue GPU commands. This allows the CPU to continue preparing the next frame
+            while the GPU executes the current one.</p>
+
+        <div class="mermaid">
+            graph LR
+            subgraph RingBuffer [Command Ring Buffer]
+            C1[CLEAR] --- C2[RECT] --- C3[RECT] --- C4[CIRCLE] --- C5[BLIT] --- C6[LINE] --- C7[PRESENT]
+            end
+            GPU(read_idx GPU) -.-> C2
+            CPU(write_idx CPU) -.-> C6
+
+            style RingBuffer fill:#0d1117,stroke:#30363d
+            classDef default fill:#161b22,stroke:#30363d,color:#c9d1d9
+            style GPU fill:#7d3838,stroke:#f85149,color:#fff
+            style CPU fill:#1f6feb,stroke:#58a6ff,color:#fff
+        </div>
+
+        <div class="card">
+            <pre><code>// Command buffer structure
+typedef struct {
+    nx_gpu_cmd_t commands[4096]; // 4096 commands
+    volatile uint32_t write_index; // CPU writes here
+    volatile uint32_t read_index;  // GPU reads here
+    volatile uint32_t fence_value; // Synchronization
+} nx_gpu_cmd_buffer_t;</code></pre>
+        </div>
+
+        <h2>API Reference</h2>
+
+        <div class="grid">
+            <div class="card">
+                <h3>Basic Usage</h3>
+                <pre><code>// Initialize GPU driver
+nx_gpu_driver_t* gpu = nx_gpu_driver_init();
+
+// Enable VSync (prevents tearing)
+nx_gpu_set_vsync(gpu, true);
+
+// Main render loop
+while (running) {
+    // Begin frame
+    nx_gpu_begin_frame(gpu);
+
+    // Queue draw commands
+    nx_gpu_cmd_clear(gpu, NX_COLOR_BLACK);
+    nx_gpu_cmd_rect(gpu, (nx_rect_t){100, 100, 200, 150}, NX_COLOR_WHITE, 8);
+    nx_gpu_cmd_circle(gpu, (nx_point_t){400, 300}, 50, NX_COLOR_BLUE);
+
+    // End frame and present
+    nx_gpu_end_frame(gpu);
+    nx_gpu_present(gpu); // Waits for VSync
+}
+
+// Cleanup
+nx_gpu_driver_shutdown(gpu);</code></pre>
+            </div>
+
+            <div class="card">
+                <h3>Draw Commands</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Function</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>nx_gpu_cmd_clear</code></td>
+                            <td>Clear framebuffer</td>
+                        </tr>
+                        <tr>
+                            <td><code>nx_gpu_cmd_rect</code></td>
+                            <td>Draw rectangle (rounded)</td>
+                        </tr>
+                        <tr>
+                            <td><code>nx_gpu_cmd_circle</code></td>
+                            <td>Draw filled circle</td>
+                        </tr>
+                        <tr>
+                            <td><code>nx_gpu_cmd_line</code></td>
+                            <td>Draw line</td>
+                        </tr>
+                        <tr>
+                            <td><code>nx_gpu_cmd_blit</code></td>
+                            <td>Draw texture</td>
+                        </tr>
+                        <tr>
+                            <td><code>nx_gpu_cmd_mesh</code></td>
+                            <td>Draw 3D mesh</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <h2>Texture Management</h2>
+        <div class="card">
+            <pre><code>// Create texture
+nx_gpu_texture_t tex = nx_gpu_create_texture(gpu, 256, 256, NX_TEX_RGBA8);
+
+// Upload pixel data
+uint32_t* pixels = malloc(256 * 256 * 4);
+// ... fill pixels ...
+nx_gpu_upload_texture(gpu, tex, pixels);
+free(pixels);
+
+// Use texture
+nx_gpu_cmd_blit(gpu, tex, (nx_rect_t){0, 0, 256, 256});
+
+// Cleanup
+nx_gpu_destroy_texture(gpu, tex);</code></pre>
+
+            <h4 style="margin-top:1rem;">Supported Formats</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Format</th>
+                        <th>Bytes</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>NX_TEX_RGBA8</td>
+                        <td>4</td>
+                        <td>Standard 32-bit color + alpha</td>
+                    </tr>
+                    <tr>
+                        <td>NX_TEX_BGRA8</td>
+                        <td>4</td>
+                        <td>Windows-style byte order</td>
+                    </tr>
+                    <tr>
+                        <td>NX_TEX_RGB8</td>
+                        <td>3</td>
+                        <td>24-bit color, no alpha</td>
+                    </tr>
+                    <tr>
+                        <td>NX_TEX_R8</td>
+                        <td>1</td>
+                        <td>Grayscale</td>
+                    </tr>
+                    <tr>
+                        <td>NX_TEX_DEPTH24</td>
+                        <td>3</td>
+                        <td>Depth buffer</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <h2>Advanced</h2>
+        <div class="grid">
+            <div class="card">
+                <h3>Buffer Management</h3>
+                <pre><code>// Create vertex buffer
+nx_gpu_buffer_t vbo = nx_gpu_create_buffer(gpu, sizeof(nx_vertex_t) * 1000, 0);
+
+// Map for CPU access
+nx_vertex_t* vertices = nx_gpu_map_buffer(gpu, vbo);
+vertices[0] = (nx_vertex_t){ ... };
+nx_gpu_unmap_buffer(gpu, vbo);
+
+// Or upload directly
+nx_gpu_upload_buffer(gpu, vbo, data, size);</code></pre>
+            </div>
+
+            <div class="card">
+                <h3>Synchronization</h3>
+                <pre><code>// Submit and wait
+nx_gpu_submit(gpu);
+nx_gpu_wait_idle(gpu); // Blocks main thread
+// Safe to read back results</code></pre>
+            </div>
+        </div>
+
+        <h2>GPU Information</h2>
+        <div class="card">
+            <pre><code>const nx_gpu_info_t* info = nx_gpu_get_info(gpu);
+printf("GPU: %s\n", info->name);
+printf("VRAM: %lu MB\n", info->vram_size / (1024*1024));
+printf("Max texture: %u x %u\n", info->max_texture_size, info->max_texture_size);
+printf("Resolution: %u x %u @ %u Hz\n", info->framebuffer_width, info->framebuffer_height, info->refresh_rate);</code></pre>
+        </div>
+
+        <div class="card card-promise" style="margin-top: 2rem;">
+            <h3 style="color: var(--accent-blue);">Kernel Integration</h3>
+            <p>The driver uses standard POSIX-like calls to communicate with the kernel implementation:</p>
+            <pre><code>gpu->driver_fd = open("/dev/nxgpu", O_RDWR);
+gpu->cmd_buffer = mmap(NULL, cmd_size, ..., gpu->driver_fd, CMD_BUFFER_OFFSET);
+gpu->vram_base = mmap(NULL, vram_size, ..., gpu->driver_fd, VRAM_OFFSET);</code></pre>
+        </div>
+
+        <footer
+            style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-secondary); text-align: center;">
+            NeolyxOS © 2025 KetiveeAI | Phase D Documentation
+        </footer>
+    </div>
+</body>
+
+</html>

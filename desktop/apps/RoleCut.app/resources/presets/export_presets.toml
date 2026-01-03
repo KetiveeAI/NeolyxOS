@@ -1,0 +1,90 @@
+# RoleCut Export Presets
+# Format: TOML
+
+[youtube_1080p]
+name = "YouTube 1080p"
+container = "mp4"
+video_codec = "h264"
+audio_codec = "aac"
+resolution = { width = 1920, height = 1080 }
+fps = 30
+bitrate_video = 8000
+bitrate_audio = 320
+quality = 80
+
+[youtube_4k]
+name = "YouTube 4K"
+container = "mp4"
+video_codec = "h265"
+audio_codec = "aac"
+resolution = { width = 3840, height = 2160 }
+fps = 30
+bitrate_video = 35000
+bitrate_audio = 320
+quality = 85
+
+[instagram_feed]
+name = "Instagram Feed"
+container = "mp4"
+video_codec = "h264"
+audio_codec = "aac"
+resolution = { width = 1080, height = 1080 }
+fps = 30
+bitrate_video = 3500
+bitrate_audio = 128
+quality = 75
+
+[instagram_story]
+name = "Instagram Story"
+container = "mp4"
+video_codec = "h264"
+audio_codec = "aac"
+resolution = { width = 1080, height = 1920 }
+fps = 30
+bitrate_video = 3500
+bitrate_audio = 128
+quality = 75
+
+[tiktok]
+name = "TikTok"
+container = "mp4"
+video_codec = "h264"
+audio_codec = "aac"
+resolution = { width = 1080, height = 1920 }
+fps = 30
+bitrate_video = 4000
+bitrate_audio = 128
+quality = 75
+
+[twitter]
+name = "Twitter"
+container = "mp4"
+video_codec = "h264"
+audio_codec = "aac"
+resolution = { width = 1280, height = 720 }
+fps = 30
+bitrate_video = 2500
+bitrate_audio = 128
+quality = 70
+
+[prores_master]
+name = "ProRes Master"
+container = "mov"
+video_codec = "prores"
+audio_codec = "flac"
+resolution = { width = 3840, height = 2160 }
+fps = 24
+bitrate_video = 100000
+bitrate_audio = 1411
+quality = 100
+
+[web_optimized]
+name = "Web Optimized"
+container = "mp4"
+video_codec = "h264"
+audio_codec = "aac"
+resolution = { width = 1280, height = 720 }
+fps = 30
+bitrate_video = 2000
+bitrate_audio = 128
+quality = 65

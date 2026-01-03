@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Integrity Protection - NeolyxOS</title>
+    
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    
+
+    <div class="container">
+        <h1>🔐 System Integrity Protection</h1>
+        <p>Protects critical system files from unauthorized modification by malware or accidental changes.</p>
+
+        <span class="badge badge-new">NEW in Phase 9</span>
+        <span class="badge badge-success">Implemented</span>
+
+        <!-- Debug: Test SVG Icon -->
+        <br><br>
+        <h3>SVG Icon Test:</h3>
+        <img src="../search.svg" width="50" height="50" style="border:1px solid white;">
+        <br><br>
+
+        <div class="alert alert-danger">
+            <strong>⚠️ Important:</strong> SIP can only be disabled in Recovery Mode. This prevents malware from
+            disabling protection during normal operation.
+        </div>
+
+        <h2>Protected Paths</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Path</th>
+                    <th>Protection</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code class="protected">/System/</code></td>
+                    <td><span class="badge badge-danger">Read-Only + No-Delete</span></td>
+                    <td>Core system files</td>
+                </tr>
+                <tr>
+                    <td><code class="protected">/Kernel/</code></td>
+                    <td><span class="badge badge-danger">Read-Only + No-Delete</span></td>
+                    <td>Kernel and drivers</td>
+                </tr>
+                <tr>
+                    <td><code class="protected">/Boot/</code></td>
+                    <td><span class="badge badge-danger">Read-Only + No-Delete</span></td>
+                    <td>Bootloader files</td>
+                </tr>
+                <tr>
+                    <td><code class="admin">/Library/</code></td>
+                    <td><span class="badge" style="background: rgba(234, 179, 8, 0.2); color: #eab308;">System +
+                            Admin</span></td>
+                    <td>System libraries</td>
+                </tr>
+                <tr>
+                    <td><code class="protected">/bin/</code></td>
+                    <td><span class="badge badge-danger">Read-Only</span></td>
+                    <td>Essential binaries</td>
+                </tr>
+                <tr>
+                    <td><code class="admin">/Applications/</code></td>
+                    <td><span class="badge" style="background: rgba(234, 179, 8, 0.2); color: #eab308;">Admin
+                            Only</span></td>
+                    <td>User apps (admin to install)</td>
+                </tr>
+                <tr>
+                    <td><code class="writable">/Users/</code></td>
+                    <td><span class="badge badge-success">No Protection</span></td>
+                    <td>User data</td>
+                </tr>
+                <tr>
+                    <td><code class="writable">/tmp/</code></td>
+                    <td><span class="badge badge-success">No Protection</span></td>
+                    <td>Temporary files</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>Protection Flags</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Flag</th>
+                    <th>Value</th>
+                    <th>Effect</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>SIP_PROT_NONE</code></td>
+                    <td>0x00</td>
+                    <td>No protection</td>
+                </tr>
+                <tr>
+                    <td><code>SIP_PROT_READ_ONLY</code></td>
+                    <td>0x01</td>
+                    <td>Cannot write or delete</td>
+                </tr>
+                <tr>
+                    <td><code>SIP_PROT_NO_DELETE</code></td>
+                    <td>0x02</td>
+                    <td>Can write but not delete</td>
+                </tr>
+                <tr>
+                    <td><code>SIP_PROT_SYSTEM</code></td>
+                    <td>0x04</td>
+                    <td>Only system processes</td>
+                </tr>
+                <tr>
+                    <td><code>SIP_PROT_ADMIN</code></td>
+                    <td>0x08</td>
+                    <td>Requires admin privilege</td>
+                </tr>
+                <tr>
+                    <td><code>SIP_PROT_IMMUTABLE</code></td>
+                    <td>0x10</td>
+                    <td>Can never be modified</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>Violation Logging</h2>
+        <p>When a protected path is accessed for modification, SIP logs the violation:</p>
+        <pre><code>[SIP] *** VIOLATION #1 ***
+[SIP]   Path: /System/core/kernel.bin
+[SIP]   Operation: write
+[SIP]   PID: 42
+[SIP]   Protection: 0x03</code></pre>
+
+        <h2>Disabling SIP</h2>
+        <div class="alert alert-warning">
+            <strong>Recovery Mode Only:</strong> To disable SIP, boot into Recovery Mode and run:
+            <pre><code>sip disable</code></pre>
+            SIP will be re-enabled on next normal boot.
+        </div>
+
+        <h2>API</h2>
+        <pre><code>// Check if SIP is enabled
+sip_status_t sip_is_enabled(void);
+
+// Check if path is writable
+int sip_check_writable(const char *path);
+
+// Check path operation (returns 0 if allowed, -EACCES if denied)
+int sip_check_path(const char *path, int operation);
+
+// Get protection level for path
+uint8_t sip_get_protection(const char *path);</code></pre>
+
+        <h2>Files</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>File</th>
+                    <th>Lines</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>kernel/include/fs/sip.h</code></td>
+                    <td>165</td>
+                </tr>
+                <tr>
+                    <td><code>kernel/src/fs/sip.c</code></td>
+                    <td>342</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</body>
+
+</html>

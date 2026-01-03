@@ -1,0 +1,46 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build outputs
+/build/
+/dist/
+*.exe
+*.reoxexe
+*.reoxobj
+
+# Logs
+*.log
+logs/
+
+# Configuration files with sensitive data
+config.local.toml
+.env
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+
+# Documentation build
+/docs/_build/
+
+# Test artifacts
+/tests/output/ 

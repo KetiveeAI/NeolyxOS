@@ -1,0 +1,39 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Privacy Panel Icon - Indigo gradient tile with lock
+
+[nxi]
+version = 1.0
+name = privacy
+size = 64
+author = KetiveeAI
+category = settings
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+tile_start = #5856D6
+tile_end = #3634A8
+icon_color = #FFFFFF
+
+[gradients]
+tileGrad = linear 0,0 64,64 tile_start tile_end
+
+[shapes]
+# Rounded square tile background
+rect x=0 y=0 width=64 height=64 rx=12 fill=tileGrad
+
+# Lock body
+rect x=18 y=30 width=28 height=22 rx=4 fill=icon_color
+# Lock shackle
+rect x=24 y=18 width=16 height=16 rx=8 fill=none stroke=icon_color stroke-width=4
+# Keyhole
+circle center=32 y=38 radius=3 fill=tile_start
+rect x=30 y=38 width=4 height=8 fill=tile_start
+
+[style.dark]
+tile_start = #5E5CE6
+tile_end = #3634A8

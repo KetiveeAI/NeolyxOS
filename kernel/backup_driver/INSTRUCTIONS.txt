@@ -1,0 +1,30 @@
+# How to Safely Test and Update Kernel Source Files
+
+1. **Backup Before Changes:**
+   - Always copy the file(s) you want to modify into the `backup_driver` or `test_folder` directory before making changes.
+   - Example: `copy src\io\io.h backup_driver\io.h`
+
+2. **Test in test_folder:**
+   - Make experimental changes in `test_folder` first.
+   - Build and test the OS using files from `test_folder`.
+   - Only move files to the main source directories if they work as expected.
+
+3. **Update Main Source:**
+   - After successful testing, copy the working file(s) from `test_folder` to the main source directory (e.g., `src/io/`).
+   - Example: `copy test_folder\io.h src\io\io.h`
+
+4. **Build and Test:**
+   - Run `mingw32-make clean` and `mingw32-make all` to rebuild the kernel.
+   - Test the OS in your emulator or on real hardware.
+
+5. **If Something Breaks:**
+   - Restore the previous working version from `backup_driver`.
+   - Example: `copy backup_driver\io.h src\io\io.h`
+
+6. **General Tips:**
+   - Never delete backup or test files until you are sure the new version is stable.
+   - Document any major changes in this file for future reference.
+
+---
+
+**Following this workflow will help prevent breaking the entire OS during development.** 

@@ -1,0 +1,502 @@
+// NeolyxOS Disk Manager
+// REOX Application - Clean UI based on reference
+// Uses NXRender for UI, NXGFX for device detection
+// Copyright (c) 2025 KetiveeAI
+
+// Types from runtime
+struct Color { r: int, g: int, b: int, a: int }
+struct EdgeInsets { top: float, right: float, bottom: float, left: float }
+struct Border { width: float, color: Color, style: int }
+struct Shadow { offset_x: float, offset_y: float, blur: float, color: Color }
+struct View { handle: int }
+struct App { handle: int }
+struct Window { handle: int }
+
+// Print
+extern fn println(s: string) -> void;
+extern fn print(s: string) -> void;
+
+// Colors
+extern fn color_rgba(r: int, g: int, b: int, a: int) -> Color;
+extern fn color_lighten(c: Color, amount: float) -> Color;
+extern fn color_darken(c: Color, amount: float) -> Color;
+
+// Geometry
+extern fn insets_all(value: float) -> EdgeInsets;
+extern fn insets(top: float, right: float, bottom: float, left: float) -> EdgeInsets;
+extern fn border(width: float, c: Color) -> Border;
+extern fn shadow(x: float, y: float, blur: float, c: Color) -> Shadow;
+
+// Layout
+extern fn vstack(gap: float) -> View;
+extern fn hstack(gap: float) -> View;
+extern fn scroll_view() -> View;
+extern fn spacer() -> View;
+extern fn divider() -> View;
+extern fn grid_view(cols: int, gap: float) -> View;
+
+// Views
+extern fn text_view(text: string) -> View;
+extern fn button_view(label: string) -> View;
+extern fn icon_view(name: string) -> View;
+
+// Modifiers
+extern fn view_set_background(v: View, c: Color) -> void;
+extern fn view_set_padding(v: View, p: EdgeInsets) -> void;
+extern fn view_set_corner_radius(v: View, r: float) -> void;
+extern fn view_set_shadow(v: View, s: Shadow) -> void;
+extern fn view_set_border(v: View, b: Border) -> void;
+extern fn view_add_child(parent: View, child: View) -> void;
+extern fn view_set_width(v: View, w: float) -> void;
+extern fn view_set_height(v: View, h: float) -> void;
+extern fn text_set_font_size(v: View, size: float) -> void;
+extern fn text_set_font_weight(v: View, weight: int) -> void;
+extern fn text_set_color(v: View, c: Color) -> void;
+extern fn button_set_style(v: View, normal: Color, hover: Color, pressed: Color) -> void;
+
+// App
+extern fn app_new(name: string) -> App;
+extern fn app_create_window(app: App, title: string, w: int, h: int) -> Window;
+extern fn app_run(app: App) -> void;
+extern fn window_set_root(win: Window, v: View) -> void;
+
+// ============================================================================
+// Theme Colors (Dark blue theme from reference)
+// ============================================================================
+
+fn theme_bg() -> Color { return color_rgba(26, 35, 50, 255); }
+fn theme_surface() -> Color { return color_rgba(35, 48, 68, 255); }
+fn theme_surface_light() -> Color { return color_rgba(50, 65, 90, 255); }
+fn theme_border() -> Color { return color_rgba(60, 80, 110, 255); }
+fn theme_text() -> Color { return color_rgba(220, 230, 240, 255); }
+fn theme_text_dim() -> Color { return color_rgba(150, 170, 190, 255); }
+fn theme_accent() -> Color { return color_rgba(0, 160, 220, 255); }  // Cyan
+fn theme_green() -> Color { return color_rgba(100, 200, 80, 255); }
+fn theme_yellow() -> Color { return color_rgba(220, 200, 60, 255); }
+fn theme_red() -> Color { return color_rgba(220, 80, 80, 255); }
+
+// ============================================================================
+// Component: Title Bar
+// ============================================================================
+
+fn create_title_bar() -> View {
+    let bar: View = hstack(12.0);
+    view_set_background(bar, theme_surface());
+    view_set_padding(bar, insets(12.0, 16.0, 12.0, 16.0));
+    
+    // Logo icon
+    let logo: View = icon_view("neolyx-disk-logo");
+    view_add_child(bar, logo);
+    
+    // Title
+    let title: View = text_view("NeolyxOS Disk Manager");
+    text_set_font_size(title, 16.0);
+    text_set_font_weight(title, 600);
+    text_set_color(title, theme_text());
+    view_add_child(bar, title);
+    
+    view_add_child(bar, spacer());
+    
+    // Close button
+    let close: View = text_view("X");
+    text_set_font_size(close, 14.0);
+    text_set_color(close, theme_text_dim());
+    view_add_child(bar, close);
+    
+    return bar;
+}
+
+// ============================================================================
+// Component: Sidebar
+// ============================================================================
+
+fn create_sidebar() -> View {
+    let sidebar: View = vstack(0.0);
+    view_set_background(sidebar, theme_surface());
+    view_set_width(sidebar, 200.0);
+    view_set_padding(sidebar, insets_all(16.0));
+    
+    // A. SIDEBAR label
+    let label: View = text_view("A. SIDEBAR");
+    text_set_font_size(label, 11.0);
+    text_set_font_weight(label, 600);
+    text_set_color(label, theme_text_dim());
+    view_add_child(sidebar, label);
+    
+    // Spacer
+    let sp1: View = spacer();
+    view_set_height(sp1, 16.0);
+    view_add_child(sidebar, sp1);
+    
+    // Menu items
+    let disks_item: View = create_menu_item("disk-icon", "DISKS (2)");
+    view_add_child(sidebar, disks_item);
+    
+    let volumes_item: View = create_menu_item("folder-icon", "VOLUMES (3)");
+    view_add_child(sidebar, volumes_item);
+    
+    let settings_item: View = create_menu_item("settings-icon", "SETTINGS");
+    view_add_child(sidebar, settings_item);
+    
+    // System Info section
+    let sp2: View = spacer();
+    view_set_height(sp2, 32.0);
+    view_add_child(sidebar, sp2);
+    
+    let info_title: View = text_view("System Info");
+    text_set_font_size(info_title, 14.0);
+    text_set_font_weight(info_title, 600);
+    text_set_color(info_title, theme_text());
+    view_add_child(sidebar, info_title);
+    
+    let sp3: View = spacer();
+    view_set_height(sp3, 8.0);
+    view_add_child(sidebar, sp3);
+    
+    let storage_total: View = text_view("Total Storage: 2.5 TB");
+    text_set_font_size(storage_total, 12.0);
+    text_set_color(storage_total, theme_text_dim());
+    view_add_child(sidebar, storage_total);
+    
+    let storage_used: View = text_view("Total Used: 1.1 TB");
+    text_set_font_size(storage_used, 12.0);
+    text_set_color(storage_used, theme_text_dim());
+    view_add_child(sidebar, storage_used);
+    
+    let storage_free: View = text_view("Free: 1.4 TB");
+    text_set_font_size(storage_free, 12.0);
+    text_set_color(storage_free, theme_text_dim());
+    view_add_child(sidebar, storage_free);
+    
+    let sp4: View = spacer();
+    view_set_height(sp4, 16.0);
+    view_add_child(sidebar, sp4);
+    
+    let fs_support: View = text_view("File System Support: NXFS,");
+    text_set_font_size(fs_support, 12.0);
+    text_set_color(fs_support, theme_text_dim());
+    view_add_child(sidebar, fs_support);
+    
+    let fs_support2: View = text_view("ext4, NTFS, FAT32...");
+    text_set_font_size(fs_support2, 12.0);
+    text_set_color(fs_support2, theme_text_dim());
+    view_add_child(sidebar, fs_support2);
+    
+    view_add_child(sidebar, spacer());
+    
+    // Bottom buttons
+    let bottom_row: View = hstack(16.0);
+    
+    let refresh_btn: View = create_icon_button("refresh-icon", "Refresh");
+    view_add_child(bottom_row, refresh_btn);
+    
+    let help_btn: View = create_icon_button("help-icon", "Help");
+    view_add_child(bottom_row, help_btn);
+    
+    view_add_child(sidebar, bottom_row);
+    
+    return sidebar;
+}
+
+fn create_menu_item(icon_name: string, label: string) -> View {
+    let item: View = hstack(12.0);
+    view_set_padding(item, insets(10.0, 12.0, 10.0, 12.0));
+    
+    let icon: View = icon_view(icon_name);
+    view_add_child(item, icon);
+    
+    let text: View = text_view(label);
+    text_set_font_size(text, 14.0);
+    text_set_color(text, theme_text());
+    view_add_child(item, text);
+    
+    return item;
+}
+
+fn create_icon_button(icon_name: string, label: string) -> View {
+    let btn: View = vstack(4.0);
+    
+    let icon: View = icon_view(icon_name);
+    view_add_child(btn, icon);
+    
+    let text: View = text_view(label);
+    text_set_font_size(text, 11.0);
+    text_set_color(text, theme_text_dim());
+    view_add_child(btn, text);
+    
+    return btn;
+}
+
+// ============================================================================
+// Component: Disk List
+// ============================================================================
+
+fn create_disk_list() -> View {
+    let container: View = vstack(12.0);
+    
+    // B. DISK LIST header
+    let header: View = text_view("B. DISK LIST");
+    text_set_font_size(header, 11.0);
+    text_set_font_weight(header, 600);
+    text_set_color(header, theme_text_dim());
+    view_add_child(container, header);
+    
+    // Disk 0
+    let disk0: View = create_disk_entry("Disk 0: SSD 500GB", false);
+    view_add_child(container, disk0);
+    
+    // Disk 1 (selected)
+    let disk1: View = create_disk_entry("Disk 1: HDD 2TB", true);
+    view_add_child(container, disk1);
+    
+    return container;
+}
+
+fn create_disk_entry(label: string, selected: bool) -> View {
+    let entry: View = hstack(12.0);
+    view_set_padding(entry, insets(12.0, 16.0, 12.0, 16.0));
+    view_set_corner_radius(entry, 8.0);
+    
+    if selected {
+        view_set_background(entry, theme_surface_light());
+        view_set_border(entry, border(2.0, theme_accent()));
+    } else {
+        view_set_background(entry, theme_surface());
+        view_set_border(entry, border(1.0, theme_border()));
+    }
+    
+    // Disk icon
+    let icon: View = icon_view("disk-drive");
+    view_add_child(entry, icon);
+    
+    // Label
+    let text: View = text_view(label);
+    text_set_font_size(text, 14.0);
+    text_set_color(text, theme_text());
+    view_add_child(entry, text);
+    
+    view_add_child(entry, spacer());
+    
+    // Status
+    let status: View = text_view("[Online]");
+    text_set_font_size(status, 12.0);
+    text_set_color(status, theme_accent());
+    view_add_child(entry, status);
+    
+    return entry;
+}
+
+// ============================================================================
+// Component: Action Buttons
+// ============================================================================
+
+fn create_action_buttons() -> View {
+    let row: View = hstack(8.0);
+    
+    let create_btn: View = create_action_button("sparkle", "Create Partition");
+    view_add_child(row, create_btn);
+    
+    let format_btn: View = create_action_button("brush", "Format");
+    view_add_child(row, format_btn);
+    
+    let delete_btn: View = create_action_button("trash", "Delete");
+    view_add_child(row, delete_btn);
+    
+    let trash_btn: View = icon_view("trash-alt");
+    view_add_child(row, trash_btn);
+    
+    return row;
+}
+
+fn create_action_button(icon_name: string, label: string) -> View {
+    let btn: View = hstack(6.0);
+    view_set_background(btn, theme_surface_light());
+    view_set_padding(btn, insets(8.0, 14.0, 8.0, 14.0));
+    view_set_corner_radius(btn, 6.0);
+    view_set_border(btn, border(1.0, theme_border()));
+    
+    let icon: View = icon_view(icon_name);
+    view_add_child(btn, icon);
+    
+    let text: View = text_view(label);
+    text_set_font_size(text, 12.0);
+    text_set_color(text, theme_text());
+    view_add_child(btn, text);
+    
+    return btn;
+}
+
+// ============================================================================
+// Component: Disk Map (Partition Visualization)
+// ============================================================================
+
+fn create_disk_map() -> View {
+    let container: View = vstack(12.0);
+    
+    // Header
+    let header: View = text_view("Disk Map (Disk 1/DETAILS)");
+    text_set_font_size(header, 12.0);
+    text_set_font_weight(header, 600);
+    text_set_color(header, theme_text());
+    view_add_child(container, header);
+    
+    // Partition bars
+    let bars: View = hstack(2.0);
+    
+    // DATA-2TB (green, largest)
+    let data_part: View = create_partition_bar("DATA-2TB", "(1000 GB)", "(Mounted at /home)", theme_green(), 3);
+    view_add_child(bars, data_part);
+    
+    // RECOVERY (yellow)
+    let recovery_part: View = create_partition_bar("RECOVERY", "50 GB", "(No Mount Point)", theme_yellow(), 1);
+    view_add_child(bars, recovery_part);
+    
+    // UNALLOCATED (red)
+    let unalloc: View = create_partition_bar("UNALLOCATED", "", "(Unformatted)", theme_red(), 1);
+    view_add_child(bars, unalloc);
+    
+    view_add_child(container, bars);
+    
+    // Partition action buttons
+    let actions: View = hstack(8.0);
+    view_add_child(actions, spacer());
+    
+    let extend_btn: View = button_view("Extend");
+    button_set_style(extend_btn, theme_surface_light(), color_lighten(theme_surface_light(), 0.1), color_darken(theme_surface_light(), 0.1));
+    view_add_child(actions, extend_btn);
+    
+    let shrink_btn: View = button_view("Shrink");
+    button_set_style(shrink_btn, theme_surface_light(), color_lighten(theme_surface_light(), 0.1), color_darken(theme_surface_light(), 0.1));
+    view_add_child(actions, shrink_btn);
+    
+    let label_btn: View = button_view("Change Label");
+    button_set_style(label_btn, theme_surface_light(), color_lighten(theme_surface_light(), 0.1), color_darken(theme_surface_light(), 0.1));
+    view_add_child(actions, label_btn);
+    
+    view_add_child(container, actions);
+    
+    return container;
+}
+
+fn create_partition_bar(name: string, size: string, detail: string, c: Color, flex: int) -> View {
+    let bar: View = vstack(4.0);
+    view_set_background(bar, c);
+    view_set_padding(bar, insets_all(10.0));
+    view_set_corner_radius(bar, 4.0);
+    
+    let name_text: View = text_view(name);
+    text_set_font_size(name_text, 12.0);
+    text_set_font_weight(name_text, 600);
+    text_set_color(name_text, color_rgba(0, 0, 0, 220));
+    view_add_child(bar, name_text);
+    
+    if size != "" {
+        let size_text: View = text_view(size);
+        text_set_font_size(size_text, 11.0);
+        text_set_color(size_text, color_rgba(0, 0, 0, 180));
+        view_add_child(bar, size_text);
+    }
+    
+    let detail_text: View = text_view(detail);
+    text_set_font_size(detail_text, 10.0);
+    text_set_color(detail_text, color_rgba(0, 0, 0, 160));
+    view_add_child(bar, detail_text);
+    
+    return bar;
+}
+
+// ============================================================================
+// Component: Partition Details
+// ============================================================================
+
+fn create_partition_details() -> View {
+    let container: View = vstack(8.0);
+    
+    let title: View = text_view("Partition Details");
+    text_set_font_size(title, 14.0);
+    text_set_font_weight(title, 600);
+    text_set_color(title, theme_text());
+    view_add_child(container, title);
+    
+    let selected: View = text_view("Selected: DATA-2TB (Primary Partition)");
+    text_set_font_size(selected, 12.0);
+    text_set_color(selected, theme_text_dim());
+    view_add_child(container, selected);
+    
+    let sp: View = spacer();
+    view_set_height(sp, 4.0);
+    view_add_child(container, sp);
+    
+    let size_info: View = text_view("Size: 1000 GB | Used 750 (75%)");
+    text_set_font_size(size_info, 12.0);
+    text_set_color(size_info, theme_text_dim());
+    view_add_child(container, size_info);
+    
+    let fs_info: View = text_view("File System: NXFS | Status, Healthy)");
+    text_set_font_size(fs_info, 12.0);
+    text_set_color(fs_info, theme_text_dim());
+    view_add_child(container, fs_info);
+    
+    return container;
+}
+
+// ============================================================================
+// Main Application
+// ============================================================================
+
+fn main() -> int {
+    println("=== NeolyxOS Disk Manager ===");
+    println("");
+    
+    // Create application
+    let app: App = app_new("NeolyxOS Disk Manager");
+    let window: Window = app_create_window(app, "NeolyxOS Disk Manager", 900, 600);
+    
+    // Root container
+    let root: View = vstack(0.0);
+    view_set_background(root, theme_bg());
+    
+    // Title bar
+    let title_bar: View = create_title_bar();
+    view_add_child(root, title_bar);
+    
+    // Main content (sidebar + main)
+    let content: View = hstack(0.0);
+    
+    // Sidebar
+    let sidebar: View = create_sidebar();
+    view_add_child(content, sidebar);
+    
+    // Main panel
+    let main_panel: View = vstack(16.0);
+    view_set_background(main_panel, theme_bg());
+    view_set_padding(main_panel, insets_all(20.0));
+    
+    // Disk list
+    let disk_list: View = create_disk_list();
+    view_add_child(main_panel, disk_list);
+    
+    // Action buttons
+    let actions: View = create_action_buttons();
+    view_add_child(main_panel, actions);
+    
+    // Disk map
+    let disk_map: View = create_disk_map();
+    view_add_child(main_panel, disk_map);
+    
+    // Partition details
+    let details: View = create_partition_details();
+    view_add_child(main_panel, details);
+    
+    view_add_child(content, main_panel);
+    view_add_child(root, content);
+    
+    // Set root and run
+    window_set_root(window, root);
+    
+    println("");
+    println("Disk Manager UI initialized!");
+    app_run(app);
+    
+    return 0;
+}

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Architecture - NeolyxOS Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-code: #1c2128;
+            --text-primary: #c9d1d9;
+            --accent: #58a6ff;
+            --border: #30363d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        nav {
+            margin-bottom: 2rem;
+            display: flex;
+            gap: 1rem;
+        }
+
+        nav a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin: 2rem 0 1rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            margin: 1.5rem 0 0.5rem;
+            color: var(--accent);
+        }
+
+        p {
+            margin-bottom: 1rem;
+        }
+
+        code {
+            background: var(--bg-code);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Consolas', monospace;
+            font-size: 0.9em;
+        }
+
+        pre {
+            background: var(--bg-code);
+            padding: 1rem;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 1rem 0;
+            font-size: 0.85em;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        ul,
+        ol {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .file-ref {
+            font-size: 0.9em;
+            color: var(--accent);
+            border-top: 1px solid var(--border);
+            padding-top: 1rem;
+            margin-top: 2rem;
+        }
+    </style>
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+
+
+        <h1>📐 NeolyxOS System Architecture</h1>
+        <p>A custom 64-bit operating system built from scratch.</p>
+
+        <h2>System Stack</h2>
+        <pre><code>┌─────────────────────────────────────────────────────────────┐
+│                     USER SPACE                              │
+│  Terminal │ ReoLab IDE │ Custom Apps │ REOX UI Apps         │
+├─────────────────────────────────────────────────────────────┤
+│                     GUI LAYER                               │
+│  NXRender + NXGFX Engine                                    │
+│  • Custom GPU Backend  • Widget System  • Animation         │
+├─────────────────────────────────────────────────────────────┤
+│                     KERNEL LAYER                            │
+│  Core      │ Drivers   │ File System │ Memory Mgmt          │
+│  Syscalls  │ ATA/NVMe  │ VFS/NXFS    │ Heap/Paging          │
+│  Process   │ Network   │ FAT32       │ PMM                  │
+├─────────────────────────────────────────────────────────────┤
+│                     BOOT LAYER                              │
+│  UEFI Bootloader → ELF Loading → Boot Info → kernel_main()  │
+├─────────────────────────────────────────────────────────────┤
+│                     HARDWARE                                │
+│  CPU (x86_64) │ RAM │ GPU │ Storage │ Network │ Input       │
+└─────────────────────────────────────────────────────────────┘</code></pre>
+
+        <h2>Directory Structure</h2>
+        <pre><code>neolyx-os/
+├── boot/              # UEFI Bootloader
+│   ├── main.c         # Kernel loading, graphics
+│   └── graphics.c     # GOP splash screen
+│
+├── kernel/            # Kernel source
+│   ├── kernel_main.c  # Entry point
+│   └── src/
+│       ├── arch/x86_64/  # GDT, IDT, paging
+│       ├── core/         # Process, syscall
+│       ├── drivers/      # Storage, network, input
+│       ├── fs/           # VFS, NXFS
+│       └── mm/           # Heap, PMM
+│
+├── gui/               # GUI Layer
+│   └── nxrender/      # Custom rendering engine
+│
+├── REOX/              # REOX Language
+│   └── reolab/        # Compiler/Runtime
+│
+└── docs/              # Documentation (this)</code></pre>
+
+        <h2>Boot Info Structure</h2>
+        <pre><code>typedef struct {
+    uint32_t magic;               // 0x4E454F58 "NEOX"
+    uint32_t version;
+    uint64_t memory_map_addr;
+    uint64_t memory_map_size;
+    uint64_t framebuffer_addr;
+    uint32_t framebuffer_width;
+    uint32_t framebuffer_height;
+    uint32_t framebuffer_pitch;
+    uint64_t acpi_rsdp;
+} NeolyxBootInfo;</code></pre>
+
+        <h2>Build Commands</h2>
+        <pre><code># Full build
+./build.sh
+
+# Kernel only
+cd kernel && make
+
+# Test in QEMU
+./test_boot.sh</code></pre>
+
+        <h2>System Calls</h2>
+        <table>
+            <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td>0</td>
+                <td>sys_exit</td>
+                <td>Terminate process</td>
+            </tr>
+            <tr>
+                <td>1</td>
+                <td>sys_read</td>
+                <td>Read from file descriptor</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>sys_write</td>
+                <td>Write to file descriptor</td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td>sys_open</td>
+                <td>Open file</td>
+            </tr>
+            <tr>
+                <td>4</td>
+                <td>sys_close</td>
+                <td>Close file</td>
+            </tr>
+            <tr>
+                <td>5</td>
+                <td>sys_mmap</td>
+                <td>Map memory</td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td>sys_fork</td>
+                <td>Create child process</td>
+            </tr>
+            <tr>
+                <td>7</td>
+                <td>sys_exec</td>
+                <td>Execute program</td>
+            </tr>
+        </table>
+
+        <h2>File Formats</h2>
+        <table>
+            <tr>
+                <th>Extension</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td>.nxt</td>
+                <td>NeolyxOS executable</td>
+            </tr>
+            <tr>
+                <td>.npa</td>
+                <td>Application package</td>
+            </tr>
+            <tr>
+                <td>.nix</td>
+                <td>Icon format</td>
+            </tr>
+            <tr>
+                <td>.rx</td>
+                <td>REOX source</td>
+            </tr>
+        </table>
+
+        <h2>Performance Targets</h2>
+        <table>
+            <tr>
+                <th>Metric</th>
+                <th>Target</th>
+            </tr>
+            <tr>
+                <td>Boot to desktop</td>
+                <td>&lt; 3 seconds</td>
+            </tr>
+            <tr>
+                <td>UI frame rate</td>
+                <td>60-144 FPS</td>
+            </tr>
+            <tr>
+                <td>Syscall latency</td>
+                <td>&lt; 1μs</td>
+            </tr>
+            <tr>
+                <td>Context switch</td>
+                <td>&lt; 5μs</td>
+            </tr>
+            <tr>
+                <td>Memory footprint</td>
+                <td>&lt; 128MB base</td>
+            </tr>
+        </table>
+
+        <div class="file-ref">
+            <strong>Source:</strong> <a href="../Architecture.md">Architecture.md</a>
+        </div>
+    </div>
+</body>
+
+</html>

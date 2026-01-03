@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS - Development Phases</title>
+    
+    <script src="assets/navbar.js"></script>
+    <link rel="stylesheet" href="assets/navbar.css">
+    <script src="assets/navbar.js"></script>
+</head>
+
+<body>
+    
+
+    <div class="container">
+        <h1>🚀 NeolyxOS Development Phases</h1>
+        <p style="color: var(--text-secondary); margin-bottom: 2rem;">Complete roadmap of NeolyxOS kernel development
+            from bootloader to desktop GUI.</p>
+
+        <h2>Foundation Phases (1-8) <span class="badge badge-complete">✓ Complete</span></h2>
+
+        <div class="phase-grid">
+            <div class="phase-card">
+                <h4>Phase 1-2: Boot & Core</h4>
+                <ul>
+                    <li>UEFI bootloader (v8.0)</li>
+                    <li>64-bit long mode transition</li>
+                    <li>GDT/IDT/TSS setup</li>
+                </ul>
+            </div>
+            <div class="phase-card">
+                <h4>Phase 3-4: Memory & Process</h4>
+                <ul>
+                    <li>PMM, VMM, kernel heap</li>
+                    <li>fork/exec/wait syscalls</li>
+                    <li>Round-robin scheduler</li>
+                </ul>
+            </div>
+            <div class="phase-card">
+                <h4>Phase 5: Drivers</h4>
+                <ul>
+                    <li>10 kernel drivers (nxgfx, nxaudio, nxnet...)</li>
+                    <li>PCI/USB enumeration</li>
+                    <li>PS/2 keyboard/mouse</li>
+                </ul>
+            </div>
+            <div class="phase-card">
+                <h4>Phase 6: Filesystem</h4>
+                <ul>
+                    <li>NXFS with AES-256 encryption</li>
+                    <li>VFS layer</li>
+                    <li>Block cache with LRU</li>
+                </ul>
+            </div>
+            <div class="phase-card">
+                <h4>Phase 7: Terminal Shell</h4>
+                <ul>
+                    <li>25 commands (help, cd, list...)</li>
+                    <li>IRQ-driven keyboard queue</li>
+                    <li>Framebuffer console</li>
+                </ul>
+            </div>
+            <div class="phase-card">
+                <h4>Phase 8: Stress Tests</h4>
+                <ul>
+                    <li>Memory allocation stress</li>
+                    <li>Keyboard queue tests</li>
+                    <li>Uptime stability tests</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>Stability Phases (9-12) <span class="badge badge-complete">✓ Complete</span></h2>
+
+        <div class="phase-grid">
+            <div class="phase-card">
+                <h4>Phase 9: Boot Protection</h4>
+                <ul>
+                    <li><code>boot_guard.c</code> - Boot status tracking</li>
+                    <li><code>session_manager.c</code> - Crash isolation</li>
+                    <li><code>nxgame_bridge.c</code> - Direct GPU/audio</li>
+                    <li><code>sip.c</code> - System Integrity Protection</li>
+                </ul>
+            </div>
+            <div class="phase-card">
+                <h4>Phase 10: Desktop GUI</h4>
+                <ul>
+                    <li><code>desktop_shell.c</code> - Menu bar, dock</li>
+                    <li><code>widgets.c</code> - Button, label, container</li>
+                    <li>Window compositor with z-ordering</li>
+                    <li>Mouse cursor and dragging</li>
+                </ul>
+            </div>
+            <div class="phase-card">
+                <h4>Phase 11: Terminal Window</h4>
+                <ul>
+                    <li><code>terminal_window.c</code> - 80x24 buffer</li>
+                    <li>Cursor and scrolling</li>
+                    <li>Command execution</li>
+                    <li>Desktop window integration</li>
+                </ul>
+            </div>
+            <div class="phase-card">
+                <h4>Phase 12: Security Hardening</h4>
+                <ul>
+                    <li><code>security.c</code> - Capability checks</li>
+                    <li><code>safe_mem.c</code> - Bounded copies</li>
+                    <li><code>panic_handler.c</code> - Crash recovery</li>
+                    <li>ASSERT/PANIC macros</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>Storage, Userspace & Security (13-16) <span class="badge badge-complete">✓ Complete</span></h2>
+
+        <div class="phase-grid">
+            <div class="phase-card">
+                <h4>Phase 13: Storage Integration</h4>
+                <ul>
+                    <li><code>ahci.c</code> - AHCI Driver & PCI mapping</li>
+                    <li><code>nucleus.c</code> - MBR/GPT Partition Parsing</li>
+                    <li><code>ahci_block.c</code> - Block device abstraction</li>
+                    <li>Automatic NXFS partition detection</li>
+                </ul>
+            </div>
+            <div class="phase-card">
+                <h4>Phase 14: Userspace Support</h4>
+                <ul>
+                    <li>VFS Syscalls (open, read, write)</li>
+                    <li><code>ramfs.c</code> - Embedded Binary Loading</li>
+                    <li>Ring 3 Transition (TSS, IRET)</li>
+                    <li>Terminal `info` & `uptime` commands</li>
+                </ul>
+            </div>
+            <div class="phase-card">
+                <h4>Phase 15: Userland Shell & Init</h4>
+                <ul>
+                    <li><code>nxsh</code> - Userland Shell (cd, pwd, exec)</li>
+                    <li><code>init</code> - PID 1 process & zombie reaping</li>
+                    <li><code>installer.c</code> - OS Installer (GPT/FAT32)</li>
+                    <li>Full Userspace Boot Flow</li>
+                </ul>
+            </div>
+            <div class="phase-card">
+                <h4>Phase 16: System Security</h4>
+                <ul>
+                    <li><code>firewall.c</code> - Packet Filtering</li>
+                    <li><code>app_sandbox.c</code> - App Isolation</li>
+                    <li><code>system_lock.c</code> - Screen Lock</li>
+                    <li><code>audit.c</code> - Security Logging</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>Code Statistics</h2>
+
+        <table>
+            <tr>
+                <th>Phase</th>
+                <th>Files</th>
+                <th>Lines</th>
+                <th>Status</th>
+            </tr>
+            <tr>
+                <td>Phases 1-8</td>
+                <td>Core kernel</td>
+                <td>~15,000</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>Phase 9</td>
+                <td>boot_guard, session_manager, nxgame, sip</td>
+                <td>~2,800</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>Phase 10</td>
+                <td>desktop_shell, widgets</td>
+                <td>~1,200</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>Phase 11</td>
+                <td>terminal_window</td>
+                <td>~480</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>Phase 12</td>
+                <td>security, safe_mem, panic_handler</td>
+                <td>~1,180</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>Phase 13</td>
+                <td>ahci, nucleus, ahci_block</td>
+                <td>~1,500</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>Phase 14</td>
+                <td>syscalls, ramfs, arch</td>
+                <td>~1,200</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>Phase 15</td>
+                <td>nxsh, init, installer</td>
+                <td>~1,800</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr style="font-weight: bold;">
+                <td>Total</td>
+                <td>75+ files</td>
+                <td>~20,660</td>
+                <td>Kernel: 303 KB</td>
+            </tr>
+        </table>
+
+        <h2>Documentation</h2>
+
+        <table>
+            <tr>
+                <th>Category</th>
+                <th>Document</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td>Kernel</td>
+                <td><a href="kernel/syscalls.html">syscalls.html</a></td>
+                <td>24 syscalls reference</td>
+            </tr>
+            <tr>
+                <td>Security</td>
+                <td><a href="security/sip.html">sip.html</a></td>
+                <td>System Integrity Protection</td>
+            </tr>
+            <tr>
+                <td>Security</td>
+                <td><a href="security/security_hardening.html">security_hardening.html</a></td>
+                <td>Phase 12 security features</td>
+            </tr>
+            <tr>
+                <td>Stability</td>
+                <td><a href="stability/nxgame_bridge.html">nxgame_bridge.html</a></td>
+                <td>Game/heavy app support</td>
+            </tr>
+            <tr>
+                <td>Drivers</td>
+                <td><a href="drivers/kdrv.html">kdrv.html</a></td>
+                <td>Driver architecture</td>
+            </tr>
+        </table>
+
+        <footer
+            style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-secondary); text-align: center;">
+            NeolyxOS © 2025 KetiveeAI | Last Updated: December 20, 2025
+        </footer>
+    </div>
+</body>
+
+</html>

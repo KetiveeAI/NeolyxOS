@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NVMe Driver - NeolyxOS Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-code: #1c2128;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --success: #56d364;
+            --border: #30363d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        nav {
+            margin-bottom: 2rem;
+        }
+
+        nav a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        nav a:hover {
+            text-decoration: underline;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin: 2rem 0 1rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            margin: 1.5rem 0 0.5rem;
+            color: var(--accent);
+        }
+
+        p {
+            margin-bottom: 1rem;
+        }
+
+        code {
+            background: var(--bg-code);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Consolas', monospace;
+        }
+
+        pre {
+            background: var(--bg-code);
+            padding: 1rem;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        .status {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status.complete {
+            background: #238636;
+            color: white;
+        }
+    </style>
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        
+
+        <h1>💾 NVMe Driver <span class="status complete">Complete</span></h1>
+        <p>Production-ready NVMe storage driver with I/O queues, PRP lists, and interrupt support.</p>
+
+        <h2>Files</h2>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><code>kernel/src/drivers/storage/nvme.c</code></td>
+                <td>Driver implementation</td>
+            </tr>
+            <tr>
+                <td><code>kernel/src/drivers/storage/nvme.h</code></td>
+                <td>Structures and API</td>
+            </tr>
+            <tr>
+                <td><code>kernel/src/drivers/block/nvme_block.c</code></td>
+                <td>Block layer backend</td>
+            </tr>
+        </table>
+
+        <h2>Features</h2>
+
+        <h3>Controller Initialization</h3>
+        <ul>
+            <li>PCI device detection (class 0x01, subclass 0x08)</li>
+            <li>BAR0 MMIO register mapping</li>
+            <li>Admin queue setup</li>
+            <li>Controller identify command</li>
+        </ul>
+
+        <h3>I/O Queues</h3>
+        <ul>
+            <li>Create I/O Completion Queue (nvme_create_io_cq)</li>
+            <li>Create I/O Submission Queue (nvme_create_io_sq)</li>
+            <li>Doorbell ring for submission/completion</li>
+        </ul>
+
+        <h3>PRP List Support (Physical Region Pages)</h3>
+        <table>
+            <tr>
+                <th>Transfer Size</th>
+                <th>PRP Method</th>
+            </tr>
+            <tr>
+                <td>≤ 4 KB</td>
+                <td>PRP1 only</td>
+            </tr>
+            <tr>
+                <td>≤ 8 KB</td>
+                <td>PRP1 + PRP2</td>
+            </tr>
+            <tr>
+                <td>> 8 KB (up to 128 KB)</td>
+                <td>PRP1 + PRP list page</td>
+            </tr>
+        </table>
+
+        <h3>Interrupt Support</h3>
+        <ul>
+            <li>MSI-X capability detection</li>
+            <li>Legacy INTx fallback</li>
+            <li>Interrupt-assisted polling</li>
+        </ul>
+
+        <h3>Per-Core Queue Design (Phase 4)</h3>
+        <p>Designed for multi-core performance with one I/O queue per CPU.</p>
+        <pre><code>nvme_io_queue_ctx_t *nvme_get_cpu_queue(nvme_controller_t *ctrl);
+int nvme_setup_per_core_queues(nvme_controller_t *ctrl, int num_cpus);</code></pre>
+
+        <h2>Public API</h2>
+
+        <h3>nvme_init()</h3>
+        <p>Scan PCI for NVMe controllers and initialize them.</p>
+        <pre><code>int nvme_init(void);
+// Returns: number of controllers found</code></pre>
+
+        <h3>nvme_read()</h3>
+        <p>Read blocks from NVMe namespace.</p>
+        <pre><code>int nvme_read(nvme_controller_t *ctrl, uint32_t nsid, 
+              uint64_t lba, uint32_t count, void *buffer);
+// Returns: bytes read, or negative error</code></pre>
+
+        <h3>nvme_write()</h3>
+        <p>Write blocks to NVMe namespace.</p>
+        <pre><code>int nvme_write(nvme_controller_t *ctrl, uint32_t nsid,
+               uint64_t lba, uint32_t count, const void *buffer);
+// Returns: bytes written, or negative error</code></pre>
+
+        <h3>nvme_get_capacity()</h3>
+        <p>Get namespace capacity in bytes.</p>
+        <pre><code>uint64_t nvme_get_capacity(nvme_controller_t *ctrl, uint32_t nsid);</code></pre>
+
+        <h2>Usage Example</h2>
+        <pre><code>// Initialize NVMe subsystem
+nvme_init();
+
+// Get first controller
+nvme_controller_t *ctrl = nvme_get_controller(0);
+
+// Read 8 sectors (4KB) from LBA 0
+uint8_t buffer[4096];
+int bytes = nvme_read(ctrl, 1, 0, 8, buffer);
+
+// Use block layer abstraction (recommended)
+block_device_t *dev = block_find("nvme0n1");
+block_read(dev, 0, 8, buffer);</code></pre>
+
+        <h2>Data Structures</h2>
+
+        <h3>nvme_sqe_t (Submission Queue Entry - 64 bytes)</h3>
+        <pre><code>typedef struct {
+    uint8_t  opcode;
+    uint8_t  flags;
+    uint16_t command_id;
+    uint32_t nsid;
+    uint64_t reserved;
+    uint64_t mptr;
+    uint64_t prp1;
+    uint64_t prp2;
+    uint32_t cdw10, cdw11, cdw12, cdw13, cdw14, cdw15;
+} nvme_sqe_t;</code></pre>
+
+        <h3>nvme_cqe_t (Completion Queue Entry - 16 bytes)</h3>
+        <pre><code>typedef struct {
+    uint32_t result;
+    uint32_t reserved;
+    uint16_t sq_head;
+    uint16_t sq_id;
+    uint16_t command_id;
+    uint16_t status;
+} nvme_cqe_t;</code></pre>
+
+        <h2>How to Edit</h2>
+        <ol>
+            <li>Main driver: <code>kernel/src/drivers/storage/nvme.c</code></li>
+            <li>Add to Makefile: <code>nvme.o</code> in obj-y</li>
+            <li>Register with block layer in <code>nvme_block.c</code></li>
+        </ol>
+
+    </div>
+</body>
+
+</html>

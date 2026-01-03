@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NIX Icon Format - NeolyxOS Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-code: #1c2128;
+            --text-primary: #c9d1d9;
+            --accent: #58a6ff;
+            --border: #30363d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        nav {
+            margin-bottom: 2rem;
+            display: flex;
+            gap: 1rem;
+        }
+
+        nav a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin: 2rem 0 1rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            margin: 1.5rem 0 0.5rem;
+            color: var(--accent);
+        }
+
+        p {
+            margin-bottom: 1rem;
+        }
+
+        code {
+            background: var(--bg-code);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Consolas', monospace;
+            font-size: 0.9em;
+        }
+
+        pre {
+            background: var(--bg-code);
+            padding: 1rem;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        ul,
+        ol {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .file-ref {
+            font-size: 0.9em;
+            color: var(--accent);
+            border-top: 1px solid var(--border);
+            padding-top: 1rem;
+            margin-top: 2rem;
+        }
+    </style>
+    <script src="assets/navbar.js"></script>
+    <link rel="stylesheet" href="assets/navbar.css">
+    <script src="assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        
+
+        <h1>🎨 NIX Icon Format Specification</h1>
+        <p>Custom icon format for NeolyxOS with animation support and compression.</p>
+
+        <h2>Overview</h2>
+        <p>The <code>.nix</code> format provides efficient icon storage with multiple resolutions, animation, and LZ4
+            compression.</p>
+
+        <h2>File Structure</h2>
+
+        <h3>Magic Header (8 bytes)</h3>
+        <pre><code>Offset: 0x00
+Value:  NIXICON\x01
+Purpose: File identification</code></pre>
+
+        <h3>Header Structure (18 bytes)</h3>
+        <pre><code>Offset 0x09:
+  Width:          u32 (little-endian)
+  Height:         u32 (little-endian)
+  Color Depth:    u8
+  Frame Count:    u32
+  Animation Delay: u32 (milliseconds)
+  Compression:    u8 (0=none, 1=LZ4)</code></pre>
+
+        <h2>Color Depths</h2>
+        <table>
+            <tr>
+                <th>Value</th>
+                <th>Format</th>
+                <th>Bytes/Pixel</th>
+            </tr>
+            <tr>
+                <td>8</td>
+                <td>Grayscale</td>
+                <td>1</td>
+            </tr>
+            <tr>
+                <td>16</td>
+                <td>RGB 5-6-5</td>
+                <td>2</td>
+            </tr>
+            <tr>
+                <td>24</td>
+                <td>RGB 8-8-8</td>
+                <td>3</td>
+            </tr>
+            <tr>
+                <td>32</td>
+                <td>RGBA 8-8-8-8</td>
+                <td>4</td>
+            </tr>
+        </table>
+
+        <h2>Example: 64x64 RGBA32</h2>
+        <pre><code>0000: 4E 49 58 49 43 4F 4E 01  # NIXICON\x01
+0008: 01                        # Version 1
+0009: 40 00 00 00              # Width: 64
+000D: 40 00 00 00              # Height: 64
+0011: 20                        # 32-bit color
+0012: 01 00 00 00              # 1 frame
+0016: 00 00 00 00              # No animation
+001A: 00                        # No compression
+001B: [16,384 bytes RGBA data] # 64×64×4</code></pre>
+
+        <h2>Performance</h2>
+        <table>
+            <tr>
+                <th>Size</th>
+                <th>Load Time</th>
+                <th>File Size</th>
+            </tr>
+            <tr>
+                <td>16×16</td>
+                <td>&lt; 1ms</td>
+                <td>~1KB</td>
+            </tr>
+            <tr>
+                <td>64×64</td>
+                <td>&lt; 5ms</td>
+                <td>~16KB</td>
+            </tr>
+            <tr>
+                <td>128×128</td>
+                <td>&lt; 20ms</td>
+                <td>~64KB</td>
+            </tr>
+        </table>
+
+        <h2>Tools</h2>
+        <pre><code># Convert SVG to NIX
+icon-converter input.svg output.nix --size 64x64
+
+# Animated
+icon-converter animation.gif output.nix --animation-delay 100
+
+# Validate
+nix-validator icon.nix</code></pre>
+
+        <h2>API Usage</h2>
+        <pre><code>// Load icon
+let icon = NixIcon::read(&amp;mut file)?;
+
+// Access frames
+for frame in icon.get_frames() {
+    // Process frame
+}
+
+// Check animation
+if icon.is_animated() {
+    let delay = icon.get_animation_delay();
+}</code></pre>
+
+        <h2>System Integration</h2>
+        <ul>
+            <li>MIME Type: <code>image/x-nixicon</code></li>
+            <li>Extension: <code>.nix</code></li>
+            <li>Used for: Desktop icons, file manager, app launcher, system tray</li>
+        </ul>
+
+        <div class="file-ref">
+            <strong>Source:</strong> <a href="nix_format_specification.md">docs/nix_format_specification.md</a>
+        </div>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,43 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Window Expand/Maximize Button
+
+[nxi]
+version = 1.0
+name = expand
+size = 12
+author = KetiveeAI
+category = window-control
+viewbox = 0 0 12 12
+
+[canvas]
+width = 12
+height = 12
+background = transparent
+
+[colors]
+bg_start = #51cf66
+bg_end = #40c057
+stroke = #2f9e44
+symbol = #1a5f2a
+
+[gradients]
+expGrad = linear 0,0 12,12 bg_start bg_end
+
+[shapes]
+circle center=6,6 radius=5.5 fill=expGrad stroke=stroke stroke-width=0.5
+
+[paths]
+# Square outline for maximize
+square = M3.5,3.5 L8.5,3.5 L8.5,8.5 L3.5,8.5 Z
+
+[style]
+square.fill = none
+square.stroke = symbol
+square.stroke-width = 1.2
+square.stroke-linejoin = round
+
+[style.dark]
+bg_start = #A3BE8C
+bg_end = #8FAD79
+stroke = #68945A
+symbol = #1E1E2E

@@ -1,0 +1,8 @@
+/home/swana/Documents/zeprabrowser/src/nxrt/build/CMakeFiles/nxrt-static.dir
+/home/swana/Documents/zeprabrowser/src/nxrt/build/CMakeFiles/nxrt-shared.dir
+/home/swana/Documents/zeprabrowser/src/nxrt/build/CMakeFiles/edit_cache.dir
+/home/swana/Documents/zeprabrowser/src/nxrt/build/CMakeFiles/rebuild_cache.dir
+/home/swana/Documents/zeprabrowser/src/nxrt/build/CMakeFiles/list_install_components.dir
+/home/swana/Documents/zeprabrowser/src/nxrt/build/CMakeFiles/install.dir
+/home/swana/Documents/zeprabrowser/src/nxrt/build/CMakeFiles/install/local.dir
+/home/swana/Documents/zeprabrowser/src/nxrt/build/CMakeFiles/install/strip.dir

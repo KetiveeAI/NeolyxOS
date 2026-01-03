@@ -1,0 +1,2 @@
+/usr/bin/ar qc libnxrt.a "CMakeFiles/nxrt-static.dir/src/core/runtime.c.o" "CMakeFiles/nxrt-static.dir/src/ipc/ipc.c.o" "CMakeFiles/nxrt-static.dir/src/security/security.c.o"
+/usr/bin/ranlib libnxrt.a

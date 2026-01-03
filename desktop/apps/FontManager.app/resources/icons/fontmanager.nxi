@@ -1,0 +1,43 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Font Manager App Icon - Letter A with gear
+
+[nxi]
+version = 1.0
+name = fontmanager
+size = 64
+author = KetiveeAI
+category = system
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+primary = #4D9FFF
+secondary = #3D8FEF
+text = #FFFFFF
+shadow = #2D6FCF
+
+[gradients]
+iconGrad = linear 0,0 64,64 primary secondary
+
+[shapes]
+# Background rounded square
+rect x=4 y=4 width=56 height=56 rx=12 fill=iconGrad
+
+[paths]
+# Letter A
+letter_a = M24,48 L32,16 L40,48 L36,48 L34,40 L30,40 L28,48 Z
+crossbar = M31,34 L33,34 L34,38 L30,38 Z
+
+[style]
+letter_a.fill = text
+letter_a.stroke = none
+crossbar.fill = primary
+
+[style.dark]
+primary = #5DAFFF
+secondary = #4D9FEF
+text = #FFFFFF

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nxi version="1.0" name="calendar" live="true">
+  <metadata>
+    <title>Calendar Live Icon</title>
+    <author>KetiveeAI</author>
+    <size>48</size>
+    <description>Live icon that displays current date</description>
+  </metadata>
+  
+  <canvas width="48" height="48">
+    <!-- Calendar base -->
+    <rect x="4" y="8" width="40" height="36" rx="4" fill="#FFFFFF"/>
+    
+    <!-- Red header bar (month) -->
+    <rect x="4" y="8" width="40" height="12" rx="4" fill="#FF4444"/>
+    
+    <!-- Calendar rings -->
+    <rect x="12" y="4" width="4" height="10" rx="2" fill="#808080"/>
+    <rect x="32" y="4" width="4" height="10" rx="2" fill="#808080"/>
+    
+    <!-- Day number (dynamic - shows 26 for today) -->
+    <text x="24" y="36" font-size="20" fill="#1A1A2E" text-anchor="middle" font-weight="bold">{{day}}</text>
+    
+    <!-- Month abbreviation -->
+    <text x="24" y="17" font-size="8" fill="#FFFFFF" text-anchor="middle">{{month}}</text>
+  </canvas>
+  
+  <!-- Live update bindings -->
+  <bindings>
+    <bind property="day" source="system.date.day"/>
+    <bind property="month" source="system.date.month_short"/>
+  </bindings>
+</nxi>

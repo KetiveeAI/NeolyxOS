@@ -1,0 +1,1 @@
+/usr/bin/cc -fPIC -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/nxrt-shared.dir/link.d -shared -Wl,-soname,libnxrt.so.1 -o libnxrt.so.1.0.0 "CMakeFiles/nxrt-shared.dir/src/core/runtime.c.o" "CMakeFiles/nxrt-shared.dir/src/ipc/ipc.c.o" "CMakeFiles/nxrt-shared.dir/src/security/security.c.o"  -lpthread

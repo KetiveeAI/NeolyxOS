@@ -1,0 +1,67 @@
+# RoleCut Effects Package
+# Keying and compositing effects
+
+[package]
+name = "Keying"
+version = "1.0.0"
+category = "keying"
+
+[effects]
+
+[effects.chroma_key]
+id = "RC_FX_CHROMA_KEY"
+name = "Chroma Key (Green Screen)"
+free = false
+description = "Remove green or blue screen backgrounds"
+params = [
+    { name = "key_color", type = "color", default = "#00ff00" },
+    { name = "tolerance", type = "float", default = 40, min = 0, max = 100 },
+    { name = "softness", type = "float", default = 10, min = 0, max = 100 },
+    { name = "spill_suppression", type = "float", default = 50, min = 0, max = 100 },
+    { name = "edge_thin", type = "float", default = 0, min = -10, max = 10 },
+    { name = "edge_feather", type = "float", default = 1, min = 0, max = 10 }
+]
+
+[effects.luma_key]
+id = "RC_FX_LUMA_KEY"
+name = "Luma Key"
+free = false
+description = "Key based on brightness"
+params = [
+    { name = "threshold", type = "float", default = 50, min = 0, max = 100 },
+    { name = "softness", type = "float", default = 10, min = 0, max = 100 },
+    { name = "invert", type = "bool", default = false }
+]
+
+[effects.difference_key]
+id = "RC_FX_DIFFERENCE_KEY"
+name = "Difference Key"
+free = false
+description = "Key based on difference from clean plate"
+params = [
+    { name = "threshold", type = "float", default = 30, min = 0, max = 100 },
+    { name = "softness", type = "float", default = 10, min = 0, max = 100 }
+]
+
+[effects.spill_suppressor]
+id = "RC_FX_SPILL_SUPPRESSOR"
+name = "Spill Suppressor"
+free = false
+description = "Remove color spill from keying"
+params = [
+    { name = "spill_color", type = "color", default = "#00ff00" },
+    { name = "range", type = "float", default = 50, min = 0, max = 100 },
+    { name = "method", type = "choice", choices = ["Standard", "Average", "Double"] }
+]
+
+[effects.matte_refine]
+id = "RC_FX_MATTE_REFINE"
+name = "Matte Refine"
+free = false
+description = "Clean up keying edges"
+params = [
+    { name = "contract", type = "float", default = 0, min = -10, max = 10 },
+    { name = "feather", type = "float", default = 1, min = 0, max = 20 },
+    { name = "choke", type = "float", default = 0, min = -5, max = 5 },
+    { name = "defringe", type = "float", default = 0, min = 0, max = 100 }
+]

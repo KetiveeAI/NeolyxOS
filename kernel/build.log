@@ -1,0 +1,15 @@
+Makefile:438: warning: overriding recipe for target 'pmm.o'
+Makefile:258: warning: ignoring old recipe for target 'pmm.o'
+Makefile:459: warning: overriding recipe for target 'nxaudio.o'
+Makefile:346: warning: ignoring old recipe for target 'nxaudio.o'
+gcc -ffreestanding -nostdlib -mno-red-zone -Wall -Wextra -m64 -fno-pie -no-pie -Iinclude -I../include -I../include/core -I../include/utils -I../include/fs -I../include/drivers -I../include/mm -I../include/io -I../include/video -I../include/network -I../include/storage -I../include/runtime -I../include/net -I../include/ui -Isrc/core -Isrc/video -Isrc/drivers -Isrc/network -Isrc/storage -Isrc/utils -Isrc/io -Isrc/arch/x86_64 -Isrc/mm -Isrc/runtime -Isrc/net -Isrc/ui -Isrc/drivers/network -Isrc/drivers/storage -Isrc/drivers/input -Isrc/drivers/nxgame -Isrc/fs -Isrc/config -c src/core/main.c -o main.o
+In file included from src/core/main.c:360:
+src/core/../fs/desktop_elf_data.h: In function ‘nx_kernel_start’:
+src/core/../fs/desktop_elf_data.h:5100:14: warning: unused variable ‘desktop_elf_data_len’ [-Wunused-variable]
+ 5100 | unsigned int desktop_elf_data_len = 61160;
+      |              ^~~~~~~~~~~~~~~~~~~~
+ld -T linker.ld -static startup.o boot_firmware.o main.o kernel.o boot.o power.o installer.o sysconfig.o gdt.o idt.o isr.o isr_handler.o paging.o arch.o bsp.o heap.o pmm.o vmm.o syscall.o process.o elf.o runtime.o recovery.o stubs.o boot_guard.o session_manager.o app_launcher.o browser_session.o nxgame_bridge.o security.o safe_mem.o panic_handler.o nxpt.o code_integrity.o csr.o task_port_protection.o fault_router.o emergency_stack.o reboot_guard.o watchdog.o platform_detect.o amd_platform.o intel_platform.o arm_platform.o generic_platform.o platform_kdrv.o drivers.o timer.o pit.o rtc.o serial.o keyboard.o mouse.o pci.o ahci.o ata.o nvme.o e1000.o wifi_drv.o bluetooth.o nxnet_kdrv.o nxaudio.o nxaudio_kdrv.o nxaudio_spatial.o gpu.o nxgfx_kdrv.o nxbridge.o usb.o nxusb_kdrv.o nxpci_kdrv.o nxstor_kdrv.o nxsysinfo_kdrv.o nxdisplay_kdrv.o nxpen_kdrv.o nxtask_kdrv.o print.o network_core.o tcpip.o netinfra.o ethernet.o file.o nxfs.o fat.o vfs.o bcache.o ramfs.o sip.o fs_init.o npa_archive.o storage.o ahci_block.o block.o nvme_block.o font.o user_auth.o log.o string.o nucleus.o nucleus_write.o video.o console.o splash.o fbuffer.o nxgfx_accel.o nx3d.o terminal.o terminal_shell.o stress_test.o npa_manager.o nlc_config.o -o kernel.elf
+ld: warning: arch.o: missing .note.GNU-stack section implies executable stack
+ld: NOTE: This behaviour is deprecated and will be removed in a future version of the linker
+ld: warning: kernel.elf has a LOAD segment with RWX permissions
+objcopy -O binary kernel.elf kernel.bin

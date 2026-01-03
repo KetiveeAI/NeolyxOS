@@ -1,0 +1,22 @@
+{
+    "name": "Logo Design",
+    "category": "Branding",
+    "description": "Logo design workspace with multiple sizes",
+    "size": {"width": 800, "height": 800},
+    "units": "pixels",
+    "pages": [
+        {"name": "Main Logo", "width": 800, "height": 800},
+        {"name": "Horizontal", "width": 1200, "height": 400},
+        {"name": "Icon Only", "width": 256, "height": 256},
+        {"name": "Favicon", "width": 32, "height": 32}
+    ],
+    "guides": [
+        {"type": "horizontal", "position": 400},
+        {"type": "vertical", "position": 400}
+    ],
+    "layers": [
+        {"name": "Symbol", "editable": true},
+        {"name": "Wordmark", "editable": true},
+        {"name": "Tagline", "editable": true}
+    ]
+}

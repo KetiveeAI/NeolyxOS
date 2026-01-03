@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NXRender - GUI Framework | NeolyxOS Documentation</title>
+    
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    
+
+    <div class="container">
+        <div class="hero">
+            <h1>NXRender</h1>
+            <p>Pure C GUI framework for NeolyxOS kernel integration. Lightweight, fast, and dependency-free rendering
+                engine with 3D lighting and GPU acceleration.</p>
+        </div>
+
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value">4,747</div>
+                <div class="stat-label">Lines of C</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">397 KB</div>
+                <div class="stat-label">Library Size</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">32</div>
+                <div class="stat-label">Source Files</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">0</div>
+                <div class="stat-label">Dependencies</div>
+            </div>
+        </div>
+
+        <h2>Architecture</h2>
+        <div class="diagram">
+            ┌─────────────────────────────────────────────────────────────────┐
+            │ APPLICATION │
+            │ nx_application_t • nx_window_t • Event Loop │
+            └────────────────────────────┬────────────────────────────────────┘
+            │
+            ┌────────────────────────────▼────────────────────────────────────┐
+            │ WIDGETS │
+            │ Button • Label • TextField • VBox • HBox • Scroll │
+            └────────────────────────────┬────────────────────────────────────┘
+            │
+            ┌────────────┬───────────────┼───────────────┬────────────────────┐
+            │ LAYOUT │ ANIMATION │ THEME │ COMPOSITOR │
+            │ Flexbox │ Springs │ Dark/Light │ Surfaces/Layers │
+            │ Stack │ Bezier │ Colors │ Damage Tracking │
+            └────────────┴───────────────┴───────────────┴─────────┬──────────┘
+            │
+            ┌──────────────────────────────────────────────────────▼──────────┐
+            │ NXGFX │
+            │ GPU Driver • 3D Lighting • Primitives • Text Rendering │
+            └──────────────────────────────────────────────────────┬──────────┘
+            │
+            ▼
+            Kernel Framebuffer
+        </div>
+
+        <h2>Modules</h2>
+        <div class="module-grid">
+            <div class="module">
+                <h4>nxgfx <span class="badge badge-success">Core</span></h4>
+                <p>Framebuffer graphics, GPU driver interface, 3D lighting with Blinn-Phong shading, and text rendering
+                    with built-in bitmap font.</p>
+            </div>
+            <div class="module">
+                <h4>nxrender</h4>
+                <p>Compositor with surface/layer management, damage tracking, window manager with title bars and
+                    dragging, and application framework.</p>
+            </div>
+            <div class="module">
+                <h4>widgets</h4>
+                <p>Button, Label, TextField, VBox, HBox, ScrollView. All widgets use vtable pattern for polymorphism.
+                </p>
+            </div>
+            <div class="module">
+                <h4>layout</h4>
+                <p>Flexbox layout engine with row/column direction, justify, align, gap, and wrap support.</p>
+            </div>
+            <div class="module">
+                <h4>theme</h4>
+                <p>Dark and light themes with color palettes, typography, spacing, and corner radius configuration.</p>
+            </div>
+            <div class="module">
+                <h4>animation</h4>
+                <p>Spring physics, cubic bezier easing, keyframe animations, timelines, and staggered sequences.</p>
+            </div>
+        </div>
+
+        <h2>Quick Start</h2>
+        <div class="code-block"><code><span class="comment">// Include single unified header</span>
+<span class="keyword">#include</span> <span class="string">&lt;nxrender.h&gt;</span>
+
+<span class="type">void</span> <span class="function">on_init</span>(<span class="type">nx_application_t</span>* app, <span class="type">void</span>* data) {
+    <span class="comment">// Create window</span>
+    <span class="type">nx_window_t</span>* win = <span class="function">nx_window_create</span>(<span class="string">"My App"</span>, 
+        <span class="function">nx_rect</span>(100, 100, 400, 300), 0);
+    
+    <span class="comment">// Create vertical layout</span>
+    <span class="type">nx_vbox_t</span>* vbox = <span class="function">nx_vbox_create</span>();
+    <span class="function">nx_vbox_set_gap</span>(vbox, 12);
+    
+    <span class="comment">// Add widgets</span>
+    <span class="type">nx_label_t</span>* label = <span class="function">nx_label_create</span>(<span class="string">"Welcome!"</span>);
+    <span class="type">nx_button_t</span>* btn = <span class="function">nx_button_create</span>(<span class="string">"Click Me"</span>);
+    
+    <span class="function">nx_widget_add_child</span>((<span class="type">nx_widget_t</span>*)vbox, (<span class="type">nx_widget_t</span>*)label);
+    <span class="function">nx_widget_add_child</span>((<span class="type">nx_widget_t</span>*)vbox, (<span class="type">nx_widget_t</span>*)btn);
+    
+    <span class="comment">// Set as window content</span>
+    <span class="function">nx_window_set_root_widget</span>(win, (<span class="type">nx_widget_t</span>*)vbox);
+    <span class="function">nx_wm_add_window</span>(<span class="function">nx_app_window_manager</span>(app), win);
+}
+
+<span class="type">int</span> <span class="function">main</span>() {
+    <span class="type">nx_app_config_t</span> cfg = <span class="function">nx_app_default_config</span>();
+    cfg.title = <span class="string">"My App"</span>;
+    cfg.on_init = on_init;
+    
+    <span class="type">nx_application_t</span>* app = <span class="function">nx_app_create</span>(cfg);
+    <span class="keyword">return</span> <span class="function">nx_app_run</span>(app, framebuffer, pitch);
+}</code></div>
+
+        <h2>3D Lighting</h2>
+        <p>NXRender includes a physically-based lighting system with realistic light behavior:</p>
+        <div class="code-block">
+            <code><span class="comment">// Create lighting scene</span>
+<span class="type">nx_lighting_scene_t</span>* scene = <span class="function">nx_lighting_create</span>();
+<span class="function">nx_lighting_set_ambient</span>(scene, <span class="function">nx_vec3</span>(0.1, 0.1, 0.12), 0.1);
+
+<span class="comment">// Add point light (like a light bulb)</span>
+<span class="type">nx_light_t</span> bulb = <span class="function">nx_light_point</span>(
+    <span class="function">nx_vec3</span>(0, 2, 0),      <span class="comment">// Position</span>
+    <span class="function">nx_vec3</span>(1, 0.9, 0.8),  <span class="comment">// Warm white</span>
+    2.0                    <span class="comment">// Intensity</span>
+);
+<span class="function">nx_lighting_add_light</span>(scene, bulb);
+
+<span class="comment">// Calculate surface color with physics</span>
+<span class="type">nx_surface_t</span> surface = { .position = pos, .normal = normal, ... };
+<span class="type">nx_vec3_t</span> color = <span class="function">nx_lighting_calculate</span>(scene, &surface);</code>
+        </div>
+
+        <h3>Lighting Features</h3>
+        <table>
+            <tr>
+                <th>Feature</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td>Inverse Square Law</td>
+                <td>Light dims with distance² (real physics)</td>
+            </tr>
+            <tr>
+                <td>Lambert Diffuse</td>
+                <td>Angled surfaces receive less light</td>
+            </tr>
+            <tr>
+                <td>Blinn-Phong Specular</td>
+                <td>Shiny highlights that follow viewpoint</td>
+            </tr>
+            <tr>
+                <td>Fresnel Effect</td>
+                <td>Surfaces more reflective at grazing angles</td>
+            </tr>
+            <tr>
+                <td>Materials</td>
+                <td>Metal, plastic, glass with roughness/IOR</td>
+            </tr>
+        </table>
+
+        <h2>Animation System</h2>
+        <p>High-precision animation with nanosecond timing and CSS-compatible bezier curves:</p>
+        <div class="code-block"><code><span class="comment">// Keyframe animation with bezier easing</span>
+<span class="type">nx_keyframe_anim_t</span>* anim = <span class="function">nx_keyframe_anim_create</span>(500);
+<span class="function">nx_keyframe_add</span>(anim, 0.0, 0.0, NX_BEZIER_EASE_OUT);
+<span class="function">nx_keyframe_add</span>(anim, 1.0, 100.0, NX_BEZIER_EASE_IN);
+<span class="function">nx_keyframe_anim_play</span>(anim);
+
+<span class="comment">// Spring physics (iOS/Android quality)</span>
+<span class="type">nx_spring_adv_t</span>* spring = <span class="function">nx_spring_adv_from_preset</span>(NX_SPRING_WOBBLY);
+<span class="function">nx_spring_adv_set_target</span>(spring, 200);
+
+<span class="comment">// Each frame</span>
+<span class="keyword">while</span> (!<span class="function">nx_spring_adv_is_settled</span>(spring)) {
+    <span class="function">nx_spring_adv_update</span>(spring, dt_ms);
+    widget.x = <span class="function">nx_spring_adv_value</span>(spring);
+}</code></div>
+
+        <h3>Spring Presets</h3>
+        <table>
+            <tr>
+                <th>Preset</th>
+                <th>Description</th>
+                <th>Use Case</th>
+            </tr>
+            <tr>
+                <td>NX_SPRING_GENTLE</td>
+                <td>Slow, smooth</td>
+                <td>Page transitions</td>
+            </tr>
+            <tr>
+                <td>NX_SPRING_WOBBLY</td>
+                <td>Bouncy feel</td>
+                <td>Buttons, notifications</td>
+            </tr>
+            <tr>
+                <td>NX_SPRING_STIFF</td>
+                <td>Quick, snappy</td>
+                <td>Toggles, switches</td>
+            </tr>
+            <tr>
+                <td>NX_SPRING_SLOW</td>
+                <td>Heavy object</td>
+                <td>Dialogs, modals</td>
+            </tr>
+            <tr>
+                <td>NX_SPRING_MOLASSES</td>
+                <td>Very slow</td>
+                <td>Background animations</td>
+            </tr>
+        </table>
+
+        <h2>GPU Driver Interface</h2>
+        <div class="code-block"><code><span class="comment">// Initialize GPU driver</span>
+<span class="type">nx_gpu_driver_t</span>* gpu = <span class="function">nx_gpu_driver_init</span>();
+<span class="function">nx_gpu_set_vsync</span>(gpu, <span class="keyword">true</span>);
+
+<span class="comment">// Render frame</span>
+<span class="function">nx_gpu_begin_frame</span>(gpu);
+<span class="function">nx_gpu_cmd_clear</span>(gpu, NX_COLOR_BLACK);
+<span class="function">nx_gpu_cmd_rect</span>(gpu, rect, color, 4);
+<span class="function">nx_gpu_end_frame</span>(gpu);
+<span class="function">nx_gpu_present</span>(gpu);  <span class="comment">// VSync wait</span>
+
+<span class="comment">// Performance</span>
+uint32_t fps = <span class="function">nx_gpu_get_fps</span>(gpu);</code></div>
+
+        <h2>Memory Ownership</h2>
+        <p>NXRender follows strict ownership rules to prevent memory leaks:</p>
+        <ul style="color: var(--text-secondary); margin-left: 20px;">
+            <li><strong>Parent owns children:</strong> When you add a widget as child, parent takes ownership</li>
+            <li><strong>Destroy is recursive:</strong> Destroying parent destroys all children</li>
+            <li><strong>Never double-free:</strong> Don't destroy children separately after adding to parent</li>
+        </ul>
+
+        <h2>Build</h2>
+        <div class="code-block"><code><span class="comment"># Build library</span>
+cd gui/nxrender_c
+make
+
+<span class="comment"># Link with your application</span>
+gcc myapp.c -I./include -L. -lnxrender -lm -o myapp</code></div>
+
+        <h2>API Reference</h2>
+        <p>See individual header files for complete API documentation:</p>
+        <table>
+            <tr>
+                <th>Header</th>
+                <th>Contents</th>
+            </tr>
+            <tr>
+                <td><code>nxrender.h</code></td>
+                <td>Unified header - includes everything</td>
+            </tr>
+            <tr>
+                <td><code>nxgfx/nxgfx.h</code></td>
+                <td>Core graphics, colors, primitives</td>
+            </tr>
+            <tr>
+                <td><code>nxgfx/lighting.h</code></td>
+                <td>3D lighting system</td>
+            </tr>
+            <tr>
+                <td><code>nxgfx/gpu_driver.h</code></td>
+                <td>GPU command buffer interface</td>
+            </tr>
+            <tr>
+                <td><code>widgets/widget.h</code></td>
+                <td>Base widget interface</td>
+            </tr>
+            <tr>
+                <td><code>animation/animation_advanced.h</code></td>
+                <td>Advanced animation system</td>
+            </tr>
+        </table>
+    </div>
+
+    <footer
+        style="text-align: center; padding: 40px; color: var(--text-secondary); border-top: 1px solid var(--border); margin-top: 60px;">
+        <p>Copyright © 2025 KetiveeAI. NeolyxOS Documentation.</p>
+    </footer>
+</body>
+
+</html>

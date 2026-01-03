@@ -1,0 +1,30 @@
+# NeolyxOS Application Manifest
+# FontManager.app - System Font Management
+
+[app]
+id = org.neolyx.fontmanager
+name = Font Manager
+version = 1.0.0
+category = system
+icon = resources/icons/fontmanager.nxi
+
+[metadata]
+author = KetiveeAI
+description = Install, preview, and manage system fonts
+copyright = Copyright (c) 2025 KetiveeAI
+license = KetiveeAI-Proprietary
+
+[requirements]
+min_os_version = 1.0.0
+permissions = fonts.read, fonts.write, fs.read
+
+[build]
+binary = bin/fontmanager
+main = main.c
+libs = reox_ui, reox_runtime
+
+[fonts]
+# Font directories managed by this app
+system_fonts = /System/Library/Fonts
+user_fonts = ~/Library/Fonts
+app_fonts = /Applications/*/Resources/fonts

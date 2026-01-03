@@ -1,0 +1,21 @@
+# Forest Theme - Natural green theme
+# NeolyxOS Calendar App
+
+[Theme]
+Name = Forest
+Type = Dark
+
+[Colors]
+Background = 0x0A1A0A
+TextPrimary = 0xE0FFE0
+TextSecondary = 0x80A080
+Accent = 0x40B060
+Highlight = 0x60D080
+Border = 0x204020
+
+[ClockFace]
+DialColor = 0x1A2A1A
+HandHour = 0xE0FFE0
+HandMinute = 0x40B060
+HandSecond = 0xFFFF40
+MarkerColor = 0x406040

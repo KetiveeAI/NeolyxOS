@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS Desktop Environment - Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --border: #30363d;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1,
+        h2,
+        h3 {
+            color: var(--accent);
+        }
+
+        h1 {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--border);
+            padding: 0.5rem;
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        code {
+            background: #1f2428;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+    </style>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <a href="../index.html" class="back-link">← Back to Documentation</a>
+
+        <h1>🖥️ NeolyxOS Desktop Environment</h1>
+        <p><strong>Status:</strong> ✅ Running in Userspace (Ring 3)</p>
+        <p>The NeolyxOS Desktop acts as the primary user interface, functioning as a standalone ELF binary loaded by the
+            kernel into userspace.</p>
+
+        <h2>Architecture</h2>
+        <p>The desktop shell (<code>desktop_shell.c</code>) coordinates several subsystems:</p>
+
+        <table>
+            <tr>
+                <th>Component</th>
+                <th>Description</th>
+                <th>Status</th>
+            </tr>
+            <tr>
+                <td><strong>Window Manager</strong></td>
+                <td>Handles window creation, movement, stacking, and rendering.</td>
+                <td>Active</td>
+            </tr>
+            <tr>
+                <td><strong>Dock</strong></td>
+                <td>Fast application launcher with hover effects and animations.</td>
+                <td>Active</td>
+            </tr>
+            <tr>
+                <td><strong>App Drawer</strong></td>
+                <td>Grid view of all installed applications.</td>
+                <td>Init Only</td>
+            </tr>
+            <tr>
+                <td><strong>Compositor</strong></td>
+                <td>Combines windows and background into the final framebuffer image.</td>
+                <td>Active</td>
+            </tr>
+        </table>
+
+        <h2>System Calls Used</h2>
+        <p>The desktop interacts with the kernel strictly via syscalls:</p>
+        <ul>
+            <li><code>SYS_FB_MAP</code>: Maps the framebuffer to userspace memory (<code>0xC0000000</code>).</li>
+            <li><code>SYS_INPUT_POLL</code>: Retrieves mouse and keyboard events.</li>
+            <li><code>SYS_YIELD</code> / <code>SYS_SLEEP</code>: Manages CPU usage.</li>
+        </ul>
+
+        <h2>Memory Layout</h2>
+        <p>The desktop ELF is loaded at <code>0x400000</code>. Due to large static buffers (BSS), the kernel maps 2MB of
+            memory for code/data and 512KB for stack.</p>
+
+        <h2>Initialization Sequence</h2>
+        <ol>
+            <li><strong>Entry Point:</strong> <code>_start</code> (crt0.S) calls <code>main()</code>.</li>
+            <li><strong>FB Init:</strong> Determines resolution and attempts <code>malloc</code> for backbuffer.</li>
+            <li><strong>WM Init:</strong> Sets up window state arrays and default opacity.</li>
+            <li><strong>Dock Init:</strong> Loads appearance settings (icons, size).</li>
+            <li><strong>Event Loop:</strong> Enters <code>desktop_run()</code> to poll inputs and redraw.</li>
+        </ol>
+
+    </div>
+</body>
+
+</html>

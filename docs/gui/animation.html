@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animation System | NXRender | NeolyxOS</title>
+    
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="nav">
+        <a href="nxrender.html">← Back to NXRender</a>
+    </div>
+
+    <div class="container">
+        <h1>Animation System</h1>
+        <p>NXRender provides a high-precision animation engine with nanosecond timing, physics-based spring animations,
+            and CSS-compatible bezier easing curves.</p>
+
+        <h2>How Animation Works in NXRender</h2>
+        <p>The animation system operates on a simple principle:</p>
+        <ol style="color: var(--text-secondary); margin-left: 20px; margin-bottom: 20px;">
+            <li><strong>Create</strong> an animation with target values and timing</li>
+            <li><strong>Start</strong> the animation</li>
+            <li><strong>Update</strong> each frame with delta time</li>
+            <li><strong>Read</strong> the interpolated value</li>
+            <li><strong>Apply</strong> to widget properties</li>
+        </ol>
+
+        <div class="code-block">
+            // Animation lifecycle
+            nx_keyframe_anim_t* anim = nx_keyframe_anim_create(300); // 300ms
+            nx_keyframe_add(anim, 0.0, 0.0, NX_BEZIER_LINEAR); // Start
+            nx_keyframe_add(anim, 1.0, 100.0, NX_BEZIER_EASE_OUT); // End
+            nx_keyframe_anim_play(anim);
+
+            // Each frame (60 FPS = 16.67ms per frame)
+            while (nx_keyframe_anim_update(anim, 16.67)) {
+            float value = nx_keyframe_anim_value(anim);
+            widget->bounds.x = value; // Apply to widget
+            redraw();
+            }
+        </div>
+
+        <h2>Cubic Bezier Curves</h2>
+        <p>Bezier curves create smooth, natural motion by defining how the animation accelerates and decelerates. A
+            cubic bezier is defined by two control points (P1 and P2):</p>
+
+        <div class="formula">
+            P(t) = (1-t)³P₀ + 3(1-t)²tP₁ + 3(1-t)t²P₂ + t³P₃
+        </div>
+
+        <p>where P₀=(0,0) and P₃=(1,1) are fixed, and P₁=(x1,y1), P₂=(x2,y2) define the curve shape.</p>
+
+        <h3>Preset Curves</h3>
+        <table>
+            <tr>
+                <th>Preset</th>
+                <th>Values (x1, y1, x2, y2)</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td>NX_BEZIER_LINEAR</td>
+                <td>0.0, 0.0, 1.0, 1.0</td>
+                <td>Constant speed</td>
+            </tr>
+            <tr>
+                <td>NX_BEZIER_EASE</td>
+                <td>0.25, 0.1, 0.25, 1.0</td>
+                <td>Subtle acceleration/deceleration</td>
+            </tr>
+            <tr>
+                <td>NX_BEZIER_EASE_IN</td>
+                <td>0.42, 0.0, 1.0, 1.0</td>
+                <td>Starts slow, ends fast</td>
+            </tr>
+            <tr>
+                <td>NX_BEZIER_EASE_OUT</td>
+                <td>0.0, 0.0, 0.58, 1.0</td>
+                <td>Starts fast, ends slow</td>
+            </tr>
+            <tr>
+                <td>NX_BEZIER_EASE_IN_OUT</td>
+                <td>0.42, 0.0, 0.58, 1.0</td>
+                <td>Slow start and end</td>
+            </tr>
+            <tr>
+                <td>NX_BEZIER_EASE_IN_BACK</td>
+                <td>0.6, -0.28, 0.735, 0.045</td>
+                <td>Pulls back before starting</td>
+            </tr>
+            <tr>
+                <td>NX_BEZIER_EASE_OUT_BACK</td>
+                <td>0.175, 0.885, 0.32, 1.275</td>
+                <td>Overshoots then settles</td>
+            </tr>
+        </table>
+
+        <h2>Spring Physics</h2>
+        <p>Spring animations simulate real-world physics for natural, responsive motion. They're defined by three
+            parameters:</p>
+
+        <div class="formula">
+            F = -kx - cv <br>
+            a = F/m
+        </div>
+
+        <table>
+            <tr>
+                <th>Parameter</th>
+                <th>What it does</th>
+                <th>Effect of increasing</th>
+            </tr>
+            <tr>
+                <td><strong>mass</strong></td>
+                <td>Object inertia</td>
+                <td>Slower, heavier feeling</td>
+            </tr>
+            <tr>
+                <td><strong>stiffness (k)</strong></td>
+                <td>Spring strength</td>
+                <td>Faster, snappier motion</td>
+            </tr>
+            <tr>
+                <td><strong>damping (c)</strong></td>
+                <td>Friction/resistance</td>
+                <td>Less bouncing</td>
+            </tr>
+        </table>
+
+        <h3>Damping Ratio (ζ)</h3>
+        <div class="formula">
+            ζ = c / (2 × √(k × m))
+        </div>
+
+        <table>
+            <tr>
+                <th>ζ Value</th>
+                <th>Behavior</th>
+                <th>Use Case</th>
+            </tr>
+            <tr>
+                <td>ζ &lt; 1 (underdamped)</td>
+                <td>Oscillates/bounces</td>
+                <td>Playful UI, notifications</td>
+            </tr>
+            <tr>
+                <td>ζ = 1 (critically damped)</td>
+                <td>Fastest without bounce</td>
+                <td>Precise controls</td>
+            </tr>
+            <tr>
+                <td>ζ &gt; 1 (overdamped)</td>
+                <td>Slow, no overshoot</td>
+                <td>Heavy objects, modals</td>
+            </tr>
+        </table>
+
+        <div class="code-block">
+            // Custom spring
+            nx_spring_adv_t* spring = nx_spring_adv_create(
+            1.0, // mass
+            180.0, // stiffness
+            12.0 // damping (underdamped = bouncy)
+            );
+
+            // Or use presets
+            nx_spring_adv_t* wobbly = nx_spring_adv_from_preset(NX_SPRING_WOBBLY);
+            nx_spring_adv_t* stiff = nx_spring_adv_from_preset(NX_SPRING_STIFF);
+
+            // Animate
+            nx_spring_adv_set_target(spring, 200.0);
+            while (!nx_spring_adv_is_settled(spring)) {
+            nx_spring_adv_update(spring, 16.67); // dt in ms
+            float position = nx_spring_adv_value(spring);
+            // Apply position...
+            }
+        </div>
+
+        <h2>Animation Timeline</h2>
+        <p>Timelines let you orchestrate multiple animations with precise timing:</p>
+
+        <div class="code-block">
+            nx_timeline_t* timeline = nx_timeline_create();
+
+            // Add animations with start times (in ms)
+            nx_timeline_add(timeline, fade_in_anim, 0); // Start immediately
+            nx_timeline_add(timeline, slide_anim, 100); // Start at 100ms
+            nx_timeline_add(timeline, scale_anim, 200); // Start at 200ms
+
+            nx_timeline_play(timeline);
+
+            // Update each frame
+            while (nx_timeline_update(timeline, dt_ms)) {
+            redraw();
+            }
+        </div>
+
+        <h2>Staggered Animations</h2>
+        <p>Create cascading effects where items animate one after another:</p>
+
+        <div class="code-block">
+            // 10 items, 50ms stagger between each, 300ms per item
+            nx_stagger_t* stagger = nx_stagger_create(10, 50, 300);
+            nx_stagger_play(stagger);
+
+            // Each frame
+            nx_stagger_update(stagger, dt_ms);
+
+            // Get value for each item (0.0 to 1.0)
+            for (int i = 0; i < 10; i++) { float progress=nx_stagger_value_at(stagger, i); items[i].opacity=progress; }
+                </div>
+
+                <h2>Precision Timing</h2>
+                <p>NXRender uses nanosecond-precision timing for frame-perfect animations:</p>
+
+                <div class="code-block">
+                    // High-precision time
+                    nx_time_ns_t start = nx_time_now();
+
+                    // ... do work ...
+
+                    nx_time_ns_t elapsed = nx_time_now() - start;
+                    float seconds = nx_time_to_seconds(elapsed);
+                </div>
+
+                <h2>Animation Controller</h2>
+                <p>Manage all active animations centrally:</p>
+
+                <div class="code-block">
+                    nx_anim_controller_t* ctrl = nx_anim_controller_create();
+                    ctrl->time_scale = 1.0; // 1.0 = normal, 0.5 = slow-mo, 2.0 = fast
+
+                    // Add animations
+                    nx_anim_controller_add(ctrl, my_animation, ANIM_TYPE_KEYFRAME);
+
+                    // Each frame - automatically calculates delta time
+                    nx_anim_controller_update(ctrl);
+
+                    // Pause/resume all
+                    nx_anim_controller_pause_all(ctrl);
+                    nx_anim_controller_resume_all(ctrl);
+                </div>
+
+                <h2>Best Practices</h2>
+                <ul style="color: var(--text-secondary); margin-left: 20px;">
+                    <li><strong>Use springs for interactive elements</strong> - They respond naturally to interruption
+                    </li>
+                    <li><strong>Use bezier for timed animations</strong> - When you need precise duration</li>
+                    <li><strong>Match animation to content</strong> - Light UI = stiff spring, heavy content = slow
+                        spring</li>
+                    <li><strong>Stagger list animations</strong> - Creates visual rhythm and guides attention</li>
+                    <li><strong>Keep durations short</strong> - 200-400ms feels responsive</li>
+                </ul>
+        </div>
+</body>
+
+</html>

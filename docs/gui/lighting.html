@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Lighting | NXRender | NeolyxOS</title>
+    
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="nav">
+        <a href="nxrender.html">← Back to NXRender</a>
+    </div>
+
+    <div class="container">
+        <h1>3D Lighting System</h1>
+        <p>NXRender includes a physically-based lighting system that simulates how light actually behaves in the real
+            world. This enables realistic rendering of 3D scenes with proper shadows, reflections, and material
+            properties.</p>
+
+        <h2>How Light Works in Real Life</h2>
+        <p>When you have a single light source in a dark room, light behaves according to physical laws:</p>
+
+        <h3>1. Inverse Square Law</h3>
+        <p>Light intensity decreases with the square of the distance. An object twice as far from a light receives only
+            1/4 the light.</p>
+        <div class="formula">
+            Intensity = 1 / (constant + linear×d + quadratic×d²)
+        </div>
+
+        <h3>2. Diffuse Reflection (Lambert's Law)</h3>
+        <p>When light hits a rough surface, it scatters equally in all directions. The brightness depends on the angle
+            between the surface and light direction.</p>
+        <div class="formula">
+            Diffuse = max(dot(N, L), 0) × light_color × surface_color
+        </div>
+
+        <h3>3. Specular Reflection (Blinn-Phong)</h3>
+        <p>Shiny surfaces create highlights. The highlight moves as you change viewing angle.</p>
+        <div class="formula">
+            Specular = pow(max(dot(N, H), 0), shininess) × light_color
+        </div>
+        <p>where H is the half-vector between light direction and view direction.</p>
+
+        <h3>4. Fresnel Effect</h3>
+        <p>At grazing angles, surfaces become more reflective. This is why water looks like a mirror when viewed from a
+            low angle.</p>
+        <div class="formula">
+            F = F₀ + (1 - F₀) × (1 - cos θ)⁵
+        </div>
+
+        <h2>Light Types</h2>
+
+        <div class="diagram">
+            POINT LIGHT (Light Bulb) DIRECTIONAL LIGHT (Sun)
+            ╱ ─ ─ ╲ │ │ │ │ │
+            ─┤ ● ├─ ▼ ▼ ▼ ▼ ▼
+            ╲ ─ ─ ╱ ─────────────────
+            Radiates in all Parallel rays
+            directions from (infinite distance)
+            a single point
+
+            SPOT LIGHT (Flashlight) AMBIENT LIGHT
+            ╱╲ ░░░░░░░░░░░░
+            ╱ ╲ ░ Uniform ░
+            ╱ ╲ ░ in all ░
+            ╱ ● ╲ ░ directions░
+            ░░░░░░░░░ ░░░░░░░░░░░░
+            Cone-shaped Simulates bounced
+            with falloff indirect light
+        </div>
+
+        <div class="code-block">
+            // Create point light
+            nx_light_t bulb = nx_light_point(
+            nx_vec3(0, 2, 0), // Position (x, y, z)
+            nx_vec3(1, 0.9, 0.8), // Color (warm white)
+            2.0 // Intensity
+            );
+
+            // Create directional light (sun)
+            nx_light_t sun = nx_light_directional(
+            nx_vec3(-0.5, -1, -0.3), // Direction
+            nx_vec3(1, 1, 0.95), // Color (daylight)
+            1.0 // Intensity
+            );
+
+            // Create spot light
+            nx_light_t flashlight = nx_light_spot(
+            nx_vec3(0, 5, 0), // Position
+            nx_vec3(0, -1, 0), // Direction (down)
+            0.4, // Inner cone (radians)
+            0.6, // Outer cone
+            nx_vec3(1, 1, 1), // Color
+            3.0 // Intensity
+            );
+        </div>
+
+        <h2>Materials</h2>
+        <p>Different materials interact with light differently:</p>
+
+        <table>
+            <tr>
+                <th>Property</th>
+                <th>Range</th>
+                <th>Effect</th>
+            </tr>
+            <tr>
+                <td>metallic</td>
+                <td>0.0 - 1.0</td>
+                <td>0 = dielectric (plastic), 1 = metal</td>
+            </tr>
+            <tr>
+                <td>roughness</td>
+                <td>0.0 - 1.0</td>
+                <td>0 = mirror, 1 = completely rough</td>
+            </tr>
+            <tr>
+                <td>ior</td>
+                <td>1.0 - 3.0</td>
+                <td>Index of refraction (glass ~1.5)</td>
+            </tr>
+            <tr>
+                <td>ambient_occlusion</td>
+                <td>0.0 - 1.0</td>
+                <td>Corners/crevices are darker</td>
+            </tr>
+        </table>
+
+        <div class="code-block">
+            // Material presets
+            nx_material_t white_plastic = nx_material_plastic(
+            nx_vec3(1, 1, 1), // White color
+            0.5 // Medium roughness
+            );
+
+            nx_material_t gold = nx_material_metal(
+            nx_vec3(1.0, 0.84, 0), // Gold color
+            0.3 // Slightly rough
+            );
+
+            nx_material_t glass = nx_material_glass(1.5); // IOR of glass
+        </div>
+
+        <h2>Scene Setup</h2>
+
+        <div class="code-block">
+            // Create lighting scene
+            nx_lighting_scene_t* scene = nx_lighting_create();
+
+            // Set ambient light (for indirect illumination)
+            nx_lighting_set_ambient(scene,
+            nx_vec3(0.1, 0.1, 0.15), // Slight blue tint
+            0.1 // Low intensity for dark room
+            );
+
+            // Add lights
+            nx_lighting_add_light(scene, bulb);
+            nx_lighting_add_light(scene, sun);
+
+            // Set camera position (for specular calculation)
+            scene->camera_position = nx_vec3(0, 1, 5);
+        </div>
+
+        <h2>Calculating Surface Color</h2>
+
+        <div class="code-block">
+            // Define surface point to light
+            nx_surface_t surface = {
+            .position = nx_vec3(0, 0, 0), // World position
+            .normal = nx_vec3(0, 1, 0), // Pointing up
+            .view_dir = nx_vec3_normalize( // Camera direction
+            nx_vec3_sub(camera_pos, surface_pos)
+            ),
+            .material = white_plastic
+            };
+
+            // Calculate final lit color
+            nx_vec3_t color = nx_lighting_calculate(scene, &surface);
+
+            // Convert to display color (0-255)
+            uint8_t r = (uint8_t)(color.x * 255);
+            uint8_t g = (uint8_t)(color.y * 255);
+            uint8_t b = (uint8_t)(color.z * 255);
+        </div>
+
+        <h2>Reflection Calculation</h2>
+        <p>For mirror-like surfaces, you can calculate the reflection direction:</p>
+
+        <div class="diagram">
+            Incident (I) Normal (N) Reflected (R)
+            ╲ │ ╱
+            ╲ │ ╱
+            ╲ │ ╱
+            ╲ │ ╱
+            ╲ │ ╱
+            ───────────╲─────┼─────╱───────────
+            Surface
+
+            R = I - 2 × dot(I, N) × N
+        </div>
+
+        <div class="code-block">
+            // Calculate reflection direction
+            nx_vec3_t incident = nx_vec3(0.5, -1, 0); // Incoming ray
+            nx_vec3_t normal = nx_vec3(0, 1, 0); // Surface normal
+            nx_vec3_t reflected = nx_calculate_reflection(incident, normal);
+            // Result: (0.5, 1, 0) - bounces up
+        </div>
+
+        <h2>Single Light in Dark Room</h2>
+        <p>This is a common scenario. Here's exactly what happens:</p>
+
+        <ol style="color: var(--text-secondary); margin-left: 20px; margin-bottom: 20px;">
+            <li><strong>Ambient is very low</strong> - Almost no indirect light bouncing</li>
+            <li><strong>Objects near the light are bright</strong> - Inverse square law</li>
+            <li><strong>Surfaces facing away are dark</strong> - Lambert's law</li>
+            <li><strong>Specular highlights appear</strong> - Only on surfaces facing both light and camera</li>
+            <li><strong>Shadows are sharp</strong> - Single point source creates hard shadows</li>
+        </ol>
+
+        <div class="code-block">
+            // Dark room with single light setup
+            nx_lighting_scene_t* scene = nx_lighting_create();
+
+            // Very low ambient (near darkness)
+            nx_lighting_set_ambient(scene, nx_vec3(0.02, 0.02, 0.03), 0.05);
+
+            // Single point light (like a bare bulb)
+            nx_light_t bulb = nx_light_point(
+            nx_vec3(0, 3, 0), // Hanging from ceiling
+            nx_vec3(1.0, 0.95, 0.9), // Warm tungsten color
+            5.0 // Strong intensity
+            );
+            bulb.linear = 0.14; // Medium falloff
+            bulb.quadratic = 0.07; // Realistic inverse-square
+            nx_lighting_add_light(scene, bulb);
+
+            // Now surfaces far from (0, 3, 0) will be very dark
+            // Surfaces directly below will be bright
+        </div>
+
+        <h2>GPU Integration</h2>
+        <p>For hardware-accelerated lighting, use the GPU interface:</p>
+
+        <div class="code-block">
+            // Initialize GPU
+            nx_gpu_interface_t* gpu = nx_gpu_init(kernel_gpu_context);
+
+            // Upload lighting data to GPU
+            nx_gpu_upload_scene(gpu, scene);
+
+            // GPU handles all lighting calculations in parallel
+            nx_gpu_render_lit(gpu, scene);
+        </div>
+
+        <h2>Vector Math Reference</h2>
+        <table>
+            <tr>
+                <th>Function</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td>nx_vec3(x, y, z)</td>
+                <td>Create 3D vector</td>
+            </tr>
+            <tr>
+                <td>nx_vec3_add(a, b)</td>
+                <td>Vector addition</td>
+            </tr>
+            <tr>
+                <td>nx_vec3_sub(a, b)</td>
+                <td>Vector subtraction</td>
+            </tr>
+            <tr>
+                <td>nx_vec3_mul(v, s)</td>
+                <td>Scalar multiplication</td>
+            </tr>
+            <tr>
+                <td>nx_vec3_dot(a, b)</td>
+                <td>Dot product</td>
+            </tr>
+            <tr>
+                <td>nx_vec3_cross(a, b)</td>
+                <td>Cross product</td>
+            </tr>
+            <tr>
+                <td>nx_vec3_normalize(v)</td>
+                <td>Unit vector</td>
+            </tr>
+            <tr>
+                <td>nx_vec3_length(v)</td>
+                <td>Vector magnitude</td>
+            </tr>
+            <tr>
+                <td>nx_vec3_reflect(i, n)</td>
+                <td>Mirror reflection</td>
+            </tr>
+        </table>
+    </div>
+</body>
+
+</html>

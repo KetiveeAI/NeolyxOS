@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nxi version="1.0" name="clock">
+  <metadata>
+    <title>Clock Icon</title>
+    <author>KetiveeAI</author>
+    <size>48</size>
+  </metadata>
+  
+  <canvas width="48" height="48">
+    <!-- Clock face background -->
+    <circle cx="24" cy="24" r="22" fill="#4D9FFF" opacity="0.9"/>
+    <circle cx="24" cy="24" r="20" fill="#FFFFFF"/>
+    
+    <!-- Hour markers -->
+    <circle cx="24" cy="6" r="2" fill="#333333"/>
+    <circle cx="24" cy="42" r="2" fill="#333333"/>
+    <circle cx="6" cy="24" r="2" fill="#333333"/>
+    <circle cx="42" cy="24" r="2" fill="#333333"/>
+    
+    <!-- Hour hand (pointing to ~11) -->
+    <line x1="24" y1="24" x2="18" y2="12" stroke="#333333" stroke-width="3"/>
+    
+    <!-- Minute hand (pointing to ~12) -->
+    <line x1="24" y1="24" x2="24" y2="8" stroke="#333333" stroke-width="2"/>
+    
+    <!-- Second hand (pointing to ~3) -->
+    <line x1="24" y1="24" x2="38" y2="24" stroke="#FF4444" stroke-width="1"/>
+    
+    <!-- Center dot -->
+    <circle cx="24" cy="24" r="3" fill="#333333"/>
+  </canvas>
+</nxi>

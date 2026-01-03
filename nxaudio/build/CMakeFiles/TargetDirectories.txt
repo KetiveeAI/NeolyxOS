@@ -1,0 +1,8 @@
+/home/swana/Documents/NEOLYXOS/neolyx-os/nxaudio/build/CMakeFiles/nxaudio.dir
+/home/swana/Documents/NEOLYXOS/neolyx-os/nxaudio/build/CMakeFiles/nxaudio_static.dir
+/home/swana/Documents/NEOLYXOS/neolyx-os/nxaudio/build/CMakeFiles/edit_cache.dir
+/home/swana/Documents/NEOLYXOS/neolyx-os/nxaudio/build/CMakeFiles/rebuild_cache.dir
+/home/swana/Documents/NEOLYXOS/neolyx-os/nxaudio/build/CMakeFiles/list_install_components.dir
+/home/swana/Documents/NEOLYXOS/neolyx-os/nxaudio/build/CMakeFiles/install.dir
+/home/swana/Documents/NEOLYXOS/neolyx-os/nxaudio/build/CMakeFiles/install/local.dir
+/home/swana/Documents/NEOLYXOS/neolyx-os/nxaudio/build/CMakeFiles/install/strip.dir

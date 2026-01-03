@@ -1,0 +1,42 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Window Minimize Button
+
+[nxi]
+version = 1.0
+name = minimize
+size = 12
+author = KetiveeAI
+category = window-control
+viewbox = 0 0 12 12
+
+[canvas]
+width = 12
+height = 12
+background = transparent
+
+[colors]
+bg_start = #ffc048
+bg_end = #f0a030
+stroke = #e09020
+symbol = #8a5a10
+
+[gradients]
+minGrad = linear 0,0 12,12 bg_start bg_end
+
+[shapes]
+circle center=6,6 radius=5.5 fill=minGrad stroke=stroke stroke-width=0.5
+
+[paths]
+# Minimize line (horizontal dash)
+dash = M3.5,6 L8.5,6
+
+[style]
+dash.stroke = symbol
+dash.stroke-width = 1.5
+dash.stroke-linecap = round
+
+[style.dark]
+bg_start = #EBCB8B
+bg_end = #D08770
+stroke = #A3BE8C
+symbol = #1E1E2E

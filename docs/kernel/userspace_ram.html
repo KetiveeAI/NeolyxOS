@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Userspace Memory Management - NeolyxOS Docs</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --border: #30363d;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1,
+        h2,
+        h3 {
+            color: var(--accent);
+        }
+
+        h1 {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--border);
+            padding: 0.5rem;
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        code {
+            background: #1f2428;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        }
+
+        pre {
+            background: #1f2428;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+    </style>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <a href="../index.html" class="back-link">← Back to Documentation</a>
+
+        <h1>🧠 Userspace Memory Management</h1>
+        <p><strong>Last Updated:</strong> January 1, 2026</p>
+
+        <p>This document explains how NeolyxOS handles memory for userspace processes (Ring 3), specifically regarding
+            ELF loading, BSS sections, and the heap.</p>
+
+        <h2>Virtual Address Space Layout</h2>
+        <p>NeolyxOS currently uses an identity-mapped layout for simplicity during the early stages, but with specific
+            regions for userspace separation.</p>
+
+        <table>
+            <tr>
+                <th>Virtual Address</th>
+                <th>Size</th>
+                <th>Description</th>
+                <th>Access</th>
+            </tr>
+            <tr>
+                <td><code>0x000000</code> - <code>0x400000</code></td>
+                <td>4MB</td>
+                <td>Kernel / Low Memory</td>
+                <td><strong>Ring 0 Only</strong></td>
+            </tr>
+            <tr>
+                <td><code>0x400000</code> - <code>0x600000</code></td>
+                <td>2MB</td>
+                <td><strong>Userspace Code & Data</strong></td>
+                <td><strong>Ring 3 (User)</strong></td>
+            </tr>
+            <tr>
+                <td><code>0x600000</code> - <code>0x680000</code></td>
+                <td>512KB</td>
+                <td><strong>Userspace Stack</strong></td>
+                <td><strong>Ring 3 (User)</strong></td>
+            </tr>
+            <tr>
+                <td><code>0xC0000000</code></td>
+                <td>Varies</td>
+                <td>Framebuffer (Mapped Direct)</td>
+                <td><strong>Ring 3 (User)</strong></td>
+            </tr>
+        </table>
+
+        <h3>Why 2MB for Code/Data?</h3>
+        <p>Originally, only 1MB (<code>0x400000</code> - <code>0x500000</code>) was allocated. However, the Desktop
+            environment (Neolyx Desktop) ran into a critical issue:</p>
+
+        <ol>
+            <li><strong>ELF File Size:</strong> ~50KB (stored on disk).</li>
+            <li><strong>BSS Section:</strong> Large static arrays and uninitialized data.
+                <ul>
+                    <li>512KB Static Heap (<code>heap[512*1024]</code>)</li>
+                    <li>192KB Window Thumbnails (<code>wm_minimized_t[16]</code>)</li>
+                </ul>
+            </li>
+            <li><strong>Total Memory Required:</strong> ~1.8MB</li>
+        </ol>
+
+        <p>When the kernel loaded the ELF, the BSS section extended beyond <code>0x500000</code>, causing a page fault
+            or silent corruption when accessing variables like <code>heap</code> or <code>g_window_states</code>.</p>
+
+        <p><strong>Fix:</strong> The kernel now maps <code>0x400000</code> to <code>0x600000</code> (2MB), covering the
+            entire 1.8MB requirement.</p>
+
+        <h2>📚 ELF Loading Process</h2>
+        <p>The loader (<code>src/core/elf.c</code>) performs the following:</p>
+        <ol>
+            <li><strong>Parse Header:</strong> Reads 64-bit ELF header.</li>
+            <li><strong>Load Segments:</strong> Copies <code>LOAD</code> segments from the embedded file data to memory
+                at <code>p_vaddr</code>.</li>
+            <li><strong>Clear BSS:</strong> Zeroes out memory from <code>p_vaddr + p_filesz</code> to
+                <code>p_vaddr + p_memsz</code>. This is where the 1.8MB expansion happens.</li>
+        </ol>
+
+        <h2>🧱 Heap Management</h2>
+        <p>Currently, userspace applications use a <strong>static heap</strong> defined in <code>nxsyscall.h</code>:</p>
+
+        <pre><code>// desktop/include/nxsyscall.h
+static uint8_t heap[512 * 1024]; // 512KB Static Array</code></pre>
+
+        <h3>Limitations</h3>
+        <ul>
+            <li><strong>Fixed Size:</strong> Cannot grow beyond 512KB.</li>
+            <li><strong>BSS Bloat:</strong> Increases the process binary's memory footprint at load time (as seen
+                above).</li>
+        </ul>
+
+        <h3>Future Roadmap: Dynamic Heap</h3>
+        <p>To allow dynamic resizing:</p>
+        <ol>
+            <li>Implement <code>sys_brk</code> syscall in Kernel.</li>
+            <li>Kernel tracks <code>program_break</code> (end of data segment).</li>
+            <li><code>malloc</code> calls <code>sbrk</code> to request more pages from OS.</li>
+            <li>Kernel maps new pages on demand.</li>
+        </ol>
+
+        <h2>🥞 Stack Management</h2>
+        <p>The stack is located at <code>0x600000</code> and grows <strong>downwards</strong>.</p>
+        <ul>
+            <li><strong>Top:</strong> <code>0x680000</code></li>
+            <li><strong>Bottom:</strong> <code>0x600000</code></li>
+            <li><strong>Size:</strong> 512KB</li>
+        </ul>
+        <p>This is sufficient for deep recursion and large local variables in the current desktop shell.</p>
+
+        <h2>⚠️ Common Pitfalls</h2>
+        <ol>
+            <li><strong>Floating Point (SSE):</strong> Userspace must be compiled with SSE enabled
+                (<code>-mno-red-zone</code> only), otherwise <code>float</code> operations cause <code>#UD</code>
+                (Invalid Opcode) exceptions because <code>libc</code> is missing and GCC defaults to SSE instructions.
+            </li>
+            <li><strong>Freestanding:</strong> No <code>libc</code> exists. Functions like <code>memcpy</code>,
+                <code>memset</code>, <code>printf</code> must be implemented locally or in a shared userspace library.
+            </li>
+        </ol>
+    </div>
+</body>
+
+</html>

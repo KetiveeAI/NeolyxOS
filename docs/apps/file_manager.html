@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS - File Manager Requirements</title>
+    
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    
+
+    <div class="container">
+        <h1>🗂️ File Manager App Requirements</h1>
+        <p style="color: var(--text-secondary);">Required drivers, APIs, and capabilities for building a file manager.
+        </p>
+
+        <h2>Required Kernel Drivers</h2>
+        <div class="card">
+            <table>
+                <tr>
+                    <th>Driver</th>
+                    <th>Header</th>
+                    <th>Purpose</th>
+                </tr>
+                <tr>
+                    <td>nxstor</td>
+                    <td><code>drivers/nxstor_kdrv.h</code></td>
+                    <td>Block device access</td>
+                </tr>
+                <tr>
+                    <td>VFS</td>
+                    <td><code>fs/vfs.h</code></td>
+                    <td>Virtual filesystem layer</td>
+                </tr>
+                <tr>
+                    <td>NXFS</td>
+                    <td><code>fs/nxfs.h</code></td>
+                    <td>Native filesystem</td>
+                </tr>
+                <tr>
+                    <td>bcache</td>
+                    <td><code>fs/bcache.h</code></td>
+                    <td>Block cache (LRU)</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>VFS Syscalls</h2>
+        <div class="card">
+            <table>
+                <tr>
+                    <th>Syscall</th>
+                    <th>Number</th>
+                    <th>Function</th>
+                </tr>
+                <tr>
+                    <td>SYS_OPEN</td>
+                    <td>2</td>
+                    <td><code>vfs_open(path, flags)</code></td>
+                </tr>
+                <tr>
+                    <td>SYS_READ</td>
+                    <td>3</td>
+                    <td><code>vfs_read(fd, buf, size)</code></td>
+                </tr>
+                <tr>
+                    <td>SYS_WRITE</td>
+                    <td>4</td>
+                    <td><code>vfs_write(fd, buf, size)</code></td>
+                </tr>
+                <tr>
+                    <td>SYS_CLOSE</td>
+                    <td>5</td>
+                    <td><code>vfs_close(fd)</code></td>
+                </tr>
+                <tr>
+                    <td>SYS_READDIR</td>
+                    <td>6</td>
+                    <td><code>vfs_readdir(fd, entries)</code></td>
+                </tr>
+                <tr>
+                    <td>SYS_STAT</td>
+                    <td>7</td>
+                    <td><code>vfs_stat(path, &stat)</code></td>
+                </tr>
+                <tr>
+                    <td>SYS_MKDIR</td>
+                    <td>8</td>
+                    <td><code>vfs_mkdir(path)</code></td>
+                </tr>
+                <tr>
+                    <td>SYS_UNLINK</td>
+                    <td>9</td>
+                    <td><code>vfs_unlink(path)</code></td>
+                </tr>
+                <tr>
+                    <td>SYS_RENAME</td>
+                    <td>10</td>
+                    <td><code>vfs_rename(old, new)</code></td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>File Operations API</h2>
+        <div class="card">
+            <pre><code>// List directory
+vfs_dir_t* dir = vfs_opendir("/Users/alice/Documents");
+vfs_dirent_t entry;
+while (vfs_readdir(dir, &entry) == 0) {
+    printf("%s  %s  %lu bytes\n", 
+        entry.type == VFS_DIR ? "[DIR]" : "[FILE]",
+        entry.name,
+        entry.size);
+}
+vfs_closedir(dir);
+
+// Copy file
+int src = vfs_open("/path/source.txt", VFS_READ);
+int dst = vfs_open("/path/dest.txt", VFS_WRITE | VFS_CREATE);
+char buf[4096];
+int n;
+while ((n = vfs_read(src, buf, sizeof(buf))) > 0) {
+    vfs_write(dst, buf, n);
+}
+vfs_close(src);
+vfs_close(dst);
+
+// Get file info
+vfs_stat_t info;
+vfs_stat("/path/file.txt", &info);
+printf("Size: %lu, Modified: %lu\n", info.size, info.mtime);</code></pre>
+        </div>
+
+        <h2>File Manager Capabilities</h2>
+        <div class="card">
+            <pre><code>// Info.plist for File Manager app
+{
+    "NXBundleIdentifier": "com.neolyx.finder",
+    "NXBundleName": "Finder",
+    "NXCapabilities": [
+        "filesystem.full",     // Full disk access
+        "filesystem.admin",    // Admin operations
+        "network.share",       // Network file sharing
+        "removable.mount"      // Mount external drives
+    ]
+}</code></pre>
+        </div>
+
+        <h2>Implementation Checklist</h2>
+        <div class="card">
+            <ul style="list-style: none; padding: 0;">
+                <li><span class="check">✓</span> VFS layer for filesystem abstraction</li>
+                <li><span class="check">✓</span> NXFS read/write support</li>
+                <li><span class="check">✓</span> Directory listing (readdir)</li>
+                <li><span class="check">✓</span> File copy/move/delete</li>
+                <li><span class="check">✓</span> SIP enforcement (can't modify /System)</li>
+                <li>□ Thumbnail generation (images)</li>
+                <li>□ Quick Look preview</li>
+                <li>□ Network mount (nxshare://)</li>
+                <li>□ Search indexing</li>
+                <li>□ Trash support</li>
+            </ul>
+        </div>
+
+        <h2>Network File Access</h2>
+        <div class="card">
+            <pre><code>// Mount network share
+vfs_mount("nxshare://server/share", "/Volumes/Share", "nxnet", 0);
+
+// Access like local files
+vfs_open("/Volumes/Share/file.txt", VFS_READ);
+
+// Unmount
+vfs_unmount("/Volumes/Share");</code></pre>
+        </div>
+
+        <footer
+            style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-secondary); text-align: center;">
+            NeolyxOS © 2025 KetiveeAI | File Manager Requirements
+        </footer>
+    </div>
+</body>
+
+</html>

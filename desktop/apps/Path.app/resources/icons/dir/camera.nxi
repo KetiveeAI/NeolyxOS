@@ -1,0 +1,64 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Camera/Photos Folder Icon - with camera emblem
+
+[nxi]
+version = 1.0
+name = camera
+size = 32
+author = KetiveeAI
+category = directory
+viewbox = 0 0 32 32
+
+[canvas]
+width = 32
+height = 32
+background = transparent
+
+[colors]
+shadow = #000000
+folder_base = #F2D6C9
+folder_dark = #DDAE98
+camera = #DDAE98
+lens = #FFFFFF
+
+[paths]
+# Shadow layer
+shadow = M0,4 L0,26 L30,26 L30,6 L15,6 L13,4 Z
+
+# Back folder tab
+back_tab = M0,5 L0,27 L31,27 L31,7 L16,7 L14,5 Z
+
+# Front folder body
+front = M0,8 L0,28 L32,28 L32,10 L18,10 L16,8 Z
+
+# Camera body
+cam_body = M9,13 L23,13 L23,23 L9,23 Z
+
+# Camera top bump
+cam_top = M12,11 L15,11 L16,13 L11,13 Z
+
+# Camera lens outer
+lens_outer = M16,15 a4,4 0 1,0 0.01,0
+
+# Camera lens inner
+lens_inner = M16,16 a3,3 0 1,0 0.01,0
+
+# Flash
+flash = M20,14 L22,14 L22,16 L20,16 Z
+
+[style]
+shadow.fill = shadow
+shadow.opacity = 0.3
+back_tab.fill = folder_base
+front.fill = folder_base
+cam_body.fill = camera
+cam_top.fill = camera
+lens_outer.stroke = camera
+lens_outer.fill = none
+lens_inner.fill = lens
+lens_inner.opacity = 0.8
+flash.fill = lens
+
+[style.dark]
+folder_base = #C4A99E
+camera = #B8988A

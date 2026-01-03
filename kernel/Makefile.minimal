@@ -1,0 +1,45 @@
+# Neolyx OS Minimal Test Kernel Makefile
+# This builds a minimal kernel to test the boot chain
+
+CC = gcc
+LD = ld
+AS = as
+
+# Minimal flags for freestanding kernel
+CFLAGS = -ffreestanding -nostdlib -mno-red-zone -Wall -m64 -fno-pie -no-pie \
+	-I../include -Isrc/drivers
+
+LDFLAGS = -T linker.ld -static
+
+# Minimal kernel - just enough to boot (using UEFI startup for 64-bit entry)
+obj-min = startup_uefi.o minimal_main.o serial.o video_minimal.o
+
+all: minimal_kernel.elf minimal_kernel.bin
+
+minimal_kernel.elf: $(obj-min) linker.ld
+	$(LD) $(LDFLAGS) $(obj-min) -o minimal_kernel.elf
+
+minimal_kernel.bin: minimal_kernel.elf
+	objcopy -O binary minimal_kernel.elf minimal_kernel.bin
+
+startup_uefi.o: src/arch/x86_64/startup_uefi.S
+	$(AS) --64 -o startup_uefi.o src/arch/x86_64/startup_uefi.S
+
+minimal_main.o: minimal_main.c
+	$(CC) $(CFLAGS) -c minimal_main.c -o minimal_main.o
+
+serial.o: src/drivers/serial.c src/drivers/serial.h
+	$(CC) $(CFLAGS) -c src/drivers/serial.c -o serial.o
+
+video_minimal.o: video_minimal.c
+	$(CC) $(CFLAGS) -c video_minimal.c -o video_minimal.o
+
+clean-minimal:
+	rm -f startup_uefi.o minimal_main.o serial.o video_minimal.o minimal_kernel.elf minimal_kernel.bin
+
+test-minimal: minimal_kernel.elf
+	@echo "Testing minimal kernel in QEMU with serial output..."
+	@echo "Press Ctrl+A X to exit QEMU"
+	qemu-system-x86_64 -kernel minimal_kernel.elf -nographic -serial mon:stdio -m 128M
+
+.PHONY: all clean-minimal test-minimal

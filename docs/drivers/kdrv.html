@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kernel Drivers (kdrv) - NeolyxOS Documentation</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --text-primary: #f0f6fc;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --border: #30363d;
+            --code-bg: #1f2428;
+            --success: #238636;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h1,
+        h2,
+        h3 {
+            color: var(--accent);
+        }
+
+        h1 {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        code {
+            background: var(--code-bg);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'Fira Code', monospace;
+        }
+
+        pre {
+            background: var(--code-bg);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            border: 1px solid var(--border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--border);
+            padding: 0.75rem;
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-secondary);
+        }
+
+        .driver-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+        }
+
+        .driver-card h3 {
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-complete {
+            background: var(--success);
+            color: white;
+        }
+
+        .badge-lines {
+            background: var(--accent);
+            color: white;
+        }
+
+        a {
+            color: var(--accent);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+    </style>
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🔧 Kernel Drivers (kdrv)</h1>
+
+        <p>NeolyxOS uses a unified driver framework with consistent naming: <code>nx&lt;subsystem&gt;_kdrv</code></p>
+
+        <h2>Driver Summary</h2>
+        <table>
+            <tr>
+                <th>Driver</th>
+                <th>File</th>
+                <th>Lines</th>
+                <th>Purpose</th>
+                <th>Status</th>
+            </tr>
+            <tr>
+                <td>nxgfx_kdrv</td>
+                <td><code>gpu/nxgfx_kdrv.c</code></td>
+                <td>242</td>
+                <td>GPU/Framebuffer</td>
+                <td><span class="badge badge-complete">✓</span></td>
+            </tr>
+            <tr>
+                <td>nxaudio_kdrv</td>
+                <td><code>audio/nxaudio_kdrv.c</code></td>
+                <td>586</td>
+                <td>Audio (HDA/AC97)</td>
+                <td><span class="badge badge-complete">✓</span></td>
+            </tr>
+            <tr>
+                <td>nxnet_kdrv</td>
+                <td><code>network/nxnet_kdrv.c</code></td>
+                <td>384</td>
+                <td>Network</td>
+                <td><span class="badge badge-complete">✓</span></td>
+            </tr>
+            <tr>
+                <td>nxstor_kdrv</td>
+                <td><code>storage/nxstor_kdrv.c</code></td>
+                <td>488</td>
+                <td>Storage</td>
+                <td><span class="badge badge-complete">✓</span></td>
+            </tr>
+            <tr>
+                <td>nxusb_kdrv</td>
+                <td><code>usb/nxusb_kdrv.c</code></td>
+                <td>416</td>
+                <td>USB</td>
+                <td><span class="badge badge-complete">✓</span></td>
+            </tr>
+            <tr>
+                <td>nxpci_kdrv</td>
+                <td><code>pci/nxpci_kdrv.c</code></td>
+                <td>428</td>
+                <td>PCI</td>
+                <td><span class="badge badge-complete">✓</span></td>
+            </tr>
+            <tr>
+                <td>nxsysinfo_kdrv</td>
+                <td><code>system/nxsysinfo_kdrv.c</code></td>
+                <td>580</td>
+                <td>System Info</td>
+                <td><span class="badge badge-complete">✓</span></td>
+            </tr>
+            <tr>
+                <td>nxdisplay_kdrv</td>
+                <td><code>display/nxdisplay_kdrv.c</code></td>
+                <td>680</td>
+                <td>Display</td>
+                <td><span class="badge badge-complete">✓</span></td>
+            </tr>
+            <tr>
+                <td>nxpen_kdrv</td>
+                <td><code>input/nxpen_kdrv.c</code></td>
+                <td>590</td>
+                <td>Pen/Stylus</td>
+                <td><span class="badge badge-complete">✓</span></td>
+            </tr>
+            <tr>
+                <td>nxtask_kdrv</td>
+                <td><code>system/nxtask_kdrv.c</code></td>
+                <td>650</td>
+                <td>Task Manager</td>
+                <td><span class="badge badge-complete">✓</span></td>
+            </tr>
+            <tr>
+                <td>nxrender_kdrv</td>
+                <td><code>graphics/nxrender_kdrv.c</code></td>
+                <td>380</td>
+                <td>GUI Rendering</td>
+                <td><span class="badge badge-complete">✓ New</span></td>
+            </tr>
+        </table>
+
+        <p><strong>Total: ~5,424 lines of driver code (11 drivers)</strong></p>
+
+        <hr>
+
+        <h2>Driver Details</h2>
+
+        <div class="driver-card">
+            <h3>🖥️ nxgfx_kdrv - GPU/Framebuffer</h3>
+            <p>Unified GPU interface supporting Intel, AMD, NVIDIA, and QEMU VGA.</p>
+            <pre><code>// API
+nxgfx_kdrv_init();
+nxgfx_kdrv_set_mode(1920, 1080, 32);
+nxgfx_kdrv_put_pixel(x, y, color);
+nxgfx_kdrv_fill_rect(x, y, w, h, color);</code></pre>
+        </div>
+
+        <div class="driver-card">
+            <h3>🔊 nxaudio_kdrv - Audio</h3>
+            <p>Supports Intel HD Audio (HDA) and AC97 codecs.</p>
+            <pre><code>// API
+nxaudio_kdrv_init();
+int stream = nxaudio_kdrv_stream_open(48000, 2, 16);
+nxaudio_kdrv_stream_start(stream);
+nxaudio_kdrv_stream_write(stream, data, len);</code></pre>
+        </div>
+
+        <div class="driver-card">
+            <h3>🌐 nxnet_kdrv - Network</h3>
+            <p>Supports E1000, VirtIO-Net, and RTL8169 NICs.</p>
+            <pre><code>// API
+nxnet_kdrv_init();
+nxnet_kdrv_link_status(0);  // Check link
+nxnet_kdrv_send(0, packet, len);
+nxnet_kdrv_receive(0, buffer, max_len);</code></pre>
+        </div>
+
+        <div class="driver-card">
+            <h3>💾 nxstor_kdrv - Storage</h3>
+            <p>Unified storage access for NVMe and ATA/AHCI devices.</p>
+            <pre><code>// API
+nxstor_kdrv_init();
+nxstor_kdrv_read(device, lba, count, buffer);
+nxstor_kdrv_write(device, lba, count, data);
+nxstor_kdrv_stats(device, &stats);</code></pre>
+        </div>
+
+        <div class="driver-card">
+            <h3>🔌 nxusb_kdrv - USB</h3>
+            <p>USB device enumeration and class detection.</p>
+            <pre><code>// API
+nxusb_kdrv_init();
+int count = nxusb_kdrv_device_count();
+nxusb_kdrv_device_info(0, &info);  // VID, PID, class</code></pre>
+        </div>
+
+        <div class="driver-card">
+            <h3>📊 nxpci_kdrv - PCI</h3>
+            <p>PCI device enumeration and config space access.</p>
+            <pre><code>// API
+nxpci_kdrv_init();
+nxpci_kdrv_enumerate();
+uint32_t val = nxpci_kdrv_read_config(bus, dev, fn, reg);
+nxpci_kdrv_write_config(bus, dev, fn, reg, val);</code></pre>
+        </div>
+
+        <div class="driver-card">
+            <h3>📋 nxsysinfo_kdrv - System Information</h3>
+            <p>CPU info, thermal sensors, battery status, lid state.</p>
+            <pre><code>// API
+nxsysinfo_kdrv_init();
+nxsysinfo_kdrv_cpu_info(&cpu);    // Vendor, cores, freq
+int count = nxsysinfo_kdrv_thermal_count();
+nxsysinfo_kdrv_thermal_info(0, &temp);  // CPU temp
+nxsysinfo_kdrv_battery_info(&batt);</code></pre>
+            <p><strong>Features:</strong> CPUID parsing, enumeration-based thermals, cached static info</p>
+        </div>
+
+        <div class="driver-card">
+            <h3>🖥️ nxdisplay_kdrv - Display Management</h3>
+            <p>Multi-monitor detection, EDID parsing, atomic mode commits.</p>
+            <pre><code>// API
+nxdisplay_kdrv_init();
+nxdisplay_kdrv_info(0, &display);  // EDID, resolution
+
+// Atomic commit
+nxdisplay_kdrv_set_mode(0, &mode);
+nxdisplay_kdrv_set_position(0, 1920, 0);
+nxdisplay_kdrv_set_color(0, NXCOLORSPACE_P3, 22);
+nxdisplay_kdrv_commit(0);  // Apply all at once</code></pre>
+            <p><strong>Features:</strong> HDMI/DP/VGA/eDP, VRR, HDR, color profiles</p>
+        </div>
+
+        <div class="driver-card">
+            <h3>✏️ nxpen_kdrv - Pen/Stylus Input</h3>
+            <p>Digitizer support with pressure, tilt, and rotation.</p>
+            <pre><code>// API
+nxpen_kdrv_init();
+nxpen_kdrv_digitizer_info(0, &digitizer);
+nxpen_kdrv_pen_info(0, &pen);
+
+// Event polling or callback
+nxpen_kdrv_poll(&event);  // x, y, pressure, tilt
+nxpen_kdrv_register_callback(my_handler, data);</code></pre>
+            <p><strong>Protocols:</strong> Wacom, Microsoft Pen (MPP), USI, N-Trig</p>
+        </div>
+
+        <div class="driver-card">
+            <h3>📊 nxtask_kdrv - Task Manager</h3>
+            <p>Process monitoring, CPU usage, priority control.</p>
+            <pre><code>// API
+nxtask_kdrv_init();
+
+// System info
+nxtask_kdrv_sysinfo(&sys);  // Load avg, CPU %, mem
+
+// Process info
+int count = nxtask_kdrv_count();
+nxtask_kdrv_list(pids, max);
+nxtask_kdrv_info(pid, &info);  // CPU %, memory, state
+
+// Control
+nxtask_kdrv_set_priority(pid, NXTASK_PRIO_HIGH);
+nxtask_kdrv_set_nice(pid, -10);
+nxtask_kdrv_suspend(pid);
+nxtask_kdrv_kill(pid, SIGTERM);</code></pre>
+            <p><strong>Priority Levels:</strong> Idle, Low, Below Normal, Normal, Above Normal, High, Realtime</p>
+        </div>
+
+        <div class="driver-card">
+            <h3>🖼️ nxrender_kdrv - GUI Rendering</h3>
+            <p>Kernel-side interface for NXRender user-space GUI framework. Processes command buffers.</p>
+            <pre><code>// API
+nxrender_kdrv_init();
+
+// Command buffer submission
+nxrender_cmd_buffer_t* buf = nxrender_kdrv_get_cmd_buffer();
+// ... populate buf->commands ...
+nxrender_kdrv_submit();
+nxrender_kdrv_present(0);
+
+// Textures
+int tex = nxrender_kdrv_create_texture(256, 256, NXRENDER_TEX_RGBA8);
+nxrender_kdrv_upload_texture(tex, pixels, size);
+
+// VSync
+nxrender_kdrv_set_vsync(NXRENDER_VSYNC_ON);
+nxrender_kdrv_wait_vblank();</code></pre>
+            <p><strong>Features:</strong> Command buffer, primitives (rect, circle, line), scissor, textures, VSync</p>
+        </div>
+
+        <hr>
+
+        <h2>Driver API Pattern</h2>
+        <p>All drivers follow a consistent API pattern:</p>
+        <pre><code>// Lifecycle
+int  nx&lt;name&gt;_kdrv_init(void);
+void nx&lt;name&gt;_kdrv_shutdown(void);
+
+// Enumeration
+int  nx&lt;name&gt;_kdrv_count(void);
+int  nx&lt;name&gt;_kdrv_info(int idx, &lt;type&gt;_info_t *info);
+
+// Debug
+void nx&lt;name&gt;_kdrv_debug(void);</code></pre>
+
+        <h2>Adding to Makefile</h2>
+        <pre><code># Object list
+obj-y += nx&lt;name&gt;_kdrv.o
+
+# Compile rule
+nx&lt;name&gt;_kdrv.o: src/drivers/&lt;subsystem&gt;/nx&lt;name&gt;_kdrv.c include/drivers/nx&lt;name&gt;_kdrv.h
+    $(CC) $(CFLAGS) -c $&lt; -o $@</code></pre>
+
+        <hr>
+        <p style="color: var(--text-secondary);">
+            NeolyxOS Documentation &copy; 2025 KetiveeAI
+        </p>
+    </div>
+</body>
+
+</html>

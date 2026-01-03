@@ -1,0 +1,17 @@
+{
+    "name": "A4 Document",
+    "category": "Print",
+    "description": "Standard A4 print document (210x297mm)",
+    "size": {"width": 210, "height": 297},
+    "units": "millimeters",
+    "bleed": 3,
+    "margin": 10,
+    "orientation": "portrait",
+    "color_mode": "CMYK",
+    "resolution": 300,
+    "layers": [
+        {"name": "Background", "editable": true},
+        {"name": "Content", "editable": true},
+        {"name": "Text", "editable": true}
+    ]
+}

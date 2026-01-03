@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminal.app - NeolyxOS Documentation</title>
+    
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    
+
+    <div class="container">
+        <h1>Terminal.app <span class="badge">Complete</span></h1>
+        <p><strong>NeolyxOS Terminal Emulator</strong> — A tabbed terminal with PTY support, ANSI colors, and themes.
+        </p>
+
+        <h2>Directory Structure</h2>
+        <pre><code>/apps/Terminal.app/
+├── bin/
+│   └── terminal            # Main binary
+├── lib/
+│   └── libterminal.so      # Terminal library
+├── resources/
+│   ├── themes/
+│   │   ├── dark.theme
+│   │   └── light.theme
+│   └── terminal.nxi        # App icon
+├── manifest.npa            # App manifest
+├── main.c
+├── terminal_view.c
+├── context_menu.c
+├── nxrender.h
+├── Makefile
+└── README.md</code></pre>
+
+        <h2>Features</h2>
+        <div class="grid">
+            <div class="card">
+                <h4>🗂️ Multiple Tabs</h4>
+                <p><span class="kbd">Cmd+T</span> new tab, <span class="kbd">Cmd+W</span> close.</p>
+            </div>
+            <div class="card">
+                <h4>🔌 Full PTY</h4>
+                <p>Real pseudo-terminal with syscalls 60-67.</p>
+            </div>
+            <div class="card">
+                <h4>🎨 ANSI Colors</h4>
+                <p>256 color support with custom themes.</p>
+            </div>
+            <div class="card">
+                <h4>📜 Scrollback</h4>
+                <p>10,000 lines of history.</p>
+            </div>
+            <div class="card">
+                <h4>✂️ Copy/Paste</h4>
+                <p>Selection and clipboard support.</p>
+            </div>
+            <div class="card">
+                <h4>🎨 Themes</h4>
+                <p>Dark and Light themes included.</p>
+            </div>
+        </div>
+
+        <h2>Keyboard Shortcuts</h2>
+        <table>
+            <tr>
+                <th>Category</th>
+                <th>Shortcut</th>
+                <th>Action</th>
+            </tr>
+            <tr>
+                <td rowspan="3">Tabs</td>
+                <td><code>Cmd+T</code></td>
+                <td>New tab</td>
+            </tr>
+            <tr>
+                <td><code>Cmd+W</code></td>
+                <td>Close tab</td>
+            </tr>
+            <tr>
+                <td><code>Cmd+Tab</code></td>
+                <td>Next tab</td>
+            </tr>
+            <tr>
+                <td rowspan="3">Edit</td>
+                <td><code>Cmd+C</code></td>
+                <td>Copy</td>
+            </tr>
+            <tr>
+                <td><code>Cmd+V</code></td>
+                <td>Paste</td>
+            </tr>
+            <tr>
+                <td><code>Cmd+K</code></td>
+                <td>Clear</td>
+            </tr>
+            <tr>
+                <td rowspan="3">View</td>
+                <td><code>Cmd++</code></td>
+                <td>Increase font</td>
+            </tr>
+            <tr>
+                <td><code>Cmd+-</code></td>
+                <td>Decrease font</td>
+            </tr>
+            <tr>
+                <td><code>Cmd+Enter</code></td>
+                <td>Fullscreen</td>
+            </tr>
+        </table>
+
+        <h2>Source Files</h2>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><code>main.c</code></td>
+                <td>App lifecycle, tab management</td>
+            </tr>
+            <tr>
+                <td><code>terminal_view.c</code></td>
+                <td>Text grid, ANSI parsing, cursor</td>
+            </tr>
+            <tr>
+                <td><code>context_menu.c</code></td>
+                <td>Right-click menu</td>
+            </tr>
+            <tr>
+                <td><code>nxrender.h</code></td>
+                <td>Graphics wrapper</td>
+            </tr>
+        </table>
+
+        <h2>PTY Syscalls</h2>
+        <table>
+            <tr>
+                <th>Syscall</th>
+                <th>#</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><code>SYS_PTY_OPEN</code></td>
+                <td>60</td>
+                <td>Create PTY pair</td>
+            </tr>
+            <tr>
+                <td><code>SYS_PTY_READ</code></td>
+                <td>61</td>
+                <td>Read from master</td>
+            </tr>
+            <tr>
+                <td><code>SYS_PTY_WRITE</code></td>
+                <td>62</td>
+                <td>Write to master</td>
+            </tr>
+            <tr>
+                <td><code>SYS_PTY_CLOSE</code></td>
+                <td>63</td>
+                <td>Close PTY</td>
+            </tr>
+            <tr>
+                <td><code>SYS_PTY_RESIZE</code></td>
+                <td>64</td>
+                <td>Update window size</td>
+            </tr>
+            <tr>
+                <td><code>SYS_PTY_IOCTL</code></td>
+                <td>65</td>
+                <td>Terminal control</td>
+            </tr>
+            <tr>
+                <td><code>SYS_PTY_SPAWN</code></td>
+                <td>66</td>
+                <td>Spawn shell</td>
+            </tr>
+            <tr>
+                <td><code>SYS_PTY_POLL</code></td>
+                <td>67</td>
+                <td>Check for input</td>
+            </tr>
+        </table>
+
+        <h2>Manifest</h2>
+        <pre><code>{
+    "name": "Terminal",
+    "bundle_id": "com.neolyx.terminal",
+    "binary": "bin/terminal",
+    "library": "lib/libterminal.so",
+    "icon": "resources/terminal.nxi",
+    "permissions": [
+        "pty.create",
+        "pty.read",
+        "pty.write",
+        "process.spawn"
+    ]
+}</code></pre>
+
+        <h2>Building</h2>
+        <pre><code>cd apps/Terminal.app
+
+# Standalone build
+make
+
+# With NXRender graphics
+make real
+
+# Install to /Applications
+make install</code></pre>
+
+        <footer>
+            Copyright © 2025 KetiveeAI | NeolyxOS Documentation
+        </footer>
+    </div>
+</body>
+
+</html>

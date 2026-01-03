@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NXBacklight API - NeolyxOS</title>
+    
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="nav">
+        <a href="index.html" class="btn">← Driver Index</a>
+        <a href="nxtouch_api.html" class="btn">NXTouch</a>
+        <a href="nxbacklight_api.html" class="btn active">NXBacklight</a>
+        <a href="nxdisplay_advanced_api.html" class="btn">Display Advanced</a>
+        <a href="settings_drivers_api.html" class="btn">Settings API</a>
+    </div>
+
+    <h1>NXBacklight Driver API</h1>
+    <p><strong>Laptop display brightness and power management</strong><br>
+        Controls: PWM/ACPI backlight, ambient sensor, keyboard backlight</p>
+
+    <h2>Backlight Methods</h2>
+    <table>
+        <tr>
+            <th>Method</th>
+            <th>Use Case</th>
+        </tr>
+        <tr>
+            <td>ACPI</td>
+            <td>Most laptops (acpi_video0)</td>
+        </tr>
+        <tr>
+            <td>PWM</td>
+            <td>Direct hardware control</td>
+        </tr>
+        <tr>
+            <td>Intel</td>
+            <td>Intel graphics backlight</td>
+        </tr>
+        <tr>
+            <td>AMD</td>
+            <td>AMD graphics backlight</td>
+        </tr>
+        <tr>
+            <td>Platform</td>
+            <td>Dell, HP, Lenovo specific</td>
+        </tr>
+    </table>
+
+    <h2>Quick Start</h2>
+    <pre><code>#include "drivers/nxbacklight.h"
+
+// Initialize
+nxbl_init();
+
+// Check if laptop
+if (nxbl_is_laptop()) {
+    // Get current brightness
+    int brightness = nxbl_get_brightness();  // 0-100%
+    
+    // Set brightness (smooth transition)
+    nxbl_set_brightness_smooth(70, 300);  // 70%, 300ms
+    
+    // Enable auto-brightness (if ambient sensor available)
+    if (nxbl_ambient_available()) {
+        nxbl_auto_brightness_enable(true);
+    }
+}</code></pre>
+
+    <h2>Brightness Control</h2>
+    <table>
+        <tr>
+            <th>Function</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>nxbl_get_brightness()</code></td>
+            <td>Get brightness 0-100%</td>
+        </tr>
+        <tr>
+            <td><code>nxbl_set_brightness(percent)</code></td>
+            <td>Set brightness</td>
+        </tr>
+        <tr>
+            <td><code>nxbl_set_brightness_smooth(percent, ms)</code></td>
+            <td>Smooth transition</td>
+        </tr>
+        <tr>
+            <td><code>nxbl_get_max_brightness()</code></td>
+            <td>Get raw max level</td>
+        </tr>
+    </table>
+
+    <h2>Auto-Brightness</h2>
+    <pre><code>// Check if ambient light sensor available
+if (nxbl_ambient_available()) {
+    // Get sensor reading
+    nxbl_ambient_t ambient;
+    nxbl_get_ambient(&amp;ambient);
+    printf("Light: %d lux, suggested: %d%%\n", 
+           ambient.lux, ambient.target_brightness);
+
+    // Enable auto-brightness
+    nxbl_auto_brightness_enable(true);
+}</code></pre>
+
+    <h2>Keyboard Backlight</h2>
+    <pre><code>if (nxkb_backlight_available()) {
+    // Set brightness
+    nxkb_set_brightness(50);  // 50%
+    
+    // Set color (RGB keyboards)
+    nxkb_set_color(0xFF00FF);  // Purple
+    
+    // Auto-off timeout
+    nxkb_set_timeout(30);  // 30 seconds
+}</code></pre>
+
+    <h2>Device Detection</h2>
+    <table>
+        <tr>
+            <th>Type</th>
+            <th>Enum</th>
+        </tr>
+        <tr>
+            <td>Desktop PC</td>
+            <td><code>NXDEVICE_DESKTOP</code></td>
+        </tr>
+        <tr>
+            <td>Laptop/Notebook</td>
+            <td><code>NXDEVICE_LAPTOP</code></td>
+        </tr>
+        <tr>
+            <td>Tablet</td>
+            <td><code>NXDEVICE_TABLET</code></td>
+        </tr>
+        <tr>
+            <td>2-in-1 Convertible</td>
+            <td><code>NXDEVICE_CONVERTIBLE</code></td>
+        </tr>
+        <tr>
+            <td>Mobile Phone</td>
+            <td><code>NXDEVICE_PHONE</code></td>
+        </tr>
+    </table>
+
+    <pre><code>nxdevice_type_t type = nxbl_get_device_type();
+
+// Check capabilities
+nxbl_has_lid();             // Laptop lid sensor
+nxbl_has_ambient_sensor();  // Light sensor
+nxbl_has_accelerometer();   // Orientation sensor
+nxbl_has_battery();         // Portable device</code></pre>
+
+    <h2>Power Management</h2>
+    <pre><code>// Battery notifications
+nxbl_on_battery(true);   // Switch to battery
+nxbl_on_battery(false);  // On AC power
+
+// Lid events
+nxbl_on_lid_close();  // Turn off backlight
+nxbl_on_lid_open();   // Restore backlight
+
+// Power profiles
+nxbl_set_profile(NXBL_PROFILE_POWER_SAVE);  // Reduce on battery
+nxbl_set_profile(NXBL_PROFILE_MOVIE);       // Disable auto-dim</code></pre>
+
+    <h2>Display Integration</h2>
+    <div class="card">
+        <p>NXBacklight integrates with <code>nxdisplay_kdrv</code> for unified control:</p>
+        <ul>
+            <li><strong>Internal display</strong> - Uses PWM/ACPI (nxbl_*)</li>
+            <li><strong>External monitor</strong> - Uses DDC/CI (nxdisplay_kdrv_ddc_*)</li>
+        </ul>
+    </div>
+
+    <pre><code>// Unified brightness (auto-detects internal vs external)
+int index = nxbl_get_display_index();
+nxbl_unified_set_brightness(index, 80);</code></pre>
+
+    <h2>Header Location</h2>
+    <p><code>kernel/include/drivers/nxbacklight.h</code></p>
+
+    <p style="margin-top: 2rem; color: #8b949e;">© 2025 KetiveeAI</p>
+</body>
+
+</html>

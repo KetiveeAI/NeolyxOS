@@ -1,0 +1,21 @@
+# Monochrome Theme - Black and white theme
+# NeolyxOS Calendar App
+
+[Theme]
+Name = Monochrome
+Type = Dark
+
+[Colors]
+Background = 0x101010
+TextPrimary = 0xFFFFFF
+TextSecondary = 0x808080
+Accent = 0xD0D0D0
+Highlight = 0xE0E0E0
+Border = 0x404040
+
+[ClockFace]
+DialColor = 0x202020
+HandHour = 0xFFFFFF
+HandMinute = 0xD0D0D0
+HandSecond = 0xA0A0A0
+MarkerColor = 0x606060

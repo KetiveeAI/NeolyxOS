@@ -1,0 +1,71 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Video Folder Icon - with film/video emblem
+
+[nxi]
+version = 1.0
+name = video
+size = 32
+author = KetiveeAI
+category = directory
+viewbox = 0 0 32 32
+
+[canvas]
+width = 32
+height = 32
+background = transparent
+
+[colors]
+shadow = #000000
+folder_base = #F2D6C9
+folder_dark = #DDAE98
+film = #DDAE98
+play = #FFFFFF
+
+[paths]
+# Shadow layer
+shadow = M0,4 L0,26 L30,26 L30,6 L15,6 L13,4 Z
+
+# Back folder tab
+back_tab = M0,5 L0,27 L31,27 L31,7 L16,7 L14,5 Z
+
+# Front folder body
+front = M0,8 L0,28 L32,28 L32,10 L18,10 L16,8 Z
+
+# Film strip frame
+frame = M8,11 L24,11 L24,24 L8,24 Z
+
+# Film sprocket holes left
+hole1 = M9,12 L11,12 L11,14 L9,14 Z
+hole2 = M9,15 L11,15 L11,17 L9,17 Z
+hole3 = M9,18 L11,18 L11,20 L9,20 Z
+hole4 = M9,21 L11,21 L11,23 L9,23 Z
+
+# Film sprocket holes right
+hole5 = M21,12 L23,12 L23,14 L21,14 Z
+hole6 = M21,15 L23,15 L23,17 L21,17 Z
+hole7 = M21,18 L23,18 L23,20 L21,20 Z
+hole8 = M21,21 L23,21 L23,23 L21,23 Z
+
+# Play triangle
+play = M14,14 L14,21 L20,17.5 Z
+
+[style]
+shadow.fill = shadow
+shadow.opacity = 0.3
+back_tab.fill = folder_base
+front.fill = folder_base
+frame.stroke = film
+frame.fill = none
+hole1.fill = film
+hole2.fill = film
+hole3.fill = film
+hole4.fill = film
+hole5.fill = film
+hole6.fill = film
+hole7.fill = film
+hole8.fill = film
+play.fill = play
+
+[style.dark]
+folder_base = #C4A99E
+film = #B8988A

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NXTouch API - NeolyxOS</title>
+    
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="nav">
+        <a href="index.html" class="btn">← Driver Index</a>
+        <a href="nxtouch_api.html" class="btn active">NXTouch</a>
+        <a href="nxbacklight_api.html" class="btn">NXBacklight</a>
+        <a href="nxdisplay_advanced_api.html" class="btn">Display Advanced</a>
+        <a href="settings_drivers_api.html" class="btn">Settings API</a>
+    </div>
+
+    <h1>NXTouch Driver API</h1>
+    <p><strong>Multi-touch gesture recognition for NeolyxOS</strong><br>
+        Supports: Mobile, Tablet, Laptop (trackpad), Desktop (touchscreen)</p>
+
+    <h2>Quick Start</h2>
+    <pre><code>#include "drivers/nxtouch.h"
+
+// Initialize
+nxtouch_init();
+
+// Check device capabilities
+if (nxtouch_is_touchscreen()) {
+    printf("Touch screen available\n");
+}
+if (nxtouch_stylus_available()) {
+    printf("Stylus support detected\n");
+    nxtouch_palm_rejection_enable(true);  // Auto-enable with stylus
+}
+
+// Register gesture callback
+nxtouch_register_gesture_handler(on_gesture, NULL);</code></pre>
+
+    <h2>Gesture Types</h2>
+
+    <h3>Single Finger</h3>
+    <table>
+        <tr>
+            <th>Enum</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>NXGESTURE_TAP</code></td>
+            <td>Single tap (click)</td>
+        </tr>
+        <tr>
+            <td><code>NXGESTURE_DOUBLE_TAP</code></td>
+            <td>Double tap (zoom)</td>
+        </tr>
+        <tr>
+            <td><code>NXGESTURE_TRIPLE_TAP</code></td>
+            <td>Triple tap (select paragraph)</td>
+        </tr>
+        <tr>
+            <td><code>NXGESTURE_LONG_PRESS</code></td>
+            <td>Hold (context menu)</td>
+        </tr>
+        <tr>
+            <td><code>NXGESTURE_SWIPE_*</code></td>
+            <td>Directional swipe (UP/DOWN/LEFT/RIGHT)</td>
+        </tr>
+        <tr>
+            <td><code>NXGESTURE_FLICK_*</code></td>
+            <td>Quick velocity-based flick</td>
+        </tr>
+        <tr>
+            <td><code>NXGESTURE_DRAG</code></td>
+            <td>Drag (touch + move)</td>
+        </tr>
+    </table>
+
+    <h3>Two Finger</h3>
+    <table>
+        <tr>
+            <th>Enum</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>NXGESTURE_SCROLL</code></td>
+            <td>Vertical scroll</td>
+        </tr>
+        <tr>
+            <td><code>NXGESTURE_SCROLL_HORIZONTAL</code></td>
+            <td>Horizontal scroll</td>
+        </tr>
+        <tr>
+            <td><code>NXGESTURE_PINCH</code></td>
+            <td>Pinch zoom</td>
+        </tr>
+        <tr>
+            <td><code>NXGESTURE_SPREAD</code></td>
+            <td>Spread apart (zoom in)</td>
+        </tr>
+        <tr>
+            <td><code>NXGESTURE_ROTATE</code></td>
+            <td>Two-finger rotate</td>
+        </tr>
+        <tr>
+            <td><code>NXGESTURE_TWO_TAP</code></td>
+            <td>Right-click</td>
+        </tr>
+    </table>
+
+    <h3>Three/Four Finger</h3>
+    <table>
+        <tr>
+            <th>Gesture</th>
+            <th>Default Action</th>
+        </tr>
+        <tr>
+            <td>3-finger swipe up/down</td>
+            <td>Volume control</td>
+        </tr>
+        <tr>
+            <td>3-finger swipe left/right</td>
+            <td>Brightness control</td>
+        </tr>
+        <tr>
+            <td>4-finger swipe up</td>
+            <td>Mission Control</td>
+        </tr>
+        <tr>
+            <td>4-finger swipe left/right</td>
+            <td>Switch apps</td>
+        </tr>
+        <tr>
+            <td>4-finger tap</td>
+            <td>Show desktop</td>
+        </tr>
+    </table>
+
+    <h3>Edge Gestures (Touch Screen)</h3>
+    <table>
+        <tr>
+            <th>Edge</th>
+            <th>Default Action</th>
+        </tr>
+        <tr>
+            <td>Left edge</td>
+            <td>Back navigation</td>
+        </tr>
+        <tr>
+            <td>Right edge</td>
+            <td>Control Center</td>
+        </tr>
+        <tr>
+            <td>Top edge</td>
+            <td>Notifications</td>
+        </tr>
+        <tr>
+            <td>Bottom edge</td>
+            <td>App Switcher</td>
+        </tr>
+    </table>
+
+    <h2>Stylus Support</h2>
+    <div class="card">
+        <h3>Features</h3>
+        <ul>
+            <li><strong>4096 pressure levels</strong> - Fine drawing control</li>
+            <li><strong>Tilt X/Y</strong> - -90° to 90° detection</li>
+            <li><strong>Barrel rotation</strong> - 0-360° for brush angle</li>
+            <li><strong>2 buttons + eraser</strong> - Full tool switching</li>
+            <li><strong>Hover detection</strong> - Pre-touch tracking</li>
+            <li><strong>Battery status</strong> - For wireless stylus</li>
+        </ul>
+    </div>
+
+    <pre><code>nxstylus_state_t stylus;
+nxtouch_get_stylus(&amp;stylus);
+
+if (stylus.touching) {
+    draw_at(stylus.x, stylus.y, stylus.pressure);
+    if (stylus.eraser_end) {
+        erase_at(stylus.x, stylus.y);
+    }
+}</code></pre>
+
+    <h2>Palm Rejection</h2>
+    <p>Automatically enabled when stylus is detected:</p>
+    <pre><code>nxpalm_config_t palm = {
+    .enabled = true,
+    .stylus_priority = true,     // Reject touch when stylus in range
+    .size_detection = true,      // Detect palm by size
+    .min_palm_size = 100,        // Pixels
+    .sensitivity = 7             // 1-10
+};
+nxtouch_palm_set_config(&amp;palm);</code></pre>
+
+    <h2>App Switcher (Android-style)</h2>
+    <pre><code>nxtouch_appswitcher_t switcher = {
+    .enabled = true,
+    .edge_width = 40,                    // Pixels from bottom
+    .swipe_threshold = 30,               // Min distance
+    .swipe_up_close_app = true,          // Swipe up = close
+    .swipe_left_right_switch = true,     // L/R = switch apps
+    .hold_for_floating = true            // Hold = float window
+};
+nxtouch_appswitcher_enable(&amp;switcher);</code></pre>
+
+    <h2>Header Location</h2>
+    <p><code>kernel/include/drivers/nxtouch.h</code></p>
+
+    <p style="margin-top: 2rem; color: #8b949e;">© 2025 KetiveeAI</p>
+</body>
+
+</html>

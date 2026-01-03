@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Path.app - NeolyxOS Documentation</title>
+    
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    
+
+    <div class="container">
+        <h1>Path.app <span class="badge">Complete</span></h1>
+        <p><strong>NeolyxOS File Manager</strong> — A Finder-like file browser with tabs, Quick Look, and themes.</p>
+
+        <h2>Directory Structure</h2>
+        <pre><code>/apps/Path.app/
+├── bin/
+│   └── path                 # Main binary
+├── lib/
+│   └── libpath.so          # File operations library
+├── resources/
+│   ├── icons/              # File type icons (NXI format)
+│   │   ├── folder.nxi
+│   │   ├── file.nxi
+│   │   └── image.nxi
+│   ├── themes/
+│   │   ├── dark.theme
+│   │   └── light.theme
+│   └── path.nxi            # App icon
+└── manifest.npa            # App manifest</code></pre>
+
+        <h2>Features</h2>
+        <div class="grid">
+            <div class="card">
+                <h4>🗂️ Multiple Tabs</h4>
+                <p><span class="kbd">Ctrl+T</span> new tab, <span class="kbd">Ctrl+W</span> close.</p>
+            </div>
+            <div class="card">
+                <h4>👁️ Quick Look</h4>
+                <p>Press <span class="kbd">Space</span> to preview files.</p>
+            </div>
+            <div class="card">
+                <h4>ℹ️ Get Info</h4>
+                <p>Press <span class="kbd">Cmd+I</span> for file details.</p>
+            </div>
+            <div class="card">
+                <h4>🎨 Themes</h4>
+                <p>Dark and Light themes with NXI icons.</p>
+            </div>
+            <div class="card">
+                <h4>📊 4 View Modes</h4>
+                <p>Icons, List, Columns, Gallery.</p>
+            </div>
+            <div class="card">
+                <h4>⭐ Sidebar</h4>
+                <p>Favorites, Locations, Volumes.</p>
+            </div>
+        </div>
+
+        <h2>Keyboard Shortcuts</h2>
+        <table>
+            <tr>
+                <th>Category</th>
+                <th>Shortcut</th>
+                <th>Action</th>
+            </tr>
+            <tr>
+                <td rowspan="3">Tabs</td>
+                <td><code>Ctrl+T</code></td>
+                <td>New tab</td>
+            </tr>
+            <tr>
+                <td><code>Ctrl+W</code></td>
+                <td>Close tab</td>
+            </tr>
+            <tr>
+                <td><code>Ctrl+Tab</code></td>
+                <td>Next tab</td>
+            </tr>
+            <tr>
+                <td rowspan="4">Files</td>
+                <td><code>Cmd+C</code></td>
+                <td>Copy</td>
+            </tr>
+            <tr>
+                <td><code>Cmd+X</code></td>
+                <td>Cut</td>
+            </tr>
+            <tr>
+                <td><code>Cmd+V</code></td>
+                <td>Paste</td>
+            </tr>
+            <tr>
+                <td><code>Delete</code></td>
+                <td>Move to Trash</td>
+            </tr>
+            <tr>
+                <td rowspan="3">View</td>
+                <td><code>Space</code></td>
+                <td>Quick Look</td>
+            </tr>
+            <tr>
+                <td><code>Cmd+I</code></td>
+                <td>Get Info</td>
+            </tr>
+            <tr>
+                <td><code>Cmd+.</code></td>
+                <td>Toggle hidden</td>
+            </tr>
+        </table>
+
+        <h2>Source Files</h2>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><code>main.c</code></td>
+                <td>App lifecycle, navigation</td>
+            </tr>
+            <tr>
+                <td><code>file_view.c</code></td>
+                <td>Icons, List, Columns, Gallery</td>
+            </tr>
+            <tr>
+                <td><code>sidebar.c</code></td>
+                <td>Favorites, Volumes panel</td>
+            </tr>
+            <tr>
+                <td><code>toolbar.c</code></td>
+                <td>Navigation, view controls</td>
+            </tr>
+            <tr>
+                <td><code>context_menu.c</code></td>
+                <td>Right-click menu</td>
+            </tr>
+            <tr>
+                <td><code>tab_bar.c</code></td>
+                <td>Multi-tab management</td>
+            </tr>
+            <tr>
+                <td><code>quick_look.c</code></td>
+                <td>Space key preview</td>
+            </tr>
+            <tr>
+                <td><code>get_info.c</code></td>
+                <td>File info panel</td>
+            </tr>
+        </table>
+
+        <h2>Manifest (manifest.npa)</h2>
+        <pre><code>{
+    "name": "Path",
+    "bundle_id": "com.neolyx.path",
+    "binary": "bin/path",
+    "library": "lib/libpath.so",
+    "icon": "resources/path.nxi",
+    "permissions": [
+        "filesystem.read",
+        "filesystem.write",
+        "storage.volumes"
+    ]
+}</code></pre>
+
+        <h2>Building</h2>
+        <pre><code>cd apps/Path.app
+
+# Standalone build
+make
+
+# With NXRender graphics
+make real
+
+# Install to /Applications
+make install</code></pre>
+
+        <footer>
+            Copyright © 2025 KetiveeAI | NeolyxOS Documentation
+        </footer>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,138 @@
+// Reox stdlib: Graphics Primitives
+// Low-level drawing operations for custom rendering
+
+/// RGBA Color
+struct Color {
+    r: int,
+    g: int,
+    b: int,
+    a: int
+}
+
+// Predefined colors
+const COLOR_BLACK   = Color { r: 0, g: 0, b: 0, a: 255 };
+const COLOR_WHITE   = Color { r: 255, g: 255, b: 255, a: 255 };
+const COLOR_RED     = Color { r: 255, g: 0, b: 0, a: 255 };
+const COLOR_GREEN   = Color { r: 0, g: 255, b: 0, a: 255 };
+const COLOR_BLUE    = Color { r: 0, g: 0, b: 255, a: 255 };
+const COLOR_YELLOW  = Color { r: 255, g: 255, b: 0, a: 255 };
+const COLOR_CYAN    = Color { r: 0, g: 255, b: 255, a: 255 };
+const COLOR_MAGENTA = Color { r: 255, g: 0, b: 255, a: 255 };
+const COLOR_GRAY    = Color { r: 128, g: 128, b: 128, a: 255 };
+const COLOR_CLEAR   = Color { r: 0, g: 0, b: 0, a: 0 };
+
+// NeolyxOS system colors
+const COLOR_PRIMARY    = Color { r: 0, g: 122, b: 255, a: 255 };
+const COLOR_SECONDARY  = Color { r: 88, g: 86, b: 214, a: 255 };
+const COLOR_ACCENT     = Color { r: 255, g: 69, b: 58, a: 255 };
+const COLOR_BACKGROUND = Color { r: 28, g: 28, b: 30, a: 255 };
+const COLOR_SURFACE    = Color { r: 44, g: 44, b: 46, a: 255 };
+const COLOR_TEXT       = Color { r: 255, g: 255, b: 255, a: 255 };
+const COLOR_TEXT_DIM   = Color { r: 174, g: 174, b: 178, a: 255 };
+
+/// Create color from RGB values (0-255)
+fn rgb(r: int, g: int, b: int) -> Color {
+    return Color { r: r, g: g, b: b, a: 255 };
+}
+
+/// Create color from RGBA values
+fn rgba(r: int, g: int, b: int, a: int) -> Color {
+    return Color { r: r, g: g, b: b, a: a };
+}
+
+/// Create color from hex value (0xRRGGBB)
+fn hex(value: int) -> Color {
+    return Color {
+        r: (value >> 16) & 0xFF,
+        g: (value >> 8) & 0xFF,
+        b: value & 0xFF,
+        a: 255
+    };
+}
+
+/// Lighten a color by amount (0.0 to 1.0)
+fn lighten(c: Color, amount: float) -> Color {
+    return Color {
+        r: c.r + (255 - c.r) * amount,
+        g: c.g + (255 - c.g) * amount,
+        b: c.b + (255 - c.b) * amount,
+        a: c.a
+    };
+}
+
+/// Darken a color by amount (0.0 to 1.0)
+fn darken(c: Color, amount: float) -> Color {
+    return Color {
+        r: c.r * (1.0 - amount),
+        g: c.g * (1.0 - amount),
+        b: c.b * (1.0 - amount),
+        a: c.a
+    };
+}
+
+/// Blend two colors
+fn blend(a: Color, b: Color, t: float) -> Color {
+    return Color {
+        r: a.r + (b.r - a.r) * t,
+        g: a.g + (b.g - a.g) * t,
+        b: a.b + (b.b - a.b) * t,
+        a: a.a + (b.a - a.a) * t
+    };
+}
+
+/// Geometry types
+struct Point { x: float, y: float }
+struct Size { width: float, height: float }
+struct Rect { x: float, y: float, width: float, height: float }
+
+/// Drawing primitives
+extern fn draw_rect(x: int, y: int, w: int, h: int, color: Color);
+extern fn draw_rounded_rect(x: int, y: int, w: int, h: int, radius: int, color: Color);
+extern fn draw_circle(cx: int, cy: int, radius: int, color: Color);
+extern fn draw_ellipse(cx: int, cy: int, rx: int, ry: int, color: Color);
+extern fn draw_line(x1: int, y1: int, x2: int, y2: int, color: Color, width: int);
+extern fn draw_arc(cx: int, cy: int, radius: int, start: float, end: float, color: Color);
+
+/// Text rendering
+extern fn draw_text(x: int, y: int, text: string, color: Color);
+extern fn draw_text_sized(x: int, y: int, text: string, size: int, color: Color);
+extern fn measure_text(text: string, size: int) -> Size;
+
+/// Image rendering
+extern fn draw_image(x: int, y: int, path: string);
+extern fn draw_image_scaled(x: int, y: int, w: int, h: int, path: string);
+extern fn draw_image_rotated(x: int, y: int, path: string, angle: float);
+
+/// Gradients
+struct LinearGradient {
+    start: Point,
+    end: Point,
+    colors: [Color],
+    stops: [float]
+}
+
+struct RadialGradient {
+    center: Point,
+    radius: float,
+    colors: [Color],
+    stops: [float]
+}
+
+extern fn draw_linear_gradient(rect: Rect, gradient: LinearGradient);
+extern fn draw_radial_gradient(rect: Rect, gradient: RadialGradient);
+
+/// Canvas context for custom drawing
+struct Canvas {
+    width: int,
+    height: int
+}
+
+fn canvas_begin() -> Canvas;
+fn canvas_end(canvas: Canvas);
+fn canvas_clear(canvas: Canvas, color: Color);
+fn canvas_save(canvas: Canvas);
+fn canvas_restore(canvas: Canvas);
+fn canvas_translate(canvas: Canvas, x: float, y: float);
+fn canvas_rotate(canvas: Canvas, angle: float);
+fn canvas_scale(canvas: Canvas, sx: float, sy: float);
+fn canvas_clip(canvas: Canvas, rect: Rect);

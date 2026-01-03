@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS - Security Hardening</title>
+    
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    
+
+    <div class="container">
+        <h1>🔒 Security Hardening (Phase 12)</h1>
+        <p style="color: var(--text-secondary);">Kernel security, crash prevention, and system integrity.</p>
+
+        <h2>Components</h2>
+
+        <div class="card">
+            <h3>1. Security Module (<code>security.c</code>)</h3>
+            <p>Capability-based access control with audit logging.</p>
+
+            <h4 style="margin-top: 1rem; color: var(--text-primary);">Privilege Levels</h4>
+            <table>
+                <tr>
+                    <th>Level</th>
+                    <th>Value</th>
+                    <th>Description</th>
+                </tr>
+                <tr>
+                    <td>PRIV_USER</td>
+                    <td>0</td>
+                    <td>Normal user processes</td>
+                </tr>
+                <tr>
+                    <td>PRIV_ADMIN</td>
+                    <td>1</td>
+                    <td>Administrative processes</td>
+                </tr>
+                <tr>
+                    <td>PRIV_SYSTEM</td>
+                    <td>2</td>
+                    <td>System services</td>
+                </tr>
+                <tr>
+                    <td>PRIV_KERNEL</td>
+                    <td>3</td>
+                    <td>Kernel mode only</td>
+                </tr>
+            </table>
+
+            <h4 style="margin-top: 1rem; color: var(--text-primary);">Capabilities (12 flags)</h4>
+            <table>
+                <tr>
+                    <th>Capability</th>
+                    <th>Value</th>
+                    <th>Purpose</th>
+                </tr>
+                <tr>
+                    <td>CAP_SYS_ADMIN</td>
+                    <td>0x01</td>
+                    <td>System administration</td>
+                </tr>
+                <tr>
+                    <td>CAP_NET_RAW</td>
+                    <td>0x02</td>
+                    <td>Raw network access</td>
+                </tr>
+                <tr>
+                    <td>CAP_NET_BIND</td>
+                    <td>0x04</td>
+                    <td>Bind privileged ports</td>
+                </tr>
+                <tr>
+                    <td>CAP_SYS_MOUNT</td>
+                    <td>0x08</td>
+                    <td>Mount filesystems</td>
+                </tr>
+                <tr>
+                    <td>CAP_SYS_MODULE</td>
+                    <td>0x10</td>
+                    <td>Load kernel modules</td>
+                </tr>
+                <tr>
+                    <td>CAP_SYS_RAWIO</td>
+                    <td>0x20</td>
+                    <td>Direct I/O access</td>
+                </tr>
+                <tr>
+                    <td>CAP_SYS_REBOOT</td>
+                    <td>0x40</td>
+                    <td>Reboot system</td>
+                </tr>
+                <tr>
+                    <td>CAP_FILE_WRITE</td>
+                    <td>0x80</td>
+                    <td>Write system files</td>
+                </tr>
+                <tr>
+                    <td>CAP_PROC_KILL</td>
+                    <td>0x100</td>
+                    <td>Kill any process</td>
+                </tr>
+                <tr>
+                    <td>CAP_MEM_LOCK</td>
+                    <td>0x200</td>
+                    <td>Lock memory pages</td>
+                </tr>
+                <tr>
+                    <td>CAP_DEBUG</td>
+                    <td>0x400</td>
+                    <td>Debug processes</td>
+                </tr>
+                <tr>
+                    <td>CAP_AUDIT</td>
+                    <td>0x800</td>
+                    <td>Access audit logs</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="card">
+            <h3>2. Safe Memory (<code>safe_mem.c</code>)</h3>
+            <p>Bounded memory operations to prevent overflows.</p>
+
+            <pre><code>// Always use bounded copies
+int safe_memcpy(void *dst, uint64_t dst_size, const void *src, uint64_t count);
+int safe_strcpy(char *dst, uint64_t dst_size, const char *src);
+
+// Zero-initialized allocation
+void *safe_alloc(uint64_t size);
+
+// Poison-on-free (detects use-after-free)
+void safe_free(void **ptr_ptr, uint64_t size);</code></pre>
+        </div>
+
+        <div class="card">
+            <h3>3. Panic Handler (<code>panic_handler.c</code>)</h3>
+            <p>Crash recovery and debugging support.</p>
+
+            <h4 style="margin-top: 1rem; color: var(--text-primary);">Panic Types</h4>
+            <table>
+                <tr>
+                    <th>Type</th>
+                    <th>Description</th>
+                </tr>
+                <tr>
+                    <td>PANIC_ASSERT</td>
+                    <td>Assertion failure</td>
+                </tr>
+                <tr>
+                    <td>PANIC_NULL_PTR</td>
+                    <td>Null pointer dereference</td>
+                </tr>
+                <tr>
+                    <td>PANIC_STACK_OVERFLOW</td>
+                    <td>Stack overflow detected</td>
+                </tr>
+                <tr>
+                    <td>PANIC_DIV_ZERO</td>
+                    <td>Division by zero</td>
+                </tr>
+                <tr>
+                    <td>PANIC_PAGE_FAULT</td>
+                    <td>Unhandled page fault</td>
+                </tr>
+            </table>
+
+            <h4 style="margin-top: 1rem; color: var(--text-primary);">Debug Macros</h4>
+            <pre><code>ASSERT(condition);           // Panic if false
+ASSERT_NOT_NULL(ptr);        // Panic if NULL
+PANIC("message");            // Immediate panic
+SAFE_DIV(a, b);              // Safe division</code></pre>
+        </div>
+
+        <h2>Usage Example</h2>
+        <pre><code>#include &lt;core/security.h&gt;
+#include &lt;core/safe_mem.h&gt;
+#include &lt;core/panic_handler.h&gt;
+
+void secure_operation(void *user_ptr, uint64_t size) {
+    // Validate pointer
+    if (security_validate_pointer(user_ptr, size, 0) != 0) {
+        return; // Invalid pointer
+    }
+    
+    // Check capability
+    security_context_t *ctx = security_get_context();
+    if (security_check_capability(ctx, CAP_FILE_WRITE) != 0) {
+        return; // Permission denied
+    }
+    
+    // Safe buffer copy
+    char buffer[256];
+    safe_memcpy(buffer, sizeof(buffer), user_ptr, size);
+    
+    // Assert invariants
+    ASSERT(buffer[0] != 0);
+}</code></pre>
+
+        <footer
+            style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-secondary); text-align: center;">
+            NeolyxOS © 2025 KetiveeAI
+        </footer>
+    </div>
+</body>
+
+</html>

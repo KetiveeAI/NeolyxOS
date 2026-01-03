@@ -1,0 +1,39 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Storage Panel Icon - Teal gradient tile with harddrive
+
+[nxi]
+version = 1.0
+name = storage
+size = 64
+author = KetiveeAI
+category = settings
+viewbox = 0 0 64 64
+
+[canvas]
+width = 64
+height = 64
+background = transparent
+
+[colors]
+tile_start = #64D2FF
+tile_end = #32ADE6
+icon_color = #FFFFFF
+
+[gradients]
+tileGrad = linear 0,0 64,64 tile_start tile_end
+
+[shapes]
+# Rounded square tile background
+rect x=0 y=0 width=64 height=64 rx=12 fill=tileGrad
+
+# HDD body
+rect x=14 y=18 width=36 height=28 rx=4 fill=icon_color
+# Status lights
+circle center=20 y=38 radius=2 fill=tile_start
+circle center=26 y=38 radius=2 fill=tile_start
+# Disk platter indicator
+rect x=32 y=22 width=14 height=20 rx=2 fill=tile_start
+
+[style.dark]
+tile_start = #70D7FF
+tile_end = #32ADE6

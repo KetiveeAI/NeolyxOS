@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS Keyboard Layout</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --card: #161b22;
+            --border: #30363d;
+            --text: #c9d1d9;
+            --accent: #58a6ff;
+            --green: #3fb950;
+            --purple: #a371f7;
+            --orange: #d29922;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 2rem;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: var(--accent);
+        }
+
+        h2 {
+            color: var(--purple);
+            margin-top: 2rem;
+        }
+
+        pre {
+            background: var(--card);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 0.85rem;
+        }
+
+        .key {
+            display: inline-block;
+            background: var(--card);
+            border: 1px solid var(--border);
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            margin: 0.1rem;
+            min-width: 2rem;
+            text-align: center;
+        }
+
+        .key.special {
+            background: var(--purple);
+            color: #fff;
+            border-color: var(--purple);
+        }
+
+        .key.allow {
+            background: var(--green);
+            color: #000;
+            border-color: var(--green);
+        }
+
+        .key.mode {
+            background: var(--orange);
+            color: #000;
+            border-color: var(--orange);
+        }
+
+        .key.meta {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--border);
+            padding: 0.5rem;
+            text-align: left;
+        }
+
+        th {
+            background: var(--card);
+            color: var(--accent);
+        }
+
+        code {
+            background: var(--card);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+        }
+    </style>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <h1>NeolyxOS Keyboard Layout</h1>
+    <p>Modern keyboard semantics for a modern OS.</p>
+
+    <h2>Layout Diagram</h2>
+    <pre>
+┌────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────────┐
+│Esc │ S1 │ S2 │ S3 │ S4 │ S5 │ S6 │ S7 │ S8 │ S9 │S10 │S11 │S12 │ PrtSc  │
+└────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────────┘
+
+┌────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────────┐
+│ `~ │ 1  │ 2  │ 3  │ 4  │ 5  │ 6  │ 7  │ 8  │ 9  │ 0  │ -  │ =  │Backsp  │
+└────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────────┘
+
+┌──────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬──────────┐
+│ Tab  │ Q  │ W  │ E  │ R  │ T  │ Y  │ U  │ I  │ O  │ P  │ [  │ ]        │
+└──────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴──────────┘
+
+┌──────────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬──────────┐
+│<span class="mode">MODE</span>     │ A  │ S  │ D  │ F  │ G  │ H  │ J  │ K  │ L  │ ;  │  <span class="allow">ALLOW</span>   │
+└──────────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴──────────┘
+
+┌──────────┬────┬────┬────┬────┬────┬────┬────┬────┬──────────┐
+│ Shift    │ Z  │ X  │ C  │ V  │ B  │ N  │ M  │ ,  │ Shift    │
+└──────────┴────┴────┴────┴────┴────┴────┴────┴────┴──────────┘
+
+┌──────┬──────┬──────┬────────┬────────────────┬────────┬──────┬──────┐
+│ Ctrl │ Alt  │<span class="meta">⌘MOD</span> │ <span class="meta">META</span>  │     Space      │ <span class="meta">META</span>   │<span class="meta">⌘MOD</span> │ Ctrl │
+└──────┴──────┴──────┴────────┴────────────────┴────────┴──────┴──────┘
+    </pre>
+
+    <h2>Special Keys</h2>
+
+    <h3><span class="key allow">ALLOW</span> Key</h3>
+    <p>Physical Enter key with modern semantics:</p>
+    <ul>
+        <li><strong>Dialogs:</strong> Allow / Deny choices</li>
+        <li><strong>Installers:</strong> Allow installation</li>
+        <li><strong>Permissions:</strong> Allow access</li>
+        <li><strong>Commands:</strong> Confirm action</li>
+    </ul>
+    <p>Internal mapping: <code>KEY_ALLOW = KEY_ENTER</code> (legacy compatible)</p>
+
+    <h3><span class="key mode">MODE</span> Key</h3>
+    <p>Caps Lock position, system modifier layer:</p>
+    <ul>
+        <li>Activates system shortcuts</li>
+        <li>Changes keyboard to system layer</li>
+        <li><code>KEY_FLAG_MODE</code> modifier</li>
+    </ul>
+
+    <h3><span class="key meta">META / ⌘MOD</span> Keys</h3>
+    <ul>
+        <li><strong>META:</strong> NeolyxOS launcher</li>
+        <li><strong>⌘MOD:</strong> Command-like modifier for shortcuts</li>
+    </ul>
+
+    <h2>Media Keys (Shift + S1-S12)</h2>
+    <table>
+        <tr>
+            <th>Key</th>
+            <th>Function</th>
+            <th>Code</th>
+        </tr>
+        <tr>
+            <td>Shift+S1</td>
+            <td>Play/Pause</td>
+            <td><code>KEY_MEDIA_PLAY</code></td>
+        </tr>
+        <tr>
+            <td>Shift+S2</td>
+            <td>Stop</td>
+            <td><code>KEY_MEDIA_STOP</code></td>
+        </tr>
+        <tr>
+            <td>Shift+S3</td>
+            <td>Previous Track</td>
+            <td><code>KEY_MEDIA_PREV</code></td>
+        </tr>
+        <tr>
+            <td>Shift+S4</td>
+            <td>Next Track</td>
+            <td><code>KEY_MEDIA_NEXT</code></td>
+        </tr>
+        <tr>
+            <td>Shift+S5</td>
+            <td>Mute</td>
+            <td><code>KEY_MEDIA_MUTE</code></td>
+        </tr>
+        <tr>
+            <td>Shift+S6</td>
+            <td>Volume Down</td>
+            <td><code>KEY_MEDIA_VOL_DOWN</code></td>
+        </tr>
+        <tr>
+            <td>Shift+S7</td>
+            <td>Volume Up</td>
+            <td><code>KEY_MEDIA_VOL_UP</code></td>
+        </tr>
+        <tr>
+            <td>Shift+S8</td>
+            <td>Brightness Down</td>
+            <td><code>KEY_MEDIA_BRIGHTNESS_DOWN</code></td>
+        </tr>
+        <tr>
+            <td>Shift+S9</td>
+            <td>Brightness Up</td>
+            <td><code>KEY_MEDIA_BRIGHTNESS_UP</code></td>
+        </tr>
+        <tr>
+            <td>Shift+S10</td>
+            <td>Display Switch</td>
+            <td><code>KEY_MEDIA_DISPLAY</code></td>
+        </tr>
+        <tr>
+            <td>Shift+S11</td>
+            <td>WiFi Toggle</td>
+            <td><code>KEY_MEDIA_WIFI</code></td>
+        </tr>
+        <tr>
+            <td>Shift+S12</td>
+            <td>Airplane Mode</td>
+            <td><code>KEY_MEDIA_AIRPLANE</code></td>
+        </tr>
+    </table>
+
+    <h2>API Usage</h2>
+    <pre><code>// Check if user pressed ALLOW
+if (keyboard_is_allow(key)) {
+    confirm_action();
+}
+
+// Check MODE modifier
+uint16_t mods = keyboard_get_modifiers();
+if (keyboard_mode_active(mods)) {
+    handle_system_shortcut(key);
+}
+
+// Convert Shift+Fn to media key
+uint8_t media = keyboard_fn_to_media(scancode, shift_held);
+if (media) {
+    handle_media_key(media);
+}</code></pre>
+
+    <h2>Modifier Flags</h2>
+    <table>
+        <tr>
+            <th>Flag</th>
+            <th>Value</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>KEY_FLAG_SHIFT</code></td>
+            <td>0x0100</td>
+            <td>Shift held</td>
+        </tr>
+        <tr>
+            <td><code>KEY_FLAG_CTRL</code></td>
+            <td>0x0200</td>
+            <td>Ctrl held</td>
+        </tr>
+        <tr>
+            <td><code>KEY_FLAG_ALT</code></td>
+            <td>0x0400</td>
+            <td>Alt held</td>
+        </tr>
+        <tr>
+            <td><code>KEY_FLAG_MODE</code></td>
+            <td>0x1000</td>
+            <td>MODE key held</td>
+        </tr>
+        <tr>
+            <td><code>KEY_FLAG_META</code></td>
+            <td>0x2000</td>
+            <td>META key held</td>
+        </tr>
+        <tr>
+            <td><code>KEY_FLAG_MOD</code></td>
+            <td>0x4000</td>
+            <td>MOD key held</td>
+        </tr>
+    </table>
+
+    <p style="margin-top: 2rem; color: #8b949e;">© 2025 KetiveeAI</p>
+</body>
+
+</html>

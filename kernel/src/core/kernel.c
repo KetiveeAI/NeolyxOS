@@ -1,0 +1,1 @@
+// Removed duplicate kernel_main implementation.

@@ -1,0 +1,61 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Public Folder Icon - with globe emblem
+
+[nxi]
+version = 1.0
+name = public
+size = 32
+author = KetiveeAI
+category = directory
+viewbox = 0 0 32 32
+
+[canvas]
+width = 32
+height = 32
+background = transparent
+
+[colors]
+shadow = #000000
+folder_base = #F2D6C9
+folder_dark = #DDAE98
+globe = #DDAE98
+
+[paths]
+# Shadow layer
+shadow = M0,4 L0,26 L30,26 L30,6 L15,6 L13,4 Z
+
+# Back folder tab
+back_tab = M0,5 L0,27 L31,27 L31,7 L16,7 L14,5 Z
+
+# Front folder body
+front = M0,8 L0,28 L32,28 L32,10 L18,10 L16,8 Z
+
+# Globe circle
+globe_circle = M16,17 a6,6 0 1,0 0.01,0
+
+# Globe horizontal line
+horiz = M10,17 L22,17
+
+# Globe vertical curve
+vert = M16,11 Q14,17 16,23
+
+# Globe arc
+arc = M12,13 Q16,15 20,13
+
+[style]
+shadow.fill = shadow
+shadow.opacity = 0.3
+back_tab.fill = folder_base
+front.fill = folder_base
+globe_circle.stroke = globe
+globe_circle.stroke-width = 1.5
+globe_circle.fill = none
+horiz.stroke = globe
+vert.stroke = globe
+vert.fill = none
+arc.stroke = globe
+arc.fill = none
+
+[style.dark]
+folder_base = #C4A99E
+globe = #B8988A

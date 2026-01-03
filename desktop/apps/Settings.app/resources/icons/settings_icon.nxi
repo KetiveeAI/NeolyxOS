@@ -1,0 +1,49 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# Settings.app Icon  
+# Gear/cog with teeth and center hole
+
+[nxi]
+version = 1.0
+name = settings
+size = 40
+author = KetiveeAI
+category = app
+viewbox = 0 0 40 40
+
+[canvas]
+width = 40
+height = 40
+background = transparent
+
+[colors]
+outer_top = #486083
+outer_mid = #9D93A8
+outer_bottom = #634A81
+inner_gear = #59577C
+ring = #9B8CC1
+
+[gradients]
+outer = linear 0,0 0,40 outer_top outer_mid outer_bottom
+inner = linear 0,11 0,29 inner_gear outer_mid
+
+[paths]
+# Outer gear shape (with teeth)
+outer_gear = M20,0 L22,1 L24,4 L27,5 L30,4 L32,6 L30,8 L31,11 L35,12 L36,16 L32,18 L32,22 L36,24 L35,28 L31,29 L30,32 L32,34 L30,36 L27,35 L24,36 L22,39 L20,40 L18,39 L16,36 L13,35 L10,36 L8,34 L10,32 L9,29 L5,28 L4,24 L8,22 L8,18 L4,16 L5,12 L9,11 L10,8 L8,6 L10,4 L13,5 L16,4 L18,1 Z
+
+# Inner gear (smaller, offset)
+inner_ring = M10,20 A10,10 0 1,1 30,20 A10,10 0 1,1 10,20 Z
+
+# Center hole
+center = M17,20 A3,3 0 1,1 23,20 A3,3 0 1,1 17,20 Z
+
+[style]
+outer_gear.fill = outer
+inner_ring.fill = inner
+inner_ring.stroke = ring
+inner_ring.stroke-width = 1.5
+center.fill = transparent
+
+[style.dark]
+outer_top = #3A4A63
+outer_mid = #7D7388
+outer_bottom = #4A3A61

@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neolyx Terminal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .terminal-window {
+            background: #1a1a1a;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border: 1px solid #333;
+            width: 100%;
+            max-width: 1200px;
+            height: 700px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .terminal-window.maximized {
+            max-width: 100%;
+            height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(to right, #2a2a2a, #1f1f1f);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #333;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .window-btn {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .window-btn.close { background: #ff5f56; }
+        .window-btn.minimize { background: #ffbd2e; }
+        .window-btn.maximize { background: #27c93f; }
+
+        .window-btn:hover {
+            filter: brightness(1.2);
+            transform: scale(1.1);
+        }
+
+        .terminal-icon {
+            width: 20px;
+            height: 20px;
+            color: #60a5fa;
+        }
+
+        .header-title {
+            color: #d1d5db;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .header-right {
+            display: flex;
+            gap: 8px;
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            padding: 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: #9ca3af;
+            transition: all 0.2s;
+        }
+
+        .icon-btn:hover {
+            background: #374151;
+        }
+
+        /* Menu */
+        .menu-dropdown {
+            position: absolute;
+            top: 60px;
+            right: 16px;
+            background: #2a2a2a;
+            border: 1px solid #404040;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            z-index: 20;
+            min-width: 220px;
+            display: none;
+        }
+
+        .menu-dropdown.show {
+            display: block;
+        }
+
+        .menu-item {
+            padding: 12px 16px;
+            color: #d1d5db;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.2s;
+        }
+
+        .menu-item:hover {
+            background: #374151;
+        }
+
+        .menu-divider {
+            border-top: 1px solid #404040;
+            margin: 4px 0;
+        }
+
+        /* Settings Modal */
+        .modal-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 30;
+            padding: 16px;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .settings-panel {
+            background: #2a2a2a;
+            border-radius: 12px;
+            border: 1px solid #404040;
+            width: 100%;
+            max-width: 700px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+        }
+
+        .settings-header {
+            padding: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #404040;
+        }
+
+        .settings-title {
+            color: #e5e7eb;
+            font-size: 20px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .settings-content {
+            padding: 24px;
+        }
+
+        .settings-section {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            color: #d1d5db;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            color: #9ca3af;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .form-input, .form-select {
+            width: 100%;
+            background: #2a2a2a;
+            border: 1px solid #404040;
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: #e5e7eb;
+            font-size: 14px;
+            transition: border 0.2s;
+        }
+
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: #60a5fa;
+        }
+
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        .theme-btn {
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #404040;
+            background: #2a2a2a;
+            color: #d1d5db;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .theme-btn.active {
+            background: #2563eb;
+            border-color: #3b82f6;
+            color: white;
+        }
+
+        .theme-btn:hover:not(.active) {
+            background: #374151;
+        }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .slider {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 6px;
+            border-radius: 3px;
+            background: #404040;
+            outline: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #60a5fa;
+            cursor: pointer;
+        }
+
+        .slider-value {
+            color: #9ca3af;
+            font-size: 14px;
+            min-width: 40px;
+        }
+
+        .btn-primary {
+            padding: 10px 24px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-primary:hover {
+            background: #1d4ed8;
+        }
+
+        /* Tabs */
+        .tabs-bar {
+            background: #2a2a2a;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-bottom: 1px solid #333;
+            overflow-x: auto;
+        }
+
+        .tab {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #9ca3af;
+            font-size: 14px;
+            background: #374151;
+        }
+
+        .tab.active {
+            background: #1a1a1a;
+            color: #60a5fa;
+            border-top: 2px solid #60a5fa;
+        }
+
+        .tab:not(.active):hover {
+            background: #4b5563;
+        }
+
+        .tab-close {
+            background: none;
+            border: none;
+            color: inherit;
+            cursor: pointer;
+            padding: 2px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .tab-close:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .add-tab-btn {
+            background: none;
+            border: none;
+            padding: 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: #9ca3af;
+            transition: background 0.2s;
+            margin-left: 8px;
+        }
+
+        .add-tab-btn:hover {
+            background: #374151;
+        }
+
+        /* Terminal */
+        .terminal-content {
+            flex: 1;
+            background: #1a1a1a;
+            padding: 16px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            color: #22c55e;
+            cursor: text;
+        }
+
+        .terminal-content.theme-matrix {
+            background: #000;
+            color: #00ff00;
+        }
+
+        .terminal-content.theme-ocean {
+            background: #0f172a;
+            color: #22d3ee;
+        }
+
+        .terminal-content.theme-sunset {
+            background: #431407;
+            color: #fdba74;
+        }
+
+        .terminal-line {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .terminal-input-line {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .terminal-prompt {
+            color: #60a5fa;
+            font-weight: 600;
+        }
+
+        .terminal-prompt.theme-matrix {
+            color: #4ade80;
+        }
+
+        .terminal-prompt.theme-ocean {
+            color: #7dd3fc;
+        }
+
+        .terminal-prompt.theme-sunset {
+            color: #fb923c;
+        }
+
+        .terminal-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: inherit;
+            font-family: inherit;
+            font-size: inherit;
+        }
+
+        /* Status Bar */
+        .status-bar {
+            background: #2a2a2a;
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-top: 1px solid #333;
+            font-size: 12px;
+            color: #9ca3af;
+        }
+
+        .status-left, .status-right {
+            display: flex;
+            gap: 16px;
+        }
+
+        /* Icons */
+        .icon {
+            width: 16px;
+            height: 16px;
+            display: inline-block;
+        }
+
+        .icon-lg {
+            width: 20px;
+            height: 20px;
+        }
+    </style>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+<body>
+    <div class="terminal-window" id="terminalWindow">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <div class="window-controls">
+                    <button class="window-btn close" onclick="toggleMenu()"></button>
+                    <button class="window-btn minimize" onclick="minimizeWindow()"></button>
+                    <button class="window-btn maximize" onclick="maximizeWindow()"></button>
+                </div>
+                <svg class="terminal-icon icon-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                </svg>
+                <span class="header-title">Neolyx Terminal</span>
+            </div>
+            <div class="header-right">
+                <button class="icon-btn" onclick="showSettings()">
+                    <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                </button>
+                <button class="icon-btn" onclick="toggleMenu()">
+                    <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Menu -->
+        <div class="menu-dropdown" id="menuDropdown">
+            <div class="menu-item" onclick="addTab()">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                </svg>
+                New Tab
+            </div>
+            <div class="menu-item" onclick="showSettings()">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                </svg>
+                Settings
+            </div>
+            <div class="menu-divider"></div>
+            <div class="menu-item">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                About Neolyx
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div class="modal-overlay" id="settingsModal">
+            <div class="settings-panel">
+                <div class="settings-header">
+                    <div class="settings-title">
+                        <svg class="icon-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                        </svg>
+                        Terminal Settings
+                    </div>
+                    <button class="icon-btn" onclick="hideSettings()">
+                        <svg class="icon-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div class="settings-content">
+                    <!-- User Configuration -->
+                    <div class="settings-section">
+                        <div class="section-title">
+                            <svg class="icon-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                            </svg>
+                            User Configuration
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-input" id="usernameInput" value="user" onchange="updateSettings()">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Hostname</label>
+                            <input type="text" class="form-input" id="hostnameInput" value="neolyx" onchange="updateSettings()">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Prompt Symbol</label>
+                            <select class="form-select" id="promptSymbol" onchange="updateSettings()">
+                                <option value="#"># (Root)</option>
+                                <option value="$">$ (User)</option>
+                                <option value=">">></option>
+                                <option value="❯">❯ (Modern)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Appearance -->
+                    <div class="settings-section">
+                        <div class="section-title">
+                            <svg class="icon-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"></path>
+                            </svg>
+                            Appearance
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Theme</label>
+                            <div class="theme-grid">
+                                <button class="theme-btn active" data-theme="cyber" onclick="setTheme('cyber')">Cyber</button>
+                                <button class="theme-btn" data-theme="matrix" onclick="setTheme('matrix')">Matrix</button>
+                                <button class="theme-btn" data-theme="ocean" onclick="setTheme('ocean')">Ocean</button>
+                                <button class="theme-btn" data-theme="sunset" onclick="setTheme('sunset')">Sunset</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Font Size: <span id="fontSizeValue">14</span>px</label>
+                            <div class="slider-group">
+                                <input type="range" class="slider" min="10" max="20" value="14" id="fontSizeSlider" oninput="updateFontSize()">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end;">
+                        <button class="btn-primary" onclick="hideSettings()">Done</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs-bar" id="tabsBar">
+            <div class="tab active" data-tab-id="1" onclick="switchTab(1)">
+                <span>Terminal 1</span>
+                <button class="tab-close" onclick="closeTab(event, 1)">✕</button>
+            </div>
+            <button class="add-tab-btn" onclick="addTab()">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Terminal Content -->
+        <div class="terminal-content" id="terminalContent" onclick="focusInput()">
+            <div class="terminal-line">Welcome to Neolyx Terminal v1.0</div>
+            <div class="terminal-line"></div>
+            <div class="terminal-input-line">
+                <span class="terminal-prompt" id="terminalPrompt">user@neolyx #</span>
+                <input type="text" class="terminal-input" id="terminalInput" autofocus>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-left">
+                <span>neolyx-sh</span>
+                <span id="statusUser">user@neolyx</span>
+                <span>Terminal 1</span>
+            </div>
+            <div class="status-right">
+                <span id="statusTheme">cyber</span>
+                <span id="statusTime"></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let tabs = [{ id: 1, title: 'Terminal 1', history: ['Welcome to Neolyx Terminal v1.0', ''] }];
+        let activeTabId = 1;
+        let nextTabId = 2;
+        let username = 'user';
+        let hostname = 'neolyx';
+        let promptSymbol = '#';
+        let fontSize = 14;
+        let theme = 'cyber';
+        let isRoot = false;
+
+        // Initialize
+        document.getElementById('terminalInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                handleCommand(this.value);
+                this.value = '';
+            }
+        });
+
+        function updateTime() {
+            document.getElementById('statusTime').textContent = new Date().toLocaleTimeString();
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        // Commands
+        function handleCommand(cmd) {
+            const trimmedCmd = cmd.trim().toLowerCase();
+            let response = '';
+
+            if (trimmedCmd === 'help') {
+                response = 'Available commands:\n  help - Show this help\n  clear - Clear terminal\n  date - Show current date\n  echo <text> - Echo text\n  neofetch - System info\n  whoami - Display current user\n  hostname - Display hostname\n  su - Switch to root user\n  exit - Exit root mode\n  ls - List files\n  pwd - Print working directory\n  mkdir <name> - Create directory\n  touch <file> - Create file\n  rm <file> - Remove file\n  cat <file> - Display file content\n  sudo <cmd> - Run command as root';
+            } else if (trimmedCmd === 'clear') {
+                clearTerminal();
+                return;
+            } else if (trimmedCmd === 'date') {
+                response = new Date().toString();
+            } else if (trimmedCmd.startsWith('echo ')) {
+                response = cmd.substring(5);
+            } else if (trimmedCmd === 'whoami') {
+                response = isRoot ? 'root' : username;
+            } else if (trimmedCmd === 'hostname') {
+                response = hostname;
+            } else if (trimmedCmd === 'su') {
+                if (!isRoot) {
+                    isRoot = true;
+                    username = 'root';
+                    promptSymbol = '#';
+                    response = 'Switched to root user.\nWarning: You now have full system privileges!';
+                    updatePrompt();
+                } else {
+                    response = 'Already in root mode.';
+                }
+            } else if (trimmedCmd === 'exit') {
+                if (isRoot) {
+                    isRoot = false;
+                    username = document.getElementById('usernameInput').value || 'user';
+                    promptSymbol = document.getElementById('promptSymbol').value;
+                    response = 'Exited root mode.';
+                    updatePrompt();
+                } else {
+                    response = 'Not in root mode.';
+                }
+            } else if (trimmedCmd === 'pwd') {
+                response = isRoot ? '/root' : `/home/${username}`;
+            } else if (trimmedCmd === 'ls') {
+                response = isRoot ? 
+                    'Desktop  Documents  Downloads  Pictures  Videos  system  kernel' :
+                    'Desktop  Documents  Downloads  Pictures  Videos  Music';
+            } else if (trimmedCmd.startsWith('mkdir ')) {
+                const dirName = cmd.substring(6).trim();
+                if (dirName) {
+                    response = `Directory '${dirName}' created.`;
+                } else {
+                    response = 'Usage: mkdir <directory_name>';
+                }
+            } else if (trimmedCmd.startsWith('touch ')) {
+                const fileName = cmd.substring(6).trim();
+                if (fileName) {
+                    response = `File '${fileName}' created.`;
+                } else {
+                    response = 'Usage: touch <filename>';
+                }
+            } else if (trimmedCmd.startsWith('rm ')) {
+                const fileName = cmd.substring(3).trim();
+                if (fileName) {
+                    if (isRoot || fileName !== 'system') {
+                        response = `Removed '${fileName}'`;
+                    } else {
+                        response = `rm: cannot remove '${fileName}': Permission denied\nTry using 'sudo' or 'su' for root access`;
+                    }
+                } else {
+                    response = 'Usage: rm <filename>';
+                }
+            } else if (trimmedCmd.startsWith('cat ')) {
+                const fileName = cmd.substring(4).trim();
+                if (fileName) {
+                    if (fileName === 'welcome.txt') {
+                        response = 'Welcome to Neolyx Terminal!\nA modern, feature-rich terminal emulator.';
+                    } else if (fileName === 'info.txt' && isRoot) {
+                        response = 'System Information:\nKernel: Neolyx 5.0\nArchitecture: x86_64\nRoot Access: Enabled';
+                    } else {
+                        response = `cat: ${fileName}: No such file or directory`;
+                    }
+                } else {
+                    response = 'Usage: cat <filename>';
+                }
+            } else if (trimmedCmd.startsWith('sudo ')) {
+                const sudoCmd = cmd.substring(5).trim();
+                if (sudoCmd) {
+                    response = `[sudo] password for ${username}: ********\nExecuting '${sudoCmd}' with root privileges...`;
+                    if (sudoCmd.startsWith('rm ')) {
+                        const target = sudoCmd.substring(3).trim();
+                        response += `\nRemoved '${target}' with sudo privileges.`;
+                    }
+                } else {
+                    response = 'Usage: sudo <command>';
+                }
+            } else if (trimmedCmd === 'neofetch') {
+                response = `╔══════════════════════════════╗
+║      NEOLYX TERMINAL        ║
+╠══════════════════════════════╣
+║ User: ${(isRoot ? 'root' : username).padEnd(23)}║
+║ Host: ${hostname.padEnd(23)}║
+║ OS: Web Terminal v1.0       ║
+║ Shell: neolyx-sh            ║
+║ Theme: ${theme.padEnd(22)}║
+║ Root: ${(isRoot ? 'Yes' : 'No').padEnd(23)}║
+║ Uptime: ${new Date().toLocaleTimeString().padEnd(19)}║
+╚══════════════════════════════╝`;
+            } else if (trimmedCmd) {
+                response = `Command not found: ${cmd}\nType 'help' for available commands`;
+            }
+
+            addToHistory(`${isRoot ? 'root' : username}@${hostname} ${promptSymbol} ${cmd}`, response);
+        }
+
+        function addToHistory(command, response) {
+            const tab = tabs.find(t => t.id === activeTabId);
+            tab.history.push(command, response, '');
+            renderTerminal();
+        }
+
+        function clearTerminal() {
+            const tab = tabs.find(t => t.id === activeTabId);
+            tab.history = [''];
+            renderTerminal();
+        }
+
+        function renderTerminal() {
+            const tab = tabs.find(t => t.id === activeTabId);
+            const content = document.getElementById('terminalContent');
+            const lines = tab.history.map(line => `<div class="terminal-line">${line}</div>`).join('');
+            
+            const currentUser = isRoot ? 'root' : username;
+            const currentPrompt = isRoot ? '#' : promptSymbol;
+            
+            content.innerHTML = lines + `
+                <div class="terminal-input-line">
+                    <span class="terminal-prompt theme-${theme}" id="terminalPrompt">${currentUser}@${hostname} ${currentPrompt}</span>
+                    <input type="text" class="terminal-input" id="terminalInput" autofocus>
+                </div>
+            `;
+
+            document.getElementById('terminalInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    handleCommand(this.value);
+                    this.value = '';
+                }
+            });
+
+            content.scrollTop = content.scrollHeight;
+            focusInput();
+        }
+
+        function updatePrompt() {
+            document.getElementById('statusUser').textContent = `${isRoot ? 'root' : username}@${hostname}`;
+            renderTerminal();
+        }
+
+        // Tabs
+        function addTab() {
+            const newTab = { id: nextTabId, title: `Terminal ${nextTabId}`, history: ['Welcome to Neolyx Terminal v1.0', ''] };
+            tabs.push(newTab);
+            
+            const tabsBar = document.getElementById('tabsBar');
+            const addBtn = tabsBar.querySelector('.add-tab-btn');
+            const newTabEl = document.createElement('div');
+            newTabEl.className = 'tab';
+            newTabEl.setAttribute('data-tab-id', nextTabId);
+            newTabEl.onclick = () => switchTab(nextTabId);
+            newTabEl.innerHTML = `
+                <span>Terminal ${nextTabId}</span>
+                <button class="tab-close" onclick="closeTab(event, ${nextTabId})">✕</button>
+            `;
+            tabsBar.insertBefore(newTabEl, addBtn);
+            
+            switchTab(nextTabId);
+            nextTabId++;
+            toggleMenu();
+        }
+
+        function closeTab(event, tabId) {
+            event.stopPropagation();
+            if (tabs.length === 1) return;
+            
+            tabs = tabs.filter(t => t.id !== tabId);
+            document.querySelector(`[data-tab-id="${tabId}"]`).remove();
+            
+            if (activeTabId === tabId) {
+                switchTab(tabs[0].id);
+            }
+        }
+
+        function switchTab(tabId) {
+            activeTabId = tabId;
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.toggle('active', tab.getAttribute('data-tab-id') == tabId);
+            });
+            renderTerminal();
+        }
+
+        // Window controls
+        function toggleMenu() {
+            const menu = document.getElementById('menuDropdown');
+            menu.classList.toggle('show');
+        }
+
+        function minimizeWindow() {
+            document.getElementById('terminalWindow').classList.remove('maximized');
+        }
+
+        function maximizeWindow() {
+            document.getElementById('terminalWindow').classList.toggle('maximized');
+        }
+
+        // Settings
+        function showSettings() {
+            document.getElementById('settingsModal').classList.add('show');
+            toggleMenu();
+        }
+
+        function hideSettings() {
+            document.getElementById('settingsModal').classList.remove('show');
+        }
+
+        function updateSettings() {
+            username = document.getElementById('usernameInput').value || 'user';
+            hostname = document.getElementById('hostnameInput').value || 'neolyx';
+            promptSymbol = document.getElementById('promptSymbol').value;
+            
+            document.getElementById('statusUser').textContent = `${username}@${hostname}`;
+            renderTerminal();
+        }
+
+        function setTheme(newTheme) {
+            theme = newTheme;
+            document.getElementById('statusTheme').textContent = theme;
+            
+            document.querySelectorAll('.theme-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-theme') === theme);
+            });
+            
+            const content = document.getElementById('terminalContent');
+            content.className = `terminal-content theme-${theme}`;
+            renderTerminal();
+        }
+
+        function updateFontSize() {
+            fontSize = document.getElementById('fontSizeSlider').value;
+            document.getElementById('fontSizeValue').textContent = fontSize;
+            document.getElementById('terminalContent').style.fontSize = fontSize + 'px';
+        }
+
+        function focusInput() {
+            const input = document.getElementById('terminalInput');
+            if (input) input.focus();
+        }
+
+        // Close menu when clicking outside
+        document.addEventListener('click', function(e) {
+            const menu = document.getElementById('menuDropdown');
+            if (!e.target.closest('.icon-btn') && !e.target.closest('.menu-dropdown')) {
+                menu.classList.remove('show');
+            }
+        });
+    </script>
+</body>
+</html>

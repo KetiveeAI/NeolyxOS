@@ -1,0 +1,15 @@
+# RoleCut Built-in LUTs
+# Cinema-grade color grading presets
+
+# Film Emulation
+TITLE "Cinematic Teal Orange"
+LUT_3D_SIZE 17
+
+# (Truncated for brevity - actual .cube file would have full LUT data)
+# This is a placeholder structure
+
+# Color values: warm shadows, cool highlights
+0.0 0.0 0.0
+0.06 0.04 0.02
+0.12 0.10 0.08
+# ... (full 17^3 = 4913 entries in real file)

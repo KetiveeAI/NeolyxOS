@@ -1,0 +1,36 @@
+# NeolyxOS Application Manifest
+# Clock.app
+
+[Application]
+Name = Clock
+Version = 1.0.0
+Author = KetiveeAI
+Description = Full-screen clock with NTP time sync
+
+[Runtime]
+Binary = clock
+Type = GUI
+Category = Utilities
+
+[Permissions]
+Network = true
+Background = true
+
+[NTP]
+Server = in.pool.ntp.org
+Fallback = time.google.com
+Port = 123
+SyncInterval = 300
+Timezone = IST
+
+[StartupBehavior]
+AutoStart = false
+ShowInDock = true
+DockPosition = 5
+
+[Icon]
+Path = resources/icons/clock.nxi
+
+[Legal]
+Copyright = Copyright (c) 2025 KetiveeAI
+License = Proprietary

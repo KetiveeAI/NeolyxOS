@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Scanner - NeolyxOS</title>
+    
+    <script src="../assets/navbar.js"></script>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+    </script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    
+
+    <div class="container">
+        <h1>🔍 Security Scanner</h1>
+        <p>A proactive threat detection system that verifies file sources, scans downloads, and protects the system from
+            malicious software.</p>
+
+        <span class="badge badge-new">NEW in Phase 16</span>
+        <span class="badge badge-success">Implemented</span>
+
+        <h2>Scan Workflow</h2>
+        <div class="mermaid-container">
+            <pre class="mermaid">
+flowchart TD
+    A[File Access Request] --> B{Source Detection}
+    
+    B -- /System/ --> C[Trusted (System)]
+    B -- /AppStore/ --> D[Verified (Store)]
+    B -- /Downloads/ --> E[Untrusted (Web)]
+    B -- /USB/ --> F[Unknown (External)]
+    
+    C --> G[Allow Execution]
+    D --> G
+    
+    E --> H{Scan Required}
+    F --> I[Quarantine]
+    
+    H -- Clean --> J[Show Warning]
+    H -- Infection --> K[Block & Log]
+    
+    J -- User Approves --> G
+    J -- User Denies --> L[Abort]
+    
+    I --> M[Sandboxed Analysis]
+            </pre>
+        </div>
+
+        <h2>Features</h2>
+        <div class="card">
+            <h3>🛡️ Protection Capabilities</h3>
+            <ul>
+                <li><strong>Source Verification:</strong> Automatically detects if a file is from System, AppStore, Web,
+                    or External media.</li>
+                <li><strong>Download Protection:</strong> Forces scanning for all files downloaded from the internet.
+                </li>
+                <li><strong>Quarantine:</strong> Moves suspicious or external files to a safe isolation area
+                    (`/System/Quarantine`).</li>
+                <li><strong>Signature Matching:</strong> Scans files against a database of known threat signatures
+                    (SHA-256).</li>
+                <li><strong>Desktop Alerts:</strong> Integrated callback system to show native desktop warnings for
+                    risky actions.</li>
+            </ul>
+        </div>
+
+        <h2>API Reference</h2>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Function</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>scanner_scan_file(path)</code></td>
+                    <td>Scan a specific file for threats. Returns scan result.</td>
+                </tr>
+                <tr>
+                    <td><code>scanner_detect_source(path)</code></td>
+                    <td>Identify file origin (System, AppStore, Download, etc).</td>
+                </tr>
+                <tr>
+                    <td><code>scanner_quarantine(path)</code></td>
+                    <td>Move a file to the secure quarantine area.</td>
+                </tr>
+                <tr>
+                    <td><code>scanner_set_warning_callback(cb)</code></td>
+                    <td>Register a function to receive desktop alert events.</td>
+                </tr>
+                <tr>
+                    <td><code>scanner_verify_signature(path, hash)</code></td>
+                    <td>Cryptographically verify file integrity against expected hash.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>Source Types</h2>
+        <table>
+            <tr>
+                <th>Type</th>
+                <th>ID</th>
+                <th>Policy</th>
+            </tr>
+            <tr>
+                <td>FILE_SOURCE_SYSTEM</td>
+                <td>0</td>
+                <td><span style="color:var(--success)">Trusted</span> - No scanning required</td>
+            </tr>
+            <tr>
+                <td>FILE_SOURCE_APPSTORE</td>
+                <td>1</td>
+                <td><span style="color:var(--success)">Verified</span> - Signed by Neolyx</td>
+            </tr>
+            <tr>
+                <td>FILE_SOURCE_THIRDPARTY</td>
+                <td>2</td>
+                <td><span style="color:var(--warning)">Warning</span> - Ask user confirmation</td>
+            </tr>
+            <tr>
+                <td>FILE_SOURCE_DOWNLOADED</td>
+                <td>3</td>
+                <td><span style="color:var(--warning)">Scan Required</span> - Must scan before open</td>
+            </tr>
+            <tr>
+                <td>FILE_SOURCE_EXTERNAL</td>
+                <td>4</td>
+                <td><span style="color:var(--danger)">Quarantine</span> - Sandboxed execution</td>
+            </tr>
+        </table>
+
+    </div>
+</body>
+
+</html>

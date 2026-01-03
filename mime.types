@@ -1,0 +1,229 @@
+# Neolyx OS MIME Types Configuration
+# Copyright (c) 2024 KetiveeAI and its branches. Licensed under the KetiveeAI License.
+
+# =============================================================================
+# CORE SYSTEM EXTENSIONS
+# =============================================================================
+
+# Kernel and Boot
+application/x-neolyx-kernel                    nlk
+application/x-neolyx-bootloader                nlb
+application/x-neolyx-driver                    nld
+application/x-neolyx-config                    nlc
+
+# System Executables
+application/x-neolyx-terminal                  nxt
+application/x-neolyx-package                   npa
+application/x-neolyx-system-manager            nsm
+application/x-neolyx-virtual-machine           nvm
+application/x-neolyx-file-system               nfs
+application/x-neolyx-network-tool              nnt
+application/x-neolyx-security-checker          nsc
+application/x-neolyx-log-manager               nlg
+
+# =============================================================================
+# APPLICATION EXTENSIONS
+# =============================================================================
+
+# Development Tools
+text/x-neolyx-rust                             nrs
+text/x-neolyx-c                                ncc
+text/x-neolyx-python                           npy
+text/x-neolyx-javascript                       njs
+text/x-neolyx-typescript                       nts
+text/x-neolyx-shell                            nsh
+text/x-neolyx-makefile                         nmk
+text/x-neolyx-cmake                            ncm
+
+# Documentation
+text/x-neolyx-markdown                         nmd
+text/x-neolyx-html                             nht
+text/x-neolyx-css                              ncs
+application/x-neolyx-json                      njs
+text/x-neolyx-yaml                             nml
+text/x-neolyx-plain                            ntx
+text/x-neolyx-log                              nlg
+text/x-neolyx-readme                           nrd
+
+# Configuration Files
+application/x-neolyx-config                    ncf
+application/x-neolyx-configuration             ncn
+application/x-neolyx-settings                  nst
+application/x-neolyx-profile                   npr
+application/x-neolyx-environment               nenv
+text/x-neolyx-ini                              nini
+text/x-neolyx-toml                             ntoml
+application/x-neolyx-json-config               njson
+
+# =============================================================================
+# MEDIA AND GRAPHICS EXTENSIONS
+# =============================================================================
+
+# Custom Icon Format
+image/x-neolyx-icon                            nix nix16 nix32 nix64 nix128 nix256
+
+# Graphics and Images
+image/x-neolyx-vector                          nvg
+image/x-neolyx-bitmap                          nbm
+image/x-neolyx-raster                          nrg
+model/x-neolyx-3d                              n3d
+image/x-neolyx-animation                       nan
+image/x-neolyx-effects                         nfx
+
+# Audio and Video
+audio/x-neolyx                                 naud
+video/x-neolyx                                 nvid
+text/x-neolyx-subtitle                         nsub
+application/x-neolyx-playlist                  npl
+application/x-neolyx-stream                    nst
+
+# =============================================================================
+# VIRTUALIZATION EXTENSIONS
+# =============================================================================
+
+# Virtual Machine Formats
+application/x-neolyx-vm                        nvm
+application/x-neolyx-vdisk                     nvd
+application/x-neolyx-vsnapshot                 nvs
+application/x-neolyx-vconfig                   nvc
+application/x-neolyx-vtemplate                 nvt
+
+# Container Formats
+application/x-neolyx-container                 nct
+application/x-neolyx-container-image           nci
+application/x-neolyx-container-registry        ncr
+application/x-neolyx-container-package         ncp
+
+# =============================================================================
+# NETWORK AND SECURITY EXTENSIONS
+# =============================================================================
+
+# Network Configuration
+application/x-neolyx-network                   nnet
+application/x-neolyx-firewall                  nfw
+application/x-neolyx-vpn                       nvpn
+application/x-neolyx-ssl                       nssl
+application/x-neolyx-key                       nkey
+application/x-neolyx-certificate               ncert
+
+# Security
+application/x-neolyx-security                  nsec
+application/x-neolyx-encrypted                 nenc
+application/x-neolyx-hash                      nhash
+application/x-neolyx-signature                 nsig
+application/x-neolyx-authentication            nauth
+
+# =============================================================================
+# ARCHIVE AND COMPRESSION EXTENSIONS
+# =============================================================================
+
+# Archives
+application/x-neolyx-archive                   nar
+application/x-neolyx-zip                       nzip
+application/x-neolyx-tar                       ntar
+application/x-neolyx-gzip                      ngz
+application/x-neolyx-bzip2                     nbz2
+application/x-neolyx-7z                        n7z
+
+# Backups
+application/x-neolyx-backup                    nbk
+application/x-neolyx-restore                   nrs
+application/x-neolyx-snapshot                  nsn
+application/x-neolyx-clone                     ncl
+
+# =============================================================================
+# DATABASE AND STORAGE EXTENSIONS
+# =============================================================================
+
+# Databases
+application/x-neolyx-database                  ndb
+application/x-neolyx-sql                       nsql
+application/x-neolyx-nosql                     nnosql
+application/x-neolyx-index                     nidx
+application/x-neolyx-blob                      nblob
+
+# Storage
+application/x-neolyx-storage                   nst
+application/x-neolyx-volume                    nvol
+application/x-neolyx-partition                 npart
+application/x-neolyx-filesystem                nfs
+
+# =============================================================================
+# STANDARD FORMATS (for compatibility)
+# =============================================================================
+
+# Standard image formats
+image/svg+xml                                  svg
+image/png                                      png
+image/jpeg                                     jpg jpeg
+image/gif                                      gif
+image/bmp                                      bmp
+image/x-icon                                   ico
+image/webp                                     webp
+
+# Application formats
+application/x-executable                       exe
+application/x-msdownload                       msi
+application/x-rar-compressed                   rar
+application/x-7z-compressed                    7z
+application/zip                                zip
+application/x-tar                              tar
+application/gzip                               gz
+application/x-bzip2                            bz2
+
+# Document formats
+text/plain                                     txt
+text/markdown                                  md markdown
+application/pdf                                pdf
+application/msword                             doc
+application/vnd.openxmlformats-officedocument.wordprocessingml.document docx
+application/vnd.ms-excel                       xls
+application/vnd.openxmlformats-officedocument.spreadsheetml.sheet xlsx
+application/vnd.ms-powerpoint                  ppt
+application/vnd.openxmlformats-officedocument.presentationml.presentation pptx
+
+# Code formats
+text/x-c                                       c
+text/x-c++src                                  cpp cc cxx
+text/x-java-source                             java
+text/x-python                                  py
+text/x-rust                                    rs
+text/x-javascript                              js
+text/x-typescript                              ts
+text/x-html                                    html htm
+text/css                                       css
+text/xml                                       xml
+application/json                               json
+text/x-yaml                                    yaml yml
+text/x-toml                                    toml
+text/x-ini                                     ini cfg conf
+
+# Archive formats
+application/x-iso9660-image                    iso
+application/x-dmg                              dmg
+application/x-apple-diskimage                  dmg
+
+# Media formats
+video/mp4                                      mp4
+video/x-msvideo                                avi
+video/x-matroska                               mkv
+video/quicktime                                mov
+audio/mpeg                                     mp3
+audio/wav                                      wav
+audio/flac                                     flac
+audio/ogg                                      ogg
+
+# Virtual machine formats
+application/x-qemu-disk                        qcow2 qcow qed
+application/x-vmware-disk                      vmdk
+application/x-virtualbox-disk                  vdi
+application/x-hyperv-disk                      vhdx
+
+# =============================================================================
+# LEGACY NEOLYX FORMATS (for backward compatibility)
+# =============================================================================
+
+# Legacy Neolyx specific formats
+application/x-neolyx-kernel                    nlk
+application/x-neolyx-driver                    nld
+application/x-neolyx-config                    nlc 

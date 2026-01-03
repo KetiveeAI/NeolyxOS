@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Display Advanced API - NeolyxOS</title>
+    
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="nav">
+        <a href="index.html" class="btn">← Driver Index</a>
+        <a href="nxtouch_api.html" class="btn">NXTouch</a>
+        <a href="nxbacklight_api.html" class="btn">NXBacklight</a>
+        <a href="nxdisplay_advanced_api.html" class="btn active">Display Advanced</a>
+        <a href="settings_drivers_api.html" class="btn">Settings API</a>
+    </div>
+
+    <h1>NXDisplay Advanced API</h1>
+    <p><strong>DDC/CI monitor control, Adaptive Refresh, Gaming Mode, Night Light</strong></p>
+
+    <h2>Features Overview</h2>
+    <table>
+        <tr>
+            <th>Feature</th>
+            <th>Purpose</th>
+        </tr>
+        <tr>
+            <td>DDC/CI</td>
+            <td>Control external monitor OSD (brightness, contrast)</td>
+        </tr>
+        <tr>
+            <td>Night Light</td>
+            <td>Blue light filter (software gamma)</td>
+        </tr>
+        <tr>
+            <td>Adaptive Refresh</td>
+            <td>Power-saving dynamic Hz</td>
+        </tr>
+        <tr>
+            <td>Gaming Mode</td>
+            <td>VRR + HDR + low latency</td>
+        </tr>
+    </table>
+
+    <h2>DDC/CI Monitor Control</h2>
+    <p>Control external monitor hardware settings via I2C:</p>
+    <pre><code>#include "drivers/nxdisplay_kdrv.h"
+
+// Check if monitor supports DDC/CI
+if (nxdisplay_kdrv_ddc_supported(0)) {
+    // Get hardware brightness
+    int brightness = nxdisplay_kdrv_ddc_get_brightness(0);
+    
+    // Set brightness (0-100)
+    nxdisplay_kdrv_ddc_set_brightness(0, 70);
+    
+    // Set contrast
+    nxdisplay_kdrv_ddc_set_contrast(0, 50);
+    
+    // Switch input source
+    nxdisplay_kdrv_ddc_set_input(0, NXDDC_INPUT_HDMI1);
+}</code></pre>
+
+    <h3>DDC/CI Commands</h3>
+    <table>
+        <tr>
+            <th>Function</th>
+            <th>VCP Code</th>
+        </tr>
+        <tr>
+            <td>Brightness</td>
+            <td>0x10</td>
+        </tr>
+        <tr>
+            <td>Contrast</td>
+            <td>0x12</td>
+        </tr>
+        <tr>
+            <td>Color Temperature</td>
+            <td>0x14</td>
+        </tr>
+        <tr>
+            <td>Input Source</td>
+            <td>0x60</td>
+        </tr>
+    </table>
+
+    <h2>Night Light (Blue Light Filter)</h2>
+    <pre><code>// Enable with color temperature (Kelvin)
+nxdisplay_kdrv_night_enable(0, 3400);  // Warm (evening)
+nxdisplay_kdrv_night_enable(0, 4500);  // Moderate
+nxdisplay_kdrv_night_enable(0, 6500);  // Off (daylight)
+
+// Disable
+nxdisplay_kdrv_night_disable(0);
+
+// Check status
+if (nxdisplay_kdrv_night_active(0)) {
+    int kelvin = nxdisplay_kdrv_night_get_temperature(0);
+}</code></pre>
+
+    <h2>Adaptive Refresh Rate</h2>
+    <p>Dynamic Hz based on workload (laptop power saving):</p>
+    <pre><code>// Set mode
+nxdisplay_kdrv_adaptive_set_mode(0, NXADAPT_BALANCED);
+
+// Modes:
+// NXADAPT_OFF         - Fixed Hz
+// NXADAPT_POWER_SAVE  - Aggressive (30-60Hz idle)
+// NXADAPT_BALANCED    - Moderate (60Hz default)
+// NXADAPT_PERFORMANCE - High Hz priority</code></pre>
+
+    <h3>Workload → Refresh Rate</h3>
+    <table>
+        <tr>
+            <th>Workload</th>
+            <th>Target Hz</th>
+        </tr>
+        <tr>
+            <td>Idle</td>
+            <td>30 Hz</td>
+        </tr>
+        <tr>
+            <td>Browsing</td>
+            <td>60 Hz</td>
+        </tr>
+        <tr>
+            <td>Video</td>
+            <td>60 Hz (match content)</td>
+        </tr>
+        <tr>
+            <td>Productivity</td>
+            <td>90 Hz</td>
+        </tr>
+        <tr>
+            <td>Gaming</td>
+            <td>Max (144/165/240)</td>
+        </tr>
+    </table>
+
+    <h2>Gaming Mode</h2>
+    <p>One-click optimization for games:</p>
+    <pre><code>nxgame_config_t config = {
+    .mode = NXGAME_MODE_ON,
+    .vrr_enabled = 1,        // Variable Refresh Rate
+    .hdr_enabled = 1,        // HDR
+    .low_latency = 1,        // Reduce input lag
+    .disable_compositor = 1, // Bypass compositing
+    .target_hz = 0,          // Max available
+    .vrr_min_hz = 48         // VRR minimum
+};
+
+nxdisplay_kdrv_game_mode_enable(0, &amp;config);
+
+// Register games for auto-detection
+nxdisplay_kdrv_game_register("steam.exe");
+nxdisplay_kdrv_game_register("game.app");</code></pre>
+
+    <h2>High Refresh Rate Support</h2>
+    <div class="card">
+        <p><strong class="highlight">No artificial cap</strong> - supports EDID-reported rates:</p>
+        <table>
+            <tr>
+                <td>60Hz</td>
+                <td>✓</td>
+                <td>120Hz</td>
+                <td>✓</td>
+            </tr>
+            <tr>
+                <td>144Hz</td>
+                <td>✓</td>
+                <td>165Hz</td>
+                <td>✓</td>
+            </tr>
+            <tr>
+                <td>240Hz</td>
+                <td>✓</td>
+                <td>360Hz</td>
+                <td>✓</td>
+            </tr>
+            <tr>
+                <td>500Hz</td>
+                <td>✓</td>
+                <td>600Hz+</td>
+                <td>✓</td>
+            </tr>
+        </table>
+    </div>
+
+    <pre><code>// Get max refresh rate
+nxdisplay_caps_t caps;
+nxdisplay_kdrv_get_caps(0, &amp;caps);
+printf("Max: %d Hz\n", caps.max_refresh_hz);
+
+// Set refresh rate
+nxdisplay_kdrv_set_refresh(0, 165);</code></pre>
+
+    <h2>Header Location</h2>
+    <p><code>kernel/include/drivers/nxdisplay_kdrv.h</code></p>
+
+    <p style="margin-top: 2rem; color: #8b949e;">© 2025 KetiveeAI</p>
+</body>
+
+</html>

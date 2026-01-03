@@ -1,0 +1,26 @@
+# Simple Bootloader Makefile - 64-bit UEFI (MSYS2 MinGW-w64)
+CC = C:/msys64/mingw64/bin/gcc.exe
+LD = C:/msys64/mingw64/bin/ld.exe
+
+# UEFI specific flags
+CFLAGS = -m64 -march=x86-64 -mtune=generic -nostdlib -nostdinc -fno-builtin -fno-stack-protector -nostartfiles -nodefaultlibs -Wall -Wextra -c -O2 -I./inc -I../include -I./gnu-efi-3.0.18/inc
+LDFLAGS = -melf_x86_64 -T gnu-efi-3.0.18/gnuefi/elf_x86_64_efi.lds -static
+
+# Simple bootloader object files
+SIMPLE_OBJS = main_simple.o efilib.o
+
+all: BOOTX64_SIMPLE.EFI
+
+BOOTX64_SIMPLE.EFI: $(SIMPLE_OBJS)
+	$(LD) $(LDFLAGS) -o BOOTX64_SIMPLE.EFI $(SIMPLE_OBJS)
+
+main_simple.o: main_simple.c
+	$(CC) $(CFLAGS) main_simple.c -o main_simple.o
+
+efilib.o: efilib.c
+	$(CC) $(CFLAGS) efilib.c -o efilib.o
+
+clean:
+	rm -f *.o *.EFI
+
+.PHONY: all clean 

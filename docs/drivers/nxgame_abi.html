@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NXGame ABI v1.0 - Frozen Specification</title>
+    
+    <script src="../assets/navbar.js"></script>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    
+
+    <div class="container">
+        <h1>NXGame ABI v1.0 <span class="frozen-badge">FROZEN</span></h1>
+        <p style="color: var(--text-secondary);">Permanently frozen. Engines can rely on backward compatibility.</p>
+
+        <div class="warning">
+            <h4>⚠️ ABI Stability Contract</h4>
+            <p>Syscall numbers, struct layouts, and capability flags are <strong>permanently frozen</strong>. Breaking
+                changes require new major version.</p>
+        </div>
+
+        <h2>Frozen Syscall Numbers (110–119)</h2>
+        <div class="card">
+            <table>
+                <tr>
+                    <th>Number</th>
+                    <th>Name</th>
+                    <th>Description</th>
+                </tr>
+                <tr>
+                    <td><code>110</code></td>
+                    <td>SYS_NXGAME_SESSION_CREATE</td>
+                    <td>Create exclusive session</td>
+                </tr>
+                <tr>
+                    <td><code>111</code></td>
+                    <td>SYS_NXGAME_SESSION_DESTROY</td>
+                    <td>Destroy session</td>
+                </tr>
+                <tr>
+                    <td><code>112</code></td>
+                    <td>SYS_NXGAME_SESSION_START</td>
+                    <td>Start session</td>
+                </tr>
+                <tr>
+                    <td><code>113</code></td>
+                    <td>SYS_NXGAME_SESSION_STOP</td>
+                    <td>Stop session</td>
+                </tr>
+                <tr>
+                    <td><code>114</code></td>
+                    <td>SYS_NXGAME_GPU_ACQUIRE</td>
+                    <td>Request exclusive GPU</td>
+                </tr>
+                <tr>
+                    <td><code>115</code></td>
+                    <td>SYS_NXGAME_GPU_RELEASE</td>
+                    <td>Release GPU</td>
+                </tr>
+                <tr>
+                    <td><code>116</code></td>
+                    <td>SYS_NXGAME_GPU_PRESENT</td>
+                    <td>Flip buffers</td>
+                </tr>
+                <tr>
+                    <td><code>117</code></td>
+                    <td>SYS_NXGAME_AUDIO_SUBMIT</td>
+                    <td>Submit audio</td>
+                </tr>
+                <tr>
+                    <td><code>118</code></td>
+                    <td>SYS_NXGAME_INPUT_POLL</td>
+                    <td>Poll input</td>
+                </tr>
+                <tr>
+                    <td><code>119</code></td>
+                    <td>SYS_NXGAME_QUERY_CAPS</td>
+                    <td>Query capabilities</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>Platform Capability Flags</h2>
+        <div class="card">
+            <table>
+                <tr>
+                    <th>Flag</th>
+                    <th>Value</th>
+                    <th>Meaning</th>
+                </tr>
+                <tr>
+                    <td><code>NXGAME_PLAT_CAP_VSYNC</code></td>
+                    <td>0x0001</td>
+                    <td>VSync supported</td>
+                </tr>
+                <tr>
+                    <td><code>NXGAME_PLAT_CAP_EXCLUSIVE</code></td>
+                    <td>0x0002</td>
+                    <td>Exclusive mode</td>
+                </tr>
+                <tr>
+                    <td><code>NXGAME_PLAT_CAP_AUDIO_LL</code></td>
+                    <td>0x0004</td>
+                    <td>Low-latency audio</td>
+                </tr>
+                <tr>
+                    <td><code>NXGAME_PLAT_CAP_INPUT_RAW</code></td>
+                    <td>0x0008</td>
+                    <td>Raw input polling</td>
+                </tr>
+                <tr>
+                    <td><code>NXGAME_PLAT_CAP_GAMEPAD</code></td>
+                    <td>0x0010</td>
+                    <td>Gamepad support</td>
+                </tr>
+                <tr>
+                    <td><code>NXGAME_PLAT_CAP_DOUBLE_BUFFER</code></td>
+                    <td>0x0020</td>
+                    <td>Double buffering</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>Usage Example</h2>
+        <div class="card">
+            <pre><code>nxgame_caps_t caps;
+nxgame_query_caps(&caps);
+
+if (caps.platform_caps & NXGAME_PLAT_CAP_EXCLUSIVE) {
+    // Use exclusive mode
+}
+
+nxgame_session_t* session = nxgame_session_create(
+    NXGAME_SESSION_GAME,
+    NXGAME_CAP_GPU | NXGAME_CAP_AUDIO | NXGAME_CAP_INPUT,
+    NULL
+);
+nxgame_session_start(session);
+// ... game loop ...
+nxgame_session_destroy(session);</code></pre>
+        </div>
+
+        <footer
+            style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-secondary); text-align: center;">
+            NeolyxOS © 2025 KetiveeAI | NXGame ABI v1.0 Frozen
+        </footer>
+    </div>
+</body>
+
+</html>
