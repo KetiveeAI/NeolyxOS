@@ -156,15 +156,15 @@
 <body>
     <div class="container">
         <h1>📊 NeolyxOS Project Status</h1>
-        <p><strong>Last Updated:</strong> January 1, 2026</p>
+        <p><strong>Last Updated:</strong> January 21, 2026</p>
 
         <div class="grid">
             <div class="stat-card">
-                <h3 style="color: var(--success);">42</h3>
+                <h3 style="color: var(--success);">43</h3>
                 <p>Complete Modules</p>
             </div>
             <div class="stat-card">
-                <h3 style="color: var(--partial);">5</h3>
+                <h3 style="color: var(--partial);">6</h3>
                 <p>Partial</p>
             </div>
             <div class="stat-card">
@@ -172,7 +172,7 @@
                 <p>Stubs Only</p>
             </div>
             <div class="stat-card">
-                <h3 style="color: var(--error);">3</h3>
+                <h3 style="color: var(--error);">5</h3>
                 <p>Missing</p>
             </div>
         </div>
@@ -264,8 +264,8 @@
             <tr>
                 <td>installer.c</td>
                 <td>18KB</td>
-                <td class="status-complete">✓ Complete</td>
-                <td>OS installer</td>
+                <td class="status-partial">◐ Partial</td>
+                <td>OS installer (UI Simulation)</td>
             </tr>
             <tr>
                 <td>recovery.c</td>
@@ -755,21 +755,104 @@
         <table>
             <tr>
                 <th>Component</th>
+                <th>Priority</th>
                 <th>Notes</th>
             </tr>
             <tr>
-                <td><code>kernel/src/network/network.c</code></td>
-                <td>Stub only (7 lines) - "Not implemented yet"</td>
+                <td><code>System Updater Backend</code></td>
+                <td class="status-missing">✗ Critical</td>
+                <td>Settings.app UI exists, no backend service for updates</td>
             </tr>
             <tr>
-                <td>AMD Zen CPU optimizations</td>
-                <td>All zen_*.c files are stubs (~300B each)</td>
+                <td><code>Health Monitor Daemon</code></td>
+                <td class="status-missing">✗ High</td>
+                <td>Kernel watchdog exists, no userspace health daemon</td>
             </tr>
             <tr>
-                <td>GPU acceleration</td>
+                <td><code>Volume/Keyboard OSD</code></td>
+                <td class="status-missing">✗ Medium</td>
+                <td>No on-screen display for volume changes or keyboard shortcuts</td>
+            </tr>
+            <tr>
+                <td><code>AMD Zen CPU optimizations</code></td>
+                <td class="status-stub">○ Stubs</td>
+                <td>zen_*.c files are stubs (~300B each)</td>
+            </tr>
+            <tr>
+                <td><code>GPU acceleration</code></td>
+                <td class="status-partial">◐ Partial</td>
                 <td>nxgfx_kdrv is framebuffer only, no 3D</td>
             </tr>
         </table>
+
+        <h2>🛡️ Kernel Stability Components (for Windows-level stability)</h2>
+        <table>
+            <tr>
+                <th>Component</th>
+                <th>File</th>
+                <th>Status</th>
+                <th>Notes</th>
+            </tr>
+            <tr>
+                <td>Watchdog</td>
+                <td>watchdog.c (194 lines)</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Monitors scheduler/services, 5s timeout, fault routing</td>
+            </tr>
+            <tr>
+                <td>Panic Handler</td>
+                <td>panic_handler.c (209 lines)</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Stack guards, crash recovery, state dump</td>
+            </tr>
+            <tr>
+                <td>Boot Guard</td>
+                <td>boot_guard.c (10KB)</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Failure tracking, max 3 failures before recovery</td>
+            </tr>
+            <tr>
+                <td>Fault Router</td>
+                <td>fault_router.c (12KB)</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Routes faults to appropriate handlers</td>
+            </tr>
+            <tr>
+                <td>Session Manager</td>
+                <td>session_manager.c (14KB)</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Desktop crash ≠ System crash isolation</td>
+            </tr>
+            <tr>
+                <td>Memory Manager</td>
+                <td>pmm.c (395 lines)</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Bitmap allocator, RAM distribution</td>
+            </tr>
+            <tr>
+                <td>Safe Memory</td>
+                <td>safe_mem.c (4KB)</td>
+                <td class="status-complete">✓ Complete</td>
+                <td>Bounded memcpy, poison on free</td>
+            </tr>
+            <tr>
+                <td>SMP Support</td>
+                <td>-</td>
+                <td class="status-missing">✗ Missing</td>
+                <td>Single-core only, needs multi-core for true stability</td>
+            </tr>
+        </table>
+
+        <h2>📊 Required for Windows/macOS-level Stability</h2>
+        <div class="summary-box">
+            <ul>
+                <li><strong>SMP (Multi-Core):</strong> Required for load distribution - <span class="status-missing">✗ NOT IMPLEMENTED</span></li>
+                <li><strong>ACPI Full Support:</strong> For proper power management - <span class="status-partial">◐ Partial</span></li>
+                <li><strong>Memory Pressure Handling:</strong> OOM killer, swap - <span class="status-stub">○ Stub</span></li>
+                <li><strong>Watchdog Daemon:</strong> Userspace health monitoring - <span class="status-missing">✗ MISSING</span></li>
+                <li><strong>Crash Reporting:</strong> Upload crash logs for debugging - <span class="status-missing">✗ MISSING</span></li>
+            </ul>
+        </div>
 
         <h2>📋 Summary by Phase</h2>
         <div class="summary-box">
@@ -786,8 +869,8 @@
                 <li><strong>Phase 8-10:</strong> Network Stack - <span class="status-partial">◐ 80% Complete</span>
                     (tcpip done, socket API needed)</li>
                 <li><strong>Phase 11:</strong> ARM64 Support - <span class="status-complete">✓ 100% Complete</span></li>
-                <li><strong>Phase 12:</strong> GUI/Desktop - <span class="status-complete">✓ 100% Complete</span>
-                    (Userspace shell running, WM/Dock active)</li>
+                <li><strong>Phase 12:</strong> GUI/Desktop - <span class="status-partial">◐ 70% Complete</span>
+                    (Userspace shell running, rendering gaps in OSD)</li>
                 <li><strong>Phase 13:</strong> Storage Integration - <span class="status-complete">✓ 100%
                         Complete</span></li>
                 <li><strong>Phase 14:</strong> Userspace Support - <span class="status-complete">✓ 100% Complete</span>
@@ -829,7 +912,7 @@
 
         <hr>
         <p style="color: var(--text-secondary);">
-            NeolyxOS &copy; 2025 KetiveeAI | Last Updated: December 20, 2025
+            NeolyxOS &copy; 2025-2026 KetiveeAI | Last Updated: January 21, 2026
         </p>
     </div>
 </body>

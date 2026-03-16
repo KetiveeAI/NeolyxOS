@@ -1,0 +1,75 @@
+# NeolyxOS Theme Configuration (.nlc)
+# Visual appearance settings - colors, dimensions, animations
+# Located at: /System/Config/theme.nlc
+#
+# Copyright (c) 2025-2026 KetiveeAI
+
+[colors]
+# Primary accent color (buttons, highlights, selections)
+accent = "0x007AFF"
+accent_hover = "0x0A84FF"
+# Glass morphism overlay backgrounds
+glass_bg = "0xE0303050"
+glass_border = "0x40FFFFFF"
+# Navigation bar
+navbar_bg = "0xFF101018"
+# Dock
+dock_bg = "0xC0202030"
+dock_border = "0x40FFFFFF"
+# Text colors
+text = "0xFFFFFFFF"
+text_dim = "0xFFA1A1AA"
+text_disabled = "0xFF6B6B70"
+# Surfaces (cards, panels, dialogs)
+surface = "0xFF2C2C2E"
+surface_elevated = "0xFF3A3A3C"
+# Borders
+border = "0xFF52525B"
+border_subtle = "0xFF38383A"
+# Status colors
+success = "0xFF22C55E"
+warning = "0xFFFBBF24"
+error = "0xFFEF4444"
+info = "0xFF3B82F6"
+
+[ui]
+# Scale factor (1.0 = 100%, 1.25 = 125%, etc.)
+scale = "1.0"
+# Navigation bar height (base, before scaling)
+navbar_height = "28"
+# Dock dimensions
+dock_height = "64"
+dock_icon_size = "48"
+dock_margin = "15"
+# Corner radii
+widget_radius = "12"
+button_radius = "8"
+card_radius = "16"
+# Window title bar
+titlebar_height = "28"
+# Shadows
+shadow_blur = "16"
+shadow_offset_y = "4"
+shadow_opacity = "80"
+
+[animation]
+# Enable/disable all animations
+enabled = "true"
+# Speed preset: "slow", "normal", "fast"
+speed = "normal"
+# Specific animation durations (ms)
+fade_duration = "200"
+slide_duration = "300"
+bounce_duration = "400"
+# Minimize effect: "scale", "genie", "none"
+minimize_effect = "scale"
+
+[performance]
+# Target frame rate
+target_fps = "60"
+# Use VSync
+vsync = "true"
+# Static layer caching
+static_cache = "true"
+# Reduce motion for accessibility
+reduce_motion = "false"

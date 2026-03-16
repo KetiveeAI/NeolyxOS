@@ -1,0 +1,448 @@
+# IconLay Enhancement Requirements for NeolyxOS
+
+## Project Context
+You are working on **IconLay**, a native icon compositor and effects application for NeolyxOS. The application is written in **C** (NOT TypeScript/web technologies) and uses:
+- **Reox** - The NeolyxOS UI framework (written in C)
+- **nxcrender** - The custom 2D/SVG rendering engine for NeolyxOS
+
+## Current Architecture
+```
+IconLay (C Application)
+├── Reox UI Framework (C)
+├── nxcrender (SVG/2D Rendering Engine)
+└── .nxi Format Handler
+```
+
+## Required Enhancements
+
+### 1. Core Rendering Engine Improvements (nxcrender)
+
+#### SVG Rendering System Overhaul
+**Current Issues:**
+- Basic SVG parsing and rendering
+- Limited effect support
+- Performance bottlenecks with complex compositions
+
+**Required Improvements:**
+```c
+// Enhance nxcrender with:
+- Full SVG 1.1 specification support
+- Hardware-accelerated rendering pipeline
+- Advanced filter effects (feGaussianBlur, feColorMatrix, feBlend, etc.)
+- Layer compositing with blend modes (Screen, Multiply, Overlay, Add, etc.)
+- Efficient caching system for rendered layers
+- Multi-threaded rendering for layer stacks
+```
+
+**Implementation Priorities:**
+1. SVG path rendering optimization
+2. Filter chain processing
+3. Blend mode operations
+4. Real-time preview performance
+5. Memory management for large layer stacks
+
+---
+
+### 2. Modern Material Effects System
+
+Implement these **essential visual effects** in C using nxcrender:
+
+#### A. Glass Effect (Glassmorphism)
+```c
+typedef struct {
+    float blur_radius;      // Background blur amount (0-50)
+    float opacity;          // Glass opacity (0.0-1.0)
+    float refraction;       // Light refraction intensity
+    vec4 tint_color;        // Glass tint (RGBA)
+    float border_opacity;   // Border/edge visibility
+} GlassEffect;
+
+// Rendering pipeline:
+// 1. Render layers below to offscreen buffer
+// 2. Apply gaussian blur to buffer
+// 3. Composite with transparency and tint
+// 4. Add subtle specular highlights
+// 5. Apply border/edge glow
+```
+
+#### B. Frosted Glass Effect
+```c
+typedef struct {
+    float frost_intensity;  // Frost pattern strength (0-100)
+    float blur_radius;      // Background blur (0-30)
+    float grain_size;       // Noise/grain detail
+    float opacity;          // Overall opacity
+    vec4 frost_color;       // Frost tint color
+} FrostEffect;
+
+// Rendering approach:
+// 1. Apply procedural noise pattern
+// 2. Gaussian blur background
+// 3. Overlay frost texture
+// 4. Color grading and tint
+```
+
+#### C. Tilt-Shift Effect
+```c
+typedef struct {
+    vec2 focus_point;       // Center of sharp focus (x, y)
+    float focus_radius;     // Sharp region size
+    float blur_strength;    // Out-of-focus blur amount
+    float falloff;          // Gradient falloff rate
+    float angle;            // Tilt angle (0-360°)
+} TiltShiftEffect;
+
+// Implementation:
+// 1. Create depth/distance map from focus point
+// 2. Apply variable gaussian blur based on distance
+// 3. Handle elliptical/angled focus regions
+// 4. Optimize for real-time preview
+```
+
+#### D. Orb/Sphere Effect
+```c
+typedef struct {
+    vec3 light_position;    // 3D light source position
+    float specularity;      // Specular highlight strength
+    float metalness;        // Metallic surface property
+    float roughness;        // Surface roughness (0=smooth, 1=rough)
+    vec4 base_color;        // Surface base color
+    float ambient_occlusion; // Cavity darkening
+} OrbEffect;
+
+// Rendering technique:
+// 1. Calculate surface normals for sphere geometry
+// 2. Implement Phong/PBR lighting model
+// 3. Generate specular highlights
+// 4. Add ambient occlusion in crevices
+// 5. Apply environmental reflections
+```
+
+#### E. Additional Modern Effects
+```c
+// 1. Gradient Mesh
+// 2. Inner/Outer Glow (customizable)
+// 3. Drop Shadow (soft, realistic)
+// 4. Depth of Field blur
+// 5. Chromatic Aberration
+// 6. Light Rays/God Rays
+// 7. Caustics (light through water/glass)
+// 8. Iridescence/Holographic
+```
+
+---
+
+### 3. Enhanced UI Design (Reox Framework)
+
+#### Modern Button System
+```c
+// Replace basic buttons with modern, attractive design
+typedef struct {
+    ButtonStyle style;      // Primary, Secondary, Accent, Ghost
+    ButtonState state;      // Normal, Hover, Pressed, Disabled
+    
+    // Visual properties
+    vec4 bg_color;
+    vec4 hover_color;
+    vec4 pressed_color;
+    float corner_radius;
+    float border_width;
+    vec4 border_color;
+    
+    // Effects
+    bool has_shadow;
+    Shadow shadow;
+    bool has_glow;
+    Glow glow;
+    
+    // Animation
+    float transition_duration; // Smooth state transitions
+    EasingCurve easing;
+} ModernButton;
+
+// Implement hover effects:
+- Smooth color transitions (200-300ms)
+- Subtle scale transform on hover (1.0 -> 1.02)
+- Shadow elevation change
+- Glow effect on focus
+- Ripple animation on click
+```
+
+#### Enhanced Control Widgets
+```c
+// Sliders with better visual feedback
+typedef struct {
+    float value;
+    float min_value;
+    float max_value;
+    
+    // Visual style
+    float track_height;
+    vec4 track_color;
+    vec4 active_track_color;
+    
+    // Thumb (handle)
+    float thumb_size;
+    vec4 thumb_color;
+    bool thumb_has_shadow;
+    
+    // Interaction
+    bool show_value_tooltip; // Display value while dragging
+    bool snap_to_grid;       // Snap to specific values
+    float snap_increment;
+} ModernSlider;
+
+// Layer item cards
+- Add subtle elevation shadows
+- Smooth expand/collapse animations
+- Drag-and-drop reordering
+- Visual feedback for selection
+- Thumbnail previews with proper rendering
+```
+
+---
+
+### 4. Performance Optimizations
+
+```c
+// Implement efficient rendering pipeline:
+
+// 1. Layer caching system
+typedef struct {
+    uint32_t layer_id;
+    Texture cached_texture;
+    bool is_dirty;          // Needs re-render
+    uint64_t last_modified;
+} LayerCache;
+
+// 2. Progressive rendering
+// - Render low-res preview first
+// - Progressively increase quality
+// - Cancel in-progress renders on parameter change
+
+// 3. Multi-threaded layer composition
+// - Separate thread for each layer rendering
+// - Parallel filter processing
+// - Lock-free composition queue
+
+// 4. GPU acceleration
+// - OpenGL/Metal compute shaders for effects
+// - Hardware-accelerated blur operations
+// - Efficient texture management
+```
+
+---
+
+### 5. SVG Import/Export Enhancements
+
+```c
+// Improve SVG handling in nxcrender:
+
+// Parser improvements:
+- Full support for SVG groups (<g>)
+- Transform matrices (translate, rotate, scale, skew)
+- Gradient definitions (linear, radial)
+- Pattern fills
+- Clipping paths and masks
+- Text rendering (with font support)
+
+// Layer preservation:
+- Maintain layer hierarchy from imported SVG
+- Preserve blend modes if specified
+- Extract and apply existing filters
+- Handle viewBox and coordinate systems correctly
+
+// Export capabilities:
+- Export composition as layered SVG
+- Embed effect parameters as metadata
+- Support for .nxi format with full fidelity
+```
+
+---
+
+### 6. Modern UI Layout Improvements
+
+```c
+// Reox UI enhancements:
+
+// 1. Better panel system
+- Collapsible sections with smooth animations
+- Resizable panels with splitters
+- Tabbed interface for different effect categories
+- Floating/detachable panels
+
+// 2. Color scheme
+- Implement proper dark mode (not just black)
+- Use zinc-900/950 style grays
+- Accent colors for interactive elements
+- Proper contrast ratios (WCAG AA)
+
+// 3. Typography
+- Clear hierarchy (headings, labels, values)
+- Monospace for numerical values
+- Proper font weights (400, 500, 600)
+- Adequate line heights and spacing
+
+// 4. Icons and visual feedback
+- Modern icon set (line style, consistent weight)
+- Loading spinners and progress indicators
+- Success/error states
+- Tooltips with helpful information
+```
+
+---
+
+## Implementation Priority
+
+### Phase 1: Foundation (Week 1-2)
+1. ✓ nxcrender SVG rendering improvements
+2. ✓ Basic effect framework implementation
+3. ✓ Layer caching system
+
+### Phase 2: Core Effects (Week 3-4)
+1. ✓ Glass effect implementation
+2. ✓ Frosted glass effect
+3. ✓ Orb/sphere effect
+4. ✓ Tilt-shift effect
+
+### Phase 3: UI/UX (Week 5-6)
+1. ✓ Modern button system in Reox
+2. ✓ Enhanced sliders and controls
+3. ✓ Layer panel improvements
+4. ✓ Overall layout refinements
+
+### Phase 4: Polish & Performance (Week 7-8)
+1. ✓ GPU acceleration for effects
+2. ✓ Multi-threaded rendering
+3. ✓ Animation polish
+4. ✓ Memory optimization
+
+---
+
+## Code Quality Requirements
+
+```c
+// Follow these standards:
+
+// 1. Memory management
+- Always free allocated resources
+- Use RAII-style patterns where possible
+- Avoid memory leaks (use Valgrind for testing)
+
+// 2. Error handling
+- Check all allocation results
+- Proper error propagation
+- Graceful degradation
+
+// 3. Performance
+- Profile hot paths (gprof, perf)
+- Minimize allocations in render loop
+- Use SIMD where beneficial (SSE, AVX)
+
+// 4. Code style
+- Clear function names
+- Comprehensive comments for complex algorithms
+- Consistent formatting
+- Modular, reusable components
+```
+
+---
+
+## Testing Requirements
+
+```c
+// Required test coverage:
+
+// 1. Unit tests
+- Individual effect algorithms
+- SVG parsing edge cases
+- Blend mode correctness
+- Color space conversions
+
+// 2. Integration tests
+- Multi-layer composition
+- Import/export fidelity
+- UI interaction flows
+
+// 3. Performance benchmarks
+- Render time for various layer counts
+- Memory usage profiles
+- GPU utilization metrics
+
+// 4. Visual regression tests
+- Compare output with reference images
+- Ensure consistent rendering across systems
+```
+
+---
+
+## Technical Specifications
+
+### Supported Input Formats
+- SVG 1.1 (full spec)
+- PNG (8-bit, 16-bit, with alpha)
+- JPEG (optional, for photo layers)
+
+### Output Format (.nxi)
+```c
+typedef struct {
+    uint32_t magic;         // 'NXIC'
+    uint16_t version;       // Format version
+    uint16_t layer_count;
+    
+    // Embedded size variants
+    IconSize sizes[7];      // 16, 32, 64, 128, 256, 512, 1024
+    
+    // Effect parameters (serialized)
+    uint32_t effect_count;
+    EffectData effects[];
+    
+    // Layer data
+    LayerData layers[];
+} NXIFormat;
+```
+
+### Performance Targets
+- Real-time preview at 60 FPS (for up to 10 layers)
+- Export time < 2 seconds for 1024px icon
+- Memory usage < 500MB for typical project
+- Startup time < 1 second
+
+---
+
+## Questions to Address
+
+Before implementation, clarify:
+
+1. **GPU API**: Does NeolyxOS use OpenGL, Metal, Vulkan, or custom graphics API?
+2. **Font System**: How are fonts handled in Reox? Need custom text rendering?
+3. **File System**: Any specific APIs for file I/O in NeolyxOS?
+4. **Threading**: POSIX threads or custom threading library?
+5. **Build System**: CMake, Make, or custom build tools?
+6. **Dependencies**: Are external libraries (like libxml2, cairo) available or should everything be custom?
+
+---
+
+## Deliverables
+
+1. ✓ Enhanced nxcrender with full SVG support
+2. ✓ Complete effect system (Glass, Frost, Orb, Tilt-Shift, etc.)
+3. ✓ Modern Reox UI components
+4. ✓ Optimized rendering pipeline
+5. ✓ Comprehensive documentation
+6. ✓ Test suite
+7. ✓ Example projects demonstrating capabilities
+
+---
+
+## Notes for Implementation
+
+- **Priority**: Focus on visual quality and performance
+- **User Experience**: Effects should have sensible defaults and intuitive parameters
+- **Extensibility**: Design effect system to easily add new effects
+- **Platform Integration**: Ensure deep integration with NeolyxOS conventions
+- **Professional Output**: Generated icons should look as good as those from commercial tools
+
+---
+
+This prompt provides comprehensive requirements for modernizing IconLay with C/Reox/nxcrender. Adjust based on actual NeolyxOS architecture and capabilities.

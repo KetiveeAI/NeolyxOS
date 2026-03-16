@@ -98,6 +98,65 @@ void firewall_reset_stats(void);
 /* Default policies */
 void firewall_set_default_policy(uint8_t direction, uint8_t action);
 
+/* ============ Rate Limiting (Anti-DDoS) ============ */
+
+#define FW_RATE_LIMIT_ENTRIES   256
+
+typedef struct {
+    uint32_t ip;
+    uint32_t packet_count;
+    uint64_t window_start;      /* Timestamp of window start */
+} rate_limit_entry_t;
+
+/* Rate limiting API */
+void firewall_set_rate_limit(uint32_t max_pps, uint16_t burst);
+int firewall_check_rate_limit(uint32_t ip);
+void firewall_rate_limit_reset(void);
+
+/* ============ Connection Tracking ============ */
+
+#define FW_CONN_TABLE_SIZE      512
+
+/* Connection states */
+#define FW_CONN_NONE            0
+#define FW_CONN_NEW             1
+#define FW_CONN_ESTABLISHED     2
+#define FW_CONN_RELATED         3
+#define FW_CONN_CLOSING         4
+#define FW_CONN_CLOSED          5
+
+typedef struct {
+    uint32_t src_ip;
+    uint32_t dst_ip;
+    uint16_t src_port;
+    uint16_t dst_port;
+    uint8_t  protocol;
+    uint8_t  state;
+    uint64_t last_seen;
+    uint32_t packets;
+    uint32_t bytes;
+} conn_track_entry_t;
+
+/* Connection tracking API */
+void firewall_enable_conn_tracking(int enable);
+int firewall_conn_track_packet(packet_info_t *pkt);
+conn_track_entry_t* firewall_conn_lookup(uint32_t src_ip, uint32_t dst_ip,
+                                          uint16_t src_port, uint16_t dst_port);
+void firewall_conn_cleanup(uint16_t tcp_timeout, uint16_t udp_timeout);
+int firewall_conn_count(void);
+
+/* ============ Port Scan Detection ============ */
+
+typedef struct {
+    uint32_t src_ip;
+    uint16_t ports_accessed[32];
+    uint8_t port_count;
+    uint64_t first_access;
+} scan_detect_entry_t;
+
+int firewall_check_port_scan(uint32_t src_ip, uint16_t port);
+void firewall_scan_cleanup(void);
+
 /* ============ App-Level Network Control ============ */
 
 /* App network permission flags */

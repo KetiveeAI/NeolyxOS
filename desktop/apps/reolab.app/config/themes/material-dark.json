@@ -1,0 +1,274 @@
+{
+    "name": "Material Dark",
+    "version": "1.0.0",
+    "author": "NeolyxOS",
+    "colors": {
+        "background": "#0D1117",
+        "backgroundSecondary": "#161B22",
+        "sidebar": "#21262D",
+        "toolbar": "#161B22",
+        "statusBar": "#238636",
+        "accent": "#1F6FEB",
+        "accentSecondary": "#8957E5",
+        "text": "#E6EDF3",
+        "textDim": "#7D8590",
+        "textBright": "#FFFFFF",
+        "border": "#30363D",
+        "selection": "#264F78",
+        "cursor": "#58A6FF",
+        "lineHighlight": "#161B22"
+    },
+    "syntax": {
+        "keyword": "#FF7B72",
+        "type": "#79C0FF",
+        "function": "#D2A8FF",
+        "string": "#A5D6FF",
+        "number": "#79C0FF",
+        "comment": "#8B949E",
+        "preprocessor": "#FFA657",
+        "macro": "#79C0FF",
+        "operator": "#FF7B72",
+        "variable": "#FFA657",
+        "constant": "#79C0FF",
+        "class": "#F0883E"
+    },
+    "fileIcons": {
+        "default": "file.nxi",
+        "extensions": {
+            "c": {
+                "icon": "c.nxi",
+                "color": "#A8B9CC"
+            },
+            "h": {
+                "icon": "h.nxi",
+                "color": "#6D8086"
+            },
+            "cpp": {
+                "icon": "cpp.nxi",
+                "color": "#00599C"
+            },
+            "hpp": {
+                "icon": "hpp.nxi",
+                "color": "#9C4C91"
+            },
+            "rs": {
+                "icon": "rust.nxi",
+                "color": "#DEA584"
+            },
+            "py": {
+                "icon": "python.nxi",
+                "color": "#3572A5"
+            },
+            "js": {
+                "icon": "javascript.nxi",
+                "color": "#F7DF1E"
+            },
+            "ts": {
+                "icon": "typescript.nxi",
+                "color": "#3178C6"
+            },
+            "json": {
+                "icon": "json.nxi",
+                "color": "#CBCB41"
+            },
+            "md": {
+                "icon": "markdown.nxi",
+                "color": "#083FA1"
+            },
+            "reox": {
+                "icon": "reox.nxi",
+                "color": "#8957E5"
+            },
+            "nxi": {
+                "icon": "image.nxi",
+                "color": "#A074C4"
+            },
+            "png": {
+                "icon": "image.nxi",
+                "color": "#A074C4"
+            },
+            "svg": {
+                "icon": "svg.nxi",
+                "color": "#FFB13B"
+            },
+            "sh": {
+                "icon": "shell.nxi",
+                "color": "#89E051"
+            },
+            "makefile": {
+                "icon": "makefile.nxi",
+                "color": "#6D8086"
+            },
+            "cmake": {
+                "icon": "cmake.nxi",
+                "color": "#064F8C"
+            },
+            "npa": {
+                "icon": "manifest.nxi",
+                "color": "#238636"
+            },
+            "html": {
+                "icon": "html.nxi",
+                "color": "#E34C26"
+            },
+            "css": {
+                "icon": "css.nxi",
+                "color": "#1572B6"
+            },
+            "toml": {
+                "icon": "config.nxi",
+                "color": "#9C4221"
+            },
+            "yaml": {
+                "icon": "config.nxi",
+                "color": "#CB171E"
+            },
+            "lock": {
+                "icon": "lock.nxi",
+                "color": "#7D8590"
+            }
+        },
+        "filenames": {
+            "Makefile": {
+                "icon": "makefile.nxi",
+                "color": "#6D8086"
+            },
+            "CMakeLists.txt": {
+                "icon": "cmake.nxi",
+                "color": "#064F8C"
+            },
+            "Cargo.toml": {
+                "icon": "rust.nxi",
+                "color": "#DEA584"
+            },
+            "package.json": {
+                "icon": "npm.nxi",
+                "color": "#CB3837"
+            },
+            "README.md": {
+                "icon": "readme.nxi",
+                "color": "#083FA1"
+            },
+            "LICENSE": {
+                "icon": "license.nxi",
+                "color": "#D4AC0D"
+            },
+            ".gitignore": {
+                "icon": "git.nxi",
+                "color": "#F05032"
+            },
+            "manifest.npa": {
+                "icon": "neolyx.nxi",
+                "color": "#238636"
+            }
+        }
+    },
+    "folderIcons": {
+        "default": {
+            "icon": "folder.nxi",
+            "openIcon": "folder-open.nxi",
+            "color": "#8B949E"
+        },
+        "names": {
+            "src": {
+                "icon": "folder-src.nxi",
+                "color": "#42A5F5"
+            },
+            "source": {
+                "icon": "folder-src.nxi",
+                "color": "#42A5F5"
+            },
+            "include": {
+                "icon": "folder-include.nxi",
+                "color": "#78909C"
+            },
+            "lib": {
+                "icon": "folder-lib.nxi",
+                "color": "#7E57C2"
+            },
+            "bin": {
+                "icon": "folder-bin.nxi",
+                "color": "#66BB6A"
+            },
+            "build": {
+                "icon": "folder-build.nxi",
+                "color": "#FFA726"
+            },
+            "dist": {
+                "icon": "folder-dist.nxi",
+                "color": "#26A69A"
+            },
+            "test": {
+                "icon": "folder-test.nxi",
+                "color": "#EF5350"
+            },
+            "tests": {
+                "icon": "folder-test.nxi",
+                "color": "#EF5350"
+            },
+            "docs": {
+                "icon": "folder-docs.nxi",
+                "color": "#42A5F5"
+            },
+            "ui": {
+                "icon": "folder-ui.nxi",
+                "color": "#AB47BC"
+            },
+            "assets": {
+                "icon": "folder-assets.nxi",
+                "color": "#FFCA28"
+            },
+            "resources": {
+                "icon": "folder-resources.nxi",
+                "color": "#FFCA28"
+            },
+            "icons": {
+                "icon": "folder-icons.nxi",
+                "color": "#FF7043"
+            },
+            "config": {
+                "icon": "folder-config.nxi",
+                "color": "#78909C"
+            },
+            "scripts": {
+                "icon": "folder-scripts.nxi",
+                "color": "#66BB6A"
+            },
+            "app": {
+                "icon": "folder-app.nxi",
+                "color": "#42A5F5"
+            },
+            "editor": {
+                "icon": "folder-editor.nxi",
+                "color": "#7E57C2"
+            },
+            "graphics": {
+                "icon": "folder-graphics.nxi",
+                "color": "#26A69A"
+            },
+            "kernel": {
+                "icon": "folder-kernel.nxi",
+                "color": "#EF5350"
+            },
+            "desktop": {
+                "icon": "folder-desktop.nxi",
+                "color": "#42A5F5"
+            },
+            ".git": {
+                "icon": "folder-git.nxi",
+                "color": "#F05032"
+            }
+        }
+    },
+    "editor": {
+        "fontFamily": "NeolyxMono, DejaVu Sans Mono, monospace",
+        "fontSize": 14,
+        "lineHeight": 1.5,
+        "tabSize": 4,
+        "cursorStyle": "bar",
+        "cursorBlinkRate": 530,
+        "showLineNumbers": true,
+        "showMinimap": false,
+        "wordWrap": false
+    }
+}

@@ -31,6 +31,7 @@ void _start(void) {
             __asm__ volatile("pause");  /* Ring 3 safe */
         }
     }
+    nx_debug_print("[DESKTOP_MAIN] desktop_init returned OK\n");
     nx_debug_print("[DESKTOP_MAIN] Calling desktop_run...\n");
     
     /* Run desktop event loop - this polls mouse/keyboard input */

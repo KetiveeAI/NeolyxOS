@@ -156,6 +156,7 @@ int elf_load(const void *data, elf_info_t *info) {
     
     /* Get info first */
     if (elf_get_info(data, info) != 0) {
+        serial_puts("[ELF] elf_get_info FAILED!\n");
         return -1;
     }
     
@@ -167,10 +168,26 @@ int elf_load(const void *data, elf_info_t *info) {
     const elf64_ehdr_t *ehdr = (const elf64_ehdr_t *)data;
     const elf64_phdr_t *phdr = (const elf64_phdr_t *)((uint8_t *)data + ehdr->e_phoff);
     
+    serial_puts("[ELF] Program headers: ");
+    serial_hex64(ehdr->e_phnum);
+    serial_puts(", phoff: ");
+    serial_hex64(ehdr->e_phoff);
+    serial_puts("\n");
+    
     /* Load each PT_LOAD segment */
+    int loaded_count = 0;
     for (int i = 0; i < ehdr->e_phnum; i++) {
+        serial_puts("[ELF] Segment ");
+        serial_hex64(i);
+        serial_puts(": type=");
+        serial_hex64(phdr[i].p_type);
+        serial_puts(", vaddr=");
+        serial_hex64(phdr[i].p_vaddr);
+        serial_puts("\n");
+        
         if (phdr[i].p_type != PT_LOAD) continue;
         
+        loaded_count++;
         uint64_t vaddr = phdr[i].p_vaddr;
         uint64_t filesz = phdr[i].p_filesz;
         uint64_t memsz = phdr[i].p_memsz;
@@ -206,8 +223,19 @@ int elf_load(const void *data, elf_info_t *info) {
         const uint8_t *src = (const uint8_t *)data + offset;
         uint8_t *dst = (uint8_t *)vaddr;
         
+        serial_puts("[ELF] Copying ");
+        serial_hex64(filesz);
+        serial_puts(" bytes to 0x");
+        serial_hex64((uint64_t)dst);
+        serial_puts("...\n");
+        
         /* Use memcpy for efficiency */
         memcpy(dst, src, filesz);
+        
+        /* Verify first bytes were copied */
+        serial_puts("[ELF] First 4 bytes at dest: ");
+        serial_hex64(*(uint32_t*)dst);
+        serial_puts("\n");
         
         /* Zero BSS region (memsz > filesz) - security requirement */
         if (memsz > filesz) {

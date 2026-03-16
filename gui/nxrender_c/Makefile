@@ -9,14 +9,16 @@ CFLAGS += -I./include
 LDFLAGS = -lm
 
 # Source files
-NXGFX_SRC = src/nxgfx/context.c src/nxgfx/text.c src/nxgfx/lighting.c src/nxgfx/gpu_driver.c
-WIDGETS_SRC = src/widgets/widget.c src/widgets/button.c src/widgets/label.c src/widgets/textfield.c src/widgets/container.c
-NXRENDER_SRC = src/nxrender/compositor.c src/nxrender/window.c src/nxrender/application.c
+NXGFX_SRC = src/nxgfx/context.c src/nxgfx/text.c src/nxgfx/lighting.c src/nxgfx/gpu_driver.c src/nxgfx/nxsvg.c src/nxgfx/nxgfx_effects.c src/nxgfx/software_renderer.c src/nxgfx/hdr.c
+WIDGETS_SRC = src/widgets/widget.c src/widgets/button.c src/widgets/label.c src/widgets/textfield.c src/widgets/container.c src/widgets/slider.c src/widgets/listview.c src/widgets/tabview.c
+NXRENDER_SRC = src/nxrender/compositor.c src/nxrender/window.c src/nxrender/application.c src/nxrender/device.c
 LAYOUT_SRC = src/layout/layout.c
 THEME_SRC = src/theme/theme.c
 ANIM_SRC = src/animation/animation.c src/animation/animation_advanced.c
+INPUT_SRC = src/input/input.c
+FFI_SRC = src/reox_ffi.c
 
-ALL_SRC = $(NXGFX_SRC) $(WIDGETS_SRC) $(NXRENDER_SRC) $(LAYOUT_SRC) $(THEME_SRC) $(ANIM_SRC)
+ALL_SRC = $(NXGFX_SRC) $(WIDGETS_SRC) $(NXRENDER_SRC) $(LAYOUT_SRC) $(THEME_SRC) $(ANIM_SRC) $(INPUT_SRC) $(FFI_SRC)
 ALL_OBJ = $(ALL_SRC:.c=.o)
 
 # Output

@@ -279,6 +279,107 @@ static void test_vfs_basic(void) {
     TEST_PASS("VFS root accessible");
 }
 
+/* ======== Network Tests ======== */
+
+/* Network API externs */
+extern int socket_create(int type, int protocol);
+extern int socket_close(int fd);
+extern uint16_t tcpip_checksum(const void *data, uint32_t len);
+
+static void test_socket_create_close(void) {
+    serial_puts("\n--- Socket Create/Close Test ---\n");
+    
+    int fd = socket_create(2 /* SOCK_DGRAM */, 0);
+    if (fd < 0) {
+        TEST_SKIP("Socket: Network stack not initialized");
+        return;
+    }
+    TEST_ASSERT(fd >= 3, "Socket: Create UDP socket (fd >= 3)");
+    
+    int result = socket_close(fd);
+    TEST_ASSERT(result == 0, "Socket: Close socket");
+    
+    TEST_PASS("Socket create/close working");
+}
+
+static void test_checksum(void) {
+    serial_puts("\n--- TCP/IP Checksum Test ---\n");
+    
+    /* Test with known IP header data */
+    uint8_t data[] = {0x45, 0x00, 0x00, 0x73, 0x00, 0x00,
+                      0x40, 0x00, 0x40, 0x11, 0x00, 0x00,
+                      0xc0, 0xa8, 0x00, 0x01, 0xc0, 0xa8, 0x00, 0xc7};
+    
+    uint16_t cs = tcpip_checksum(data, 20);
+    TEST_ASSERT(cs != 0, "Checksum: Non-zero result");
+    
+    /* Test with all zeros - checksum should be 0xFFFF */
+    uint8_t zeros[20] = {0};
+    uint16_t cs_zeros = tcpip_checksum(zeros, 20);
+    TEST_ASSERT(cs_zeros == 0xFFFF, "Checksum: All zeros = 0xFFFF");
+    
+    TEST_PASS("Checksum calculation working");
+}
+
+static void test_udp_sendto_recvfrom(void) {
+    serial_puts("\n--- UDP sendto/recvfrom Test ---\n");
+    
+    /* Function declarations */
+    extern int socket_sendto(int fd, const void *data, uint32_t len, void *addr);
+    extern int socket_recvfrom(int fd, void *buf, uint32_t len, void *addr);
+    
+    int fd = socket_create(2 /* SOCK_DGRAM */, 0);
+    if (fd < 0) {
+        TEST_SKIP("UDP: Could not create socket");
+        return;
+    }
+    
+    /* Test that sendto returns error with no interface (expected) */
+    uint8_t test_data[16] = {0};
+    struct {
+        uint16_t family;
+        uint16_t port;
+        uint8_t addr[4];
+        uint8_t zero[8];
+    } dest_addr = {2, 0x3500, {8, 8, 8, 8}, {0}};  /* 8.8.8.8:53 */
+    
+    /* This will likely fail (no network) but shouldn't crash */
+    int ret = socket_sendto(fd, test_data, 16, &dest_addr);
+    serial_puts("  sendto returned: ");
+    if (ret < 0) serial_puts("error (expected without network)\n");
+    else { print_num(ret); serial_puts(" bytes\n"); }
+    
+    /* Verify recvfrom returns 0 (no data) */
+    uint8_t recv_buf[64];
+    ret = socket_recvfrom(fd, recv_buf, 64, NULL);
+    TEST_ASSERT(ret == 0, "UDP recvfrom: Returns 0 with empty buffer");
+    
+    socket_close(fd);
+    TEST_PASS("UDP sendto/recvfrom functions verified");
+}
+
+static void test_icmp_ping_function(void) {
+    serial_puts("\n--- ICMP Ping Function Test ---\n");
+    
+    extern int icmp_ping(void *iface, uint8_t dst[4], uint16_t seq);
+    extern void *network_get_interface_by_index(int index);
+    
+    void *iface = network_get_interface_by_index(0);
+    if (!iface) {
+        TEST_SKIP("ICMP: No network interface available");
+        return;
+    }
+    
+    /* Ping loopback - function should not crash */
+    uint8_t loopback[4] = {127, 0, 0, 1};
+    int ret = icmp_ping(iface, loopback, 1);
+    serial_puts("  icmp_ping returned: ");
+    if (ret < 0) serial_puts("error\n");
+    else { print_num(ret); serial_puts(" bytes sent\n"); }
+    
+    TEST_PASS("ICMP ping function exists and callable");
+}
+
 /* ======== Main Test Runner ======== */
 
 void kernel_run_tests(void) {
@@ -306,6 +407,12 @@ void kernel_run_tests(void) {
     
     /* VFS Tests */
     test_vfs_basic();
+    
+    /* Network Tests */
+    test_socket_create_close();
+    test_checksum();
+    test_udp_sendto_recvfrom();
+    test_icmp_ping_function();
     
     /* Summary */
     serial_puts("\n");

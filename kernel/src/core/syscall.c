@@ -7,6 +7,7 @@
  */
 
 #include "core/syscall.h"
+#include "core/nx_abi.h"
 #include "core/process.h"
 #include "core/panic.h"
 #include "fs/vfs.h"
@@ -20,6 +21,10 @@ extern void serial_putc(char c);
 extern void syscall_msr_init(void);
 extern void syscall_enable(void);
 extern uint64_t pit_get_ticks(void);
+
+/* New dynamic syscall system */
+extern void nx_syscall_init(void);
+extern int64_t nx_syscall_dispatch(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
 
 /* ============ Syscall Table ============ */
 
@@ -52,7 +57,15 @@ static int sc_strlen(const char *s) {
 static void sc_strcpy(char *dst, const char *src, int max) {
     int i = 0;
     while (src[i] && i < max - 1) { dst[i] = src[i]; i++; }
-    dst[i] = '\0';
+}
+
+static void serial_hex64(uint64_t v) {
+    serial_puts("0x");
+    for (int i = 60; i >= 0; i -= 4) {
+        int nibble = (v >> i) & 0xF;
+        if (nibble < 10) serial_putc('0' + nibble);
+        else serial_putc('A' + nibble - 10);
+    }
 }
 
 /* ============ User Memory Validation ============ */
@@ -132,38 +145,26 @@ int syscall_elevate(void) {
 
 /* Process Control */
 
-static int64_t sys_exit_impl(uint64_t code, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_exit_impl(uint64_t code, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     process_exit((int)code);
     return 0;  /* Never reached */
 }
 
-static int64_t sys_sleep_impl(uint64_t ms, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_sleep_impl(uint64_t ms, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
-    
-    /* Debug: trace first 5 sleep calls and every 500th */
-    static int sleep_cnt = 0;
-    sleep_cnt++;
-    if (sleep_cnt <= 5 || sleep_cnt % 500 == 0) {
-        serial_puts("[SLEEP] #");
-        serial_dec(sleep_cnt);
-        serial_puts(" ms=");
-        serial_dec(ms);
-        serial_puts(" ticks=");
-        serial_dec(pit_get_ticks());
-        serial_puts("\n");
-    }
+    /* NOTE: Debug prints removed - corrupted syscall return path */
     
     process_sleep((uint32_t)ms);
     return 0;
 }
 
-static int64_t sys_time_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_time_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a1; (void)a2; (void)a3; (void)a4; (void)a5;
     return pit_get_ticks();
 }
 
-static int64_t sys_yield_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_yield_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a1; (void)a2; (void)a3; (void)a4; (void)a5;
     /* TODO: Re-enable when desktop has proper process structure
      * For now, just return - the desktop was started directly with IRETQ
@@ -173,24 +174,24 @@ static int64_t sys_yield_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4
     return 0;
 }
 
-static int64_t sys_getpid_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_getpid_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a1; (void)a2; (void)a3; (void)a4; (void)a5;
     process_t *proc = process_current();
     return proc ? proc->pid : -1;
 }
 
-static int64_t sys_getppid_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_getppid_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a1; (void)a2; (void)a3; (void)a4; (void)a5;
     process_t *proc = process_current();
     return proc ? proc->ppid : -1;
 }
 
-static int64_t sys_fork_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_fork_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a1; (void)a2; (void)a3; (void)a4; (void)a5;
     return process_fork();
 }
 
-static int64_t sys_exec_impl(uint64_t path_ptr, uint64_t argv_ptr, uint64_t envp_ptr, uint64_t a4, uint64_t a5) {
+int64_t sys_exec_impl(uint64_t path_ptr, uint64_t argv_ptr, uint64_t envp_ptr, uint64_t a4, uint64_t a5) {
     (void)a4; (void)a5;
     
     char path[256];
@@ -202,7 +203,7 @@ static int64_t sys_exec_impl(uint64_t path_ptr, uint64_t argv_ptr, uint64_t envp
     return process_exec(path, (char *const *)argv_ptr, (char *const *)envp_ptr);
 }
 
-static int64_t sys_wait_impl(uint64_t pid, uint64_t status_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_wait_impl(uint64_t pid, uint64_t status_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a3; (void)a4; (void)a5;
     
     int status = 0;
@@ -239,14 +240,22 @@ void syscall_set_desktop_heap(uint64_t start, uint64_t max_size) {
     serial_puts("MB reserve)\n");
 }
 
-static int64_t sys_brk_impl(uint64_t addr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_brk_impl(uint64_t addr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
+    
+    serial_puts("[BRK] called, addr=");
+    serial_dec((int64_t)addr);
+    serial_puts(" heap_start=");
+    serial_dec((int64_t)g_desktop_heap_start);
+    serial_puts("\n");
     
     /* Use desktop global heap first if configured (desktop runs directly, no process) */
     if (g_desktop_heap_start != 0) {
         if (addr == 0) {
-            serial_puts("[BRK] Returning TEST value 0xDEADBEEF\n");
-            return 0xDEADBEEF;  /* TEST: hardcoded value to verify syscall return */
+            serial_puts("[BRK] Query, returning heap_end=");
+            serial_dec((int64_t)g_desktop_heap_end);
+            serial_puts("\n");
+            return g_desktop_heap_end;  /* Query current break */
         }
         
         if (addr < g_desktop_heap_start) {
@@ -261,13 +270,20 @@ static int64_t sys_brk_impl(uint64_t addr, uint64_t a2, uint64_t a3, uint64_t a4
         /* Page-align the request */
         uint64_t aligned = (addr + 4095) & ~4095;
         
-        /* Reserve pages with PMM for the new heap region */
+        /* The heap region was ALREADY mapped with PAGE_USER at boot (64MB reserve).
+         * We just need to track the heap end - no remapping needed.
+         * Calling paging_add_user_flag again would corrupt page tables! */
         if (aligned > g_desktop_heap_end) {
-            uint64_t pages_needed = (aligned - g_desktop_heap_end) / 4096;
-            pmm_reserve_region(g_desktop_heap_end, pages_needed * 4096);
+            uint64_t grow_size = aligned - g_desktop_heap_end;
+            pmm_reserve_region(g_desktop_heap_end, grow_size);
+            /* NOTE: Paging already done at boot - DO NOT call paging_add_user_flag here! */
         }
         
         g_desktop_heap_end = aligned;
+        
+        serial_puts("[BRK] returning ");
+        serial_dec(aligned);
+        serial_puts("\n");
         return aligned;
     }
     
@@ -292,7 +308,7 @@ static int64_t sys_brk_impl(uint64_t addr, uint64_t a2, uint64_t a3, uint64_t a4
 
 static vfs_file_t *fd_table[16] = {NULL};
 
-static int64_t sys_open_impl(uint64_t path_ptr, uint64_t flags, uint64_t mode, uint64_t a4, uint64_t a5) {
+int64_t sys_open_impl(uint64_t path_ptr, uint64_t flags, uint64_t mode, uint64_t a4, uint64_t a5) {
     (void)mode; (void)a4; (void)a5;
     
     char path[256];
@@ -315,7 +331,7 @@ static int64_t sys_open_impl(uint64_t path_ptr, uint64_t flags, uint64_t mode, u
     return -EMFILE;
 }
 
-static int64_t sys_close_impl(uint64_t fd, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_close_impl(uint64_t fd, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
     if (fd >= 16 || fd_table[fd] == NULL) {
@@ -327,7 +343,7 @@ static int64_t sys_close_impl(uint64_t fd, uint64_t a2, uint64_t a3, uint64_t a4
     return 0;
 }
 
-static int64_t sys_read_impl(uint64_t fd, uint64_t buf_ptr, uint64_t count, uint64_t a4, uint64_t a5) {
+int64_t sys_read_impl(uint64_t fd, uint64_t buf_ptr, uint64_t count, uint64_t a4, uint64_t a5) {
     (void)a4; (void)a5;
     
     if (fd >= 16 || fd_table[fd] == NULL) {
@@ -341,7 +357,7 @@ static int64_t sys_read_impl(uint64_t fd, uint64_t buf_ptr, uint64_t count, uint
     return vfs_read(fd_table[fd], (void *)buf_ptr, count);
 }
 
-static int64_t sys_write_impl(uint64_t fd, uint64_t buf_ptr, uint64_t count, uint64_t a4, uint64_t a5) {
+int64_t sys_write_impl(uint64_t fd, uint64_t buf_ptr, uint64_t count, uint64_t a4, uint64_t a5) {
     (void)a4; (void)a5;
     
     if (fd >= 16 || fd_table[fd] == NULL) {
@@ -355,7 +371,7 @@ static int64_t sys_write_impl(uint64_t fd, uint64_t buf_ptr, uint64_t count, uin
     return vfs_write(fd_table[fd], (void *)buf_ptr, count);
 }
 
-static int64_t sys_seek_impl(uint64_t fd, uint64_t offset, uint64_t whence, uint64_t a4, uint64_t a5) {
+int64_t sys_seek_impl(uint64_t fd, uint64_t offset, uint64_t whence, uint64_t a4, uint64_t a5) {
     (void)a4; (void)a5;
     
     if (fd >= 16 || fd_table[fd] == NULL) {
@@ -368,7 +384,7 @@ static int64_t sys_seek_impl(uint64_t fd, uint64_t offset, uint64_t whence, uint
 /* Current working directory (global for now, TODO: per-process) */
 static char cwd[256] = "/";
 
-static int64_t sys_stat_impl(uint64_t path_ptr, uint64_t stat_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_stat_impl(uint64_t path_ptr, uint64_t stat_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a3; (void)a4; (void)a5;
     
     char path[256];
@@ -401,7 +417,7 @@ static int64_t sys_stat_impl(uint64_t path_ptr, uint64_t stat_ptr, uint64_t a3, 
     return 0;
 }
 
-static int64_t sys_readdir_impl(uint64_t path_ptr, uint64_t entries_ptr, uint64_t count, uint64_t read_ptr, uint64_t a5) {
+int64_t sys_readdir_impl(uint64_t path_ptr, uint64_t entries_ptr, uint64_t count, uint64_t read_ptr, uint64_t a5) {
     (void)a5;
     
     char path[256];
@@ -425,7 +441,7 @@ static int64_t sys_readdir_impl(uint64_t path_ptr, uint64_t entries_ptr, uint64_
     return ret;
 }
 
-static int64_t sys_mkdir_impl(uint64_t path_ptr, uint64_t mode, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_mkdir_impl(uint64_t path_ptr, uint64_t mode, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a3; (void)a4; (void)a5;
     
     char path[256];
@@ -436,7 +452,7 @@ static int64_t sys_mkdir_impl(uint64_t path_ptr, uint64_t mode, uint64_t a3, uin
     return vfs_create(path, VFS_DIRECTORY, (uint32_t)mode);
 }
 
-static int64_t sys_unlink_impl(uint64_t path_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_unlink_impl(uint64_t path_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
     char path[256];
@@ -447,7 +463,7 @@ static int64_t sys_unlink_impl(uint64_t path_ptr, uint64_t a2, uint64_t a3, uint
     return vfs_unlink(path);
 }
 
-static int64_t sys_chdir_impl(uint64_t path_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_chdir_impl(uint64_t path_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
     char path[256];
@@ -470,7 +486,7 @@ static int64_t sys_chdir_impl(uint64_t path_ptr, uint64_t a2, uint64_t a3, uint6
     return 0;
 }
 
-static int64_t sys_getcwd_impl(uint64_t buf_ptr, uint64_t size, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_getcwd_impl(uint64_t buf_ptr, uint64_t size, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a3; (void)a4; (void)a5;
     
     if (syscall_validate_ptr((void *)buf_ptr, size, 1) != 0) {
@@ -491,7 +507,7 @@ static int64_t sys_getcwd_impl(uint64_t buf_ptr, uint64_t size, uint64_t a3, uin
 
 /* System Info */
 
-static int64_t sys_info_impl(uint64_t info_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_info_impl(uint64_t info_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
     sysinfo_t info;
@@ -516,7 +532,7 @@ static int64_t sys_info_impl(uint64_t info_ptr, uint64_t a2, uint64_t a3, uint64
 
 /* System Control (requires privilege) */
 
-static int64_t sys_reboot_impl(uint64_t cmd, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_reboot_impl(uint64_t cmd, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)cmd; (void)a2; (void)a3; (void)a4; (void)a5;
     
     if (!syscall_has_priv(PRIV_SYSTEM)) {
@@ -534,7 +550,7 @@ static int64_t sys_reboot_impl(uint64_t cmd, uint64_t a2, uint64_t a3, uint64_t 
     while (1) __asm__ volatile("hlt");
 }
 
-static int64_t sys_shutdown_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_shutdown_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a1; (void)a2; (void)a3; (void)a4; (void)a5;
     
     if (!syscall_has_priv(PRIV_SYSTEM)) {
@@ -583,7 +599,7 @@ static void *get_session(int handle) {
     return nxgame_sessions[handle];
 }
 
-static int64_t sys_nxgame_create_impl(uint64_t type, uint64_t caps, uint64_t quotas_ptr, uint64_t a4, uint64_t a5) {
+int64_t sys_nxgame_create_impl(uint64_t type, uint64_t caps, uint64_t quotas_ptr, uint64_t a4, uint64_t a5) {
     (void)a4; (void)a5;
     
     serial_puts("[SYSCALL] nxgame_create type=");
@@ -605,7 +621,7 @@ static int64_t sys_nxgame_create_impl(uint64_t type, uint64_t caps, uint64_t quo
     return slot;  /* Return handle */
 }
 
-static int64_t sys_nxgame_destroy_impl(uint64_t handle, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_nxgame_destroy_impl(uint64_t handle, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
     void *session = get_session((int)handle);
@@ -618,7 +634,7 @@ static int64_t sys_nxgame_destroy_impl(uint64_t handle, uint64_t a2, uint64_t a3
     return ret;
 }
 
-static int64_t sys_nxgame_start_impl(uint64_t handle, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_nxgame_start_impl(uint64_t handle, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
     void *session = get_session((int)handle);
@@ -629,7 +645,7 @@ static int64_t sys_nxgame_start_impl(uint64_t handle, uint64_t a2, uint64_t a3, 
     return nxgame_session_start(session);
 }
 
-static int64_t sys_nxgame_stop_impl(uint64_t handle, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_nxgame_stop_impl(uint64_t handle, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
     void *session = get_session((int)handle);
@@ -640,7 +656,7 @@ static int64_t sys_nxgame_stop_impl(uint64_t handle, uint64_t a2, uint64_t a3, u
     return nxgame_session_stop(session);
 }
 
-static int64_t sys_nxgame_gpu_acquire_impl(uint64_t handle, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_nxgame_gpu_acquire_impl(uint64_t handle, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
     void *session = get_session((int)handle);
@@ -651,7 +667,7 @@ static int64_t sys_nxgame_gpu_acquire_impl(uint64_t handle, uint64_t a2, uint64_
     return nxgame_gpu_acquire(session);
 }
 
-static int64_t sys_nxgame_gpu_release_impl(uint64_t handle, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_nxgame_gpu_release_impl(uint64_t handle, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
     void *session = get_session((int)handle);
@@ -663,7 +679,7 @@ static int64_t sys_nxgame_gpu_release_impl(uint64_t handle, uint64_t a2, uint64_
     return 0;
 }
 
-static int64_t sys_nxgame_gpu_present_impl(uint64_t handle, uint64_t wait_vsync, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_nxgame_gpu_present_impl(uint64_t handle, uint64_t wait_vsync, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a3; (void)a4; (void)a5;
     
     void *session = get_session((int)handle);
@@ -674,7 +690,7 @@ static int64_t sys_nxgame_gpu_present_impl(uint64_t handle, uint64_t wait_vsync,
     return nxgame_gpu_present(session, (int)wait_vsync);
 }
 
-static int64_t sys_nxgame_audio_impl(uint64_t handle, uint64_t cmd, uint64_t arg1, uint64_t arg2, uint64_t arg3) {
+int64_t sys_nxgame_audio_impl(uint64_t handle, uint64_t cmd, uint64_t arg1, uint64_t arg2, uint64_t arg3) {
     void *session = get_session((int)handle);
     if (!session) {
         return -EBADF;
@@ -691,7 +707,7 @@ static int64_t sys_nxgame_audio_impl(uint64_t handle, uint64_t cmd, uint64_t arg
     }
 }
 
-static int64_t sys_nxgame_input_impl(uint64_t handle, uint64_t state_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_nxgame_input_impl(uint64_t handle, uint64_t state_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a3; (void)a4; (void)a5;
     
     void *session = get_session((int)handle);
@@ -711,7 +727,7 @@ static int64_t sys_nxgame_input_impl(uint64_t handle, uint64_t state_ptr, uint64
     return nxgame_input_poll(session, (void *)state_ptr);
 }
 
-static int64_t sys_nxgame_get_buffer_impl(uint64_t handle, uint64_t buf_info_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_nxgame_get_buffer_impl(uint64_t handle, uint64_t buf_info_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a3; (void)a4; (void)a5;
     
     void *session = get_session((int)handle);
@@ -744,12 +760,12 @@ extern int socket_send(int fd, const void *data, uint32_t len);
 extern int socket_recv(int fd, void *buf, uint32_t len);
 extern int socket_close(int fd);
 
-static int64_t sys_socket_impl(uint64_t type, uint64_t protocol, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_socket_impl(uint64_t type, uint64_t protocol, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a3; (void)a4; (void)a5;
     return socket_create((int)type, (int)protocol);
 }
 
-static int64_t sys_bind_impl(uint64_t fd, uint64_t addr_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_bind_impl(uint64_t fd, uint64_t addr_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a3; (void)a4; (void)a5;
     if (syscall_validate_ptr((void *)addr_ptr, 16, 0) != 0) {
         return -EFAULT;
@@ -757,12 +773,12 @@ static int64_t sys_bind_impl(uint64_t fd, uint64_t addr_ptr, uint64_t a3, uint64
     return socket_bind((int)fd, (void *)addr_ptr);
 }
 
-static int64_t sys_listen_impl(uint64_t fd, uint64_t backlog, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_listen_impl(uint64_t fd, uint64_t backlog, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a3; (void)a4; (void)a5;
     return socket_listen((int)fd, (int)backlog);
 }
 
-static int64_t sys_accept_impl(uint64_t fd, uint64_t addr_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_accept_impl(uint64_t fd, uint64_t addr_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a3; (void)a4; (void)a5;
     if (addr_ptr && syscall_validate_ptr((void *)addr_ptr, 16, 1) != 0) {
         return -EFAULT;
@@ -770,7 +786,7 @@ static int64_t sys_accept_impl(uint64_t fd, uint64_t addr_ptr, uint64_t a3, uint
     return socket_accept((int)fd, (void *)addr_ptr);
 }
 
-static int64_t sys_connect_impl(uint64_t fd, uint64_t addr_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_connect_impl(uint64_t fd, uint64_t addr_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a3; (void)a4; (void)a5;
     if (syscall_validate_ptr((void *)addr_ptr, 16, 0) != 0) {
         return -EFAULT;
@@ -778,7 +794,7 @@ static int64_t sys_connect_impl(uint64_t fd, uint64_t addr_ptr, uint64_t a3, uin
     return socket_connect((int)fd, (void *)addr_ptr);
 }
 
-static int64_t sys_send_impl(uint64_t fd, uint64_t data_ptr, uint64_t len, uint64_t a4, uint64_t a5) {
+int64_t sys_send_impl(uint64_t fd, uint64_t data_ptr, uint64_t len, uint64_t a4, uint64_t a5) {
     (void)a4; (void)a5;
     if (syscall_validate_ptr((void *)data_ptr, len, 0) != 0) {
         return -EFAULT;
@@ -786,7 +802,7 @@ static int64_t sys_send_impl(uint64_t fd, uint64_t data_ptr, uint64_t len, uint6
     return socket_send((int)fd, (void *)data_ptr, (uint32_t)len);
 }
 
-static int64_t sys_recv_impl(uint64_t fd, uint64_t buf_ptr, uint64_t len, uint64_t a4, uint64_t a5) {
+int64_t sys_recv_impl(uint64_t fd, uint64_t buf_ptr, uint64_t len, uint64_t a4, uint64_t a5) {
     (void)a4; (void)a5;
     if (syscall_validate_ptr((void *)buf_ptr, len, 1) != 0) {
         return -EFAULT;
@@ -794,7 +810,7 @@ static int64_t sys_recv_impl(uint64_t fd, uint64_t buf_ptr, uint64_t len, uint64
     return socket_recv((int)fd, (void *)buf_ptr, (uint32_t)len);
 }
 
-static int64_t sys_closesock_impl(uint64_t fd, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_closesock_impl(uint64_t fd, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     return socket_close((int)fd);
 }
@@ -840,19 +856,7 @@ static const uint8_t kernel_cursor_data[21][17] = {
 
 static void kernel_draw_cursor_on_fb(void) {
     if (!g_cursor_visible || !g_framebuffer_addr) return;
-    
-    /* Debug: trace cursor drawing periodically */
-    static int draw_count = 0;
-    draw_count++;
-    if (draw_count <= 5 || draw_count % 1000 == 0) {
-        serial_puts("[KCURSOR] Drawing at (");
-        serial_dec(g_cursor_x);
-        serial_puts(", ");
-        serial_dec(g_cursor_y);
-        serial_puts(") #");
-        serial_dec(draw_count);
-        serial_puts("\n");
-    }
+    /* NOTE: Debug prints removed - hot path (every frame) */
     
     uint32_t *fb = (uint32_t *)g_framebuffer_addr;
     uint32_t pitch_px = g_framebuffer_pitch / 4;
@@ -879,7 +883,7 @@ static void kernel_draw_cursor_on_fb(void) {
 }
 
 /* Syscall: Set cursor position from userspace */
-static int64_t sys_cursor_set_impl(uint64_t x, uint64_t y, uint64_t visible, uint64_t a4, uint64_t a5) {
+int64_t sys_cursor_set_impl(uint64_t x, uint64_t y, uint64_t visible, uint64_t a4, uint64_t a5) {
     (void)a4; (void)a5;
     g_cursor_x = (int32_t)x;
     g_cursor_y = (int32_t)y;
@@ -888,7 +892,7 @@ static int64_t sys_cursor_set_impl(uint64_t x, uint64_t y, uint64_t visible, uin
 }
 /* ============ END KERNEL CURSOR COMPOSITOR ============ */
 
-static int64_t sys_fb_info_impl(uint64_t info_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_fb_info_impl(uint64_t info_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
     if (syscall_validate_ptr((void *)info_ptr, sizeof(fb_info_t), 1) != 0) {
@@ -917,7 +921,7 @@ static int64_t sys_fb_info_impl(uint64_t info_ptr, uint64_t a2, uint64_t a3, uin
     return 0;
 }
 
-static int64_t sys_fb_map_impl(uint64_t info_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_fb_map_impl(uint64_t info_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
     /* For now, just return the framebuffer address (already identity mapped) */
@@ -958,44 +962,52 @@ static int64_t sys_fb_map_impl(uint64_t info_ptr, uint64_t a2, uint64_t a3, uint
     return (int64_t)g_framebuffer_addr;
 }
 
-static int64_t sys_fb_flip_impl(uint64_t src_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_fb_flip_impl(uint64_t src_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
-    
-    /* Debug trace */
-    static int flip_count = 0;
-    flip_count++;
-    if (flip_count <= 5 || flip_count % 500 == 0) {
-        serial_puts("[FB_FLIP] Called #");
-        serial_dec(flip_count);
-        serial_puts(" src=");
-        serial_dec((int64_t)src_ptr);
-        serial_puts("\n");
-    }
     
     /* If userspace provides a back buffer, copy it to front buffer */
     if (src_ptr && g_framebuffer_addr) {
-        uint64_t fb_size = (uint64_t)g_framebuffer_pitch * g_framebuffer_height;
+        /*
+         * CRITICAL: Userspace backbuffer is linear (width*4 stride).
+         * Hardware framebuffer may have padding (pitch > width*4).
+         * Must do row-by-row copy to handle pitch mismatch.
+         */
+        uint32_t src_stride = g_framebuffer_width * 4;  /* Linear backbuffer stride */
+        uint32_t dst_stride = g_framebuffer_pitch;       /* Hardware framebuffer stride */
         
-        /* NOTE: VGA VSync (port 0x3DA) does NOT work with UEFI GOP! */
-        /* UEFI GOP has no VSync support - just do fast copy */
-        
-        /* Fast copy using REP MOVSQ (8 bytes at a time) */
-        uint64_t *src = (uint64_t *)src_ptr;
-        uint64_t *dst = (uint64_t *)g_framebuffer_addr;
-        uint64_t count = fb_size / 8;
-        
-        __asm__ volatile(
-            "rep movsq"
-            : "+S"(src), "+D"(dst), "+c"(count)
-            :
-            : "memory"
-        );
+        if (src_stride == dst_stride) {
+            /* Fast path: strides match, do single memcpy */
+            uint64_t fb_size = (uint64_t)dst_stride * g_framebuffer_height;
+            uint64_t *src = (uint64_t *)src_ptr;
+            uint64_t *dst = (uint64_t *)g_framebuffer_addr;
+            uint64_t count = fb_size / 8;
+            
+            __asm__ volatile(
+                "rep movsq"
+                : "+S"(src), "+D"(dst), "+c"(count)
+                :
+                : "memory"
+            );
+        } else {
+            /* Slow path: row-by-row copy with stride conversion */
+            uint8_t *src = (uint8_t *)src_ptr;
+            uint8_t *dst = (uint8_t *)g_framebuffer_addr;
+            uint32_t row_bytes = g_framebuffer_width * 4;  /* Bytes to copy per row */
+            
+            for (uint32_t y = 0; y < g_framebuffer_height; y++) {
+                /* Copy one row */
+                uint64_t *s64 = (uint64_t *)(src + y * src_stride);
+                uint64_t *d64 = (uint64_t *)(dst + y * dst_stride);
+                uint32_t count64 = row_bytes / 8;
+                
+                for (uint32_t i = 0; i < count64; i++) {
+                    d64[i] = s64[i];
+                }
+            }
+        }
     }
     
     /* ========== KERNEL CURSOR COMPOSITOR ========== */
-    /* Draw cursor AFTER fb copy (or in single-buffer mode) */
-    /* This is how macOS/Windows achieve flicker-free cursors */
-    /* ALWAYS draw cursor, even if no buffer copy happened */
     kernel_draw_cursor_on_fb();
     /* ============================================== */
     
@@ -1008,7 +1020,7 @@ static int64_t sys_fb_flip_impl(uint64_t src_ptr, uint64_t a2, uint64_t a3, uint
 extern int keyboard_get_event(uint8_t *scancode, uint8_t *ascii, uint8_t *pressed);
 extern int mouse_get_event(int16_t *dx, int16_t *dy, uint8_t *buttons);
 
-static int64_t sys_input_poll_impl(uint64_t events_ptr, uint64_t max_events, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_input_poll_impl(uint64_t events_ptr, uint64_t max_events, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a3; (void)a4; (void)a5;
     
     if (max_events == 0) return 0;
@@ -1032,13 +1044,14 @@ static int64_t sys_input_poll_impl(uint64_t events_ptr, uint64_t max_events, uin
         count++;
     }
     
-    /* Debug trace: periodically log mouse status */
+    /* NOTE: Debug tracing disabled - was causing timing issues
     static uint32_t poll_trace_counter = 0;
     poll_trace_counter++;
-    if (poll_trace_counter % 5000 == 1) {
+    if (poll_trace_counter % 100 == 1) {
         extern void mouse_debug_status(void);
         mouse_debug_status();
     }
+    */
     
     /* Poll mouse events - EMIT UNCONDITIONALLY (never drop!) */
     /* This is critical: Apple/Linux always emit events from hardware */
@@ -1058,7 +1071,7 @@ static int64_t sys_input_poll_impl(uint64_t events_ptr, uint64_t max_events, uin
     return count;
 }
 
-static int64_t sys_input_register_impl(uint64_t types, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_input_register_impl(uint64_t types, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)types; (void)a2; (void)a3; (void)a4; (void)a5;
     
     /* TODO: Register process for specific input types */
@@ -1073,18 +1086,24 @@ static int64_t sys_input_register_impl(uint64_t types, uint64_t a2, uint64_t a3,
 
 /* ============ Debug Syscalls ============ */
 
-static int64_t sys_debug_print_impl(uint64_t str_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_debug_print_impl(uint64_t str_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
-    if (syscall_validate_ptr((void *)str_ptr, 1, 0) != 0) {
+    char kbuf[256];
+    
+    /* Use strncpy to copy from user space (handles validation) */
+    int len = syscall_strncpy_from_user(kbuf, (const char *)str_ptr, sizeof(kbuf));
+    
+    if (len < 0) {
+        serial_puts("[SYSCALL] DEBUG_PRINT FAULT: ptr=");
+        serial_hex64(str_ptr);
+        serial_puts("\n");
         return -EFAULT;
     }
     
-    /* Print userspace string to serial (limit to 256 chars for safety) */
-    const char *s = (const char *)str_ptr;
-    for (int i = 0; i < 256 && s[i]; i++) {
-        serial_putc(s[i]);
-    }
+    /* Ensure null termination and print */
+    kbuf[sizeof(kbuf) - 1] = '\0';
+    serial_puts(kbuf);
     
     return 0;
 }
@@ -1107,7 +1126,7 @@ typedef struct {
     uint8_t  weekday;
 } __attribute__((packed)) rtc_time_syscall_t;
 
-static int64_t sys_rtc_get_impl(uint64_t time_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_rtc_get_impl(uint64_t time_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
     if (!time_ptr) return -EINVAL;
@@ -1126,7 +1145,7 @@ static int64_t sys_rtc_get_impl(uint64_t time_ptr, uint64_t a2, uint64_t a3, uin
     return 0;
 }
 
-static int64_t sys_rtc_set_impl(uint64_t time_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_rtc_set_impl(uint64_t time_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
     /* Requires system privilege */
@@ -1149,7 +1168,7 @@ static int64_t sys_rtc_set_impl(uint64_t time_ptr, uint64_t a2, uint64_t a3, uin
     return 0;
 }
 
-static int64_t sys_rtc_unix_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+int64_t sys_rtc_unix_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a1; (void)a2; (void)a3; (void)a4; (void)a5;
     return (int64_t)rtc_get_unix_time();
 }
@@ -1158,149 +1177,29 @@ static int64_t sys_rtc_unix_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t
 
 int64_t syscall_handler(uint64_t num, uint64_t arg1, uint64_t arg2,
                         uint64_t arg3, uint64_t arg4, uint64_t arg5) {
-    /* Trace if enabled */
-    if (SYSCALL_TRACE_ENABLED) {
-        serial_puts("[SYSCALL] ");
+    /* Debug trace - log first 50 syscalls - DISABLED for clarity */
+    /* static int sc_count = 0;
+    if (sc_count < 50) {
+        serial_puts("[SYSCALL] #");
+        serial_dec(++sc_count);
+        serial_puts(" num=");
         serial_dec(num);
-        serial_puts("(");
-        serial_dec(arg1);
-        serial_puts(")\n");
-    }
-    
-    /* Validate syscall number */
-    if (num >= SYS_MAX || syscall_table[num] == NULL) {
-        serial_puts("[SYSCALL] Unknown syscall: ");
-        serial_dec(num);
-        serial_puts(" (0x");
-        /* Print hex for debugging */
-        uint64_t tmp = num;
-        char hex[17];
-        for (int i = 15; i >= 0; i--) {
-            int d = tmp & 0xF;
-            hex[i] = d < 10 ? '0' + d : 'A' + d - 10;
-            tmp >>= 4;
-        }
-        hex[16] = '\0';
-        serial_puts(hex);
-        serial_puts(") arg1=");
-        serial_dec((int64_t)arg1);
         serial_puts("\n");
-        return -ENOSYS;
-    }
+    } */
     
-    /* Check privilege */
-    if (syscall_priv[num] > PRIV_USER && !syscall_has_priv(syscall_priv[num])) {
-        return -EPERM;
-    }
-    
-    /* Dispatch */
-    int64_t ret = syscall_table[num](arg1, arg2, arg3, arg4, arg5);
-    
-    if (SYSCALL_TRACE_ENABLED) {
-        serial_puts("[SYSCALL] -> ");
-        serial_dec(ret);
-        serial_puts("\n");
-    }
-    
-    return ret;
+    /* Use new dynamic syscall dispatch system */
+    return nx_syscall_dispatch(num, arg1, arg2, arg3, arg4, arg5);
 }
 
 /* ============ Initialization ============ */
 
 void syscall_init(void) {
-    serial_puts("[SYSCALL] Initializing syscall subsystem...\n");
+    /* Initialize new dynamic syscall system */
+    nx_syscall_init();
     
-    /* Clear tables */
-    for (int i = 0; i < SYS_MAX; i++) {
-        syscall_table[i] = NULL;
-        syscall_priv[i] = PRIV_USER;
-    }
-    
-    /* Register syscalls */
-    syscall_table[SYS_EXIT] = sys_exit_impl;
-    syscall_table[SYS_SLEEP] = sys_sleep_impl;
-    syscall_table[SYS_TIME] = sys_time_impl;
-    syscall_table[SYS_YIELD] = sys_yield_impl;
-    syscall_table[SYS_GETPID] = sys_getpid_impl;
-    syscall_table[SYS_GETPPID] = sys_getppid_impl;
-    syscall_table[SYS_FORK] = sys_fork_impl;
-    syscall_table[SYS_EXEC] = sys_exec_impl;
-    syscall_table[SYS_WAIT] = sys_wait_impl;
-    
-    syscall_table[SYS_BRK] = sys_brk_impl;
-    
-    syscall_table[SYS_OPEN] = sys_open_impl;
-    syscall_table[SYS_CLOSE] = sys_close_impl;
-    syscall_table[SYS_READ] = sys_read_impl;
-    syscall_table[SYS_WRITE] = sys_write_impl;
-    syscall_table[SYS_SEEK] = sys_seek_impl;
-    syscall_table[SYS_STAT] = sys_stat_impl;
-    
-    /* Directory operations */
-    syscall_table[SYS_READDIR] = sys_readdir_impl;
-    syscall_table[SYS_MKDIR] = sys_mkdir_impl;
-    syscall_table[SYS_RMDIR] = sys_unlink_impl;
-    syscall_table[SYS_CHDIR] = sys_chdir_impl;
-    syscall_table[SYS_GETCWD] = sys_getcwd_impl;
-    
-    syscall_table[SYS_INFO] = sys_info_impl;
-    
-    syscall_table[SYS_REBOOT] = sys_reboot_impl;
-    syscall_priv[SYS_REBOOT] = PRIV_SYSTEM;
-    
-    syscall_table[SYS_SHUTDOWN] = sys_shutdown_impl;
-    syscall_priv[SYS_SHUTDOWN] = PRIV_SYSTEM;
-    
-    /* NXGame Bridge syscalls */
-    syscall_table[SYS_NXGAME_CREATE] = sys_nxgame_create_impl;
-    syscall_table[SYS_NXGAME_DESTROY] = sys_nxgame_destroy_impl;
-    syscall_table[SYS_NXGAME_START] = sys_nxgame_start_impl;
-    syscall_table[SYS_NXGAME_STOP] = sys_nxgame_stop_impl;
-    syscall_table[SYS_NXGAME_GPU_ACQUIRE] = sys_nxgame_gpu_acquire_impl;
-    syscall_table[SYS_NXGAME_GPU_RELEASE] = sys_nxgame_gpu_release_impl;
-    syscall_table[SYS_NXGAME_GPU_PRESENT] = sys_nxgame_gpu_present_impl;
-    syscall_table[SYS_NXGAME_AUDIO] = sys_nxgame_audio_impl;
-    syscall_table[SYS_NXGAME_INPUT] = sys_nxgame_input_impl;
-    syscall_table[SYS_NXGAME_GET_BUFFER] = sys_nxgame_get_buffer_impl;
-    
-    /* Socket syscalls */
-    syscall_table[SYS_SOCKET] = sys_socket_impl;
-    syscall_table[SYS_BIND] = sys_bind_impl;
-    syscall_table[SYS_LISTEN] = sys_listen_impl;
-    syscall_table[SYS_ACCEPT] = sys_accept_impl;
-    syscall_table[SYS_CONNECT] = sys_connect_impl;
-    syscall_table[SYS_SEND] = sys_send_impl;
-    syscall_table[SYS_RECV] = sys_recv_impl;
-    syscall_table[SYS_CLOSESOCK] = sys_closesock_impl;
-    
-    /* Framebuffer syscalls (for userspace desktop) */
-    syscall_table[SYS_FB_MAP] = sys_fb_map_impl;
-    syscall_table[SYS_FB_INFO] = sys_fb_info_impl;
-    syscall_table[SYS_FB_FLIP] = sys_fb_flip_impl;
-    
-    /* Input syscalls (for userspace desktop) */
-    syscall_table[SYS_INPUT_POLL] = sys_input_poll_impl;
-    syscall_table[SYS_INPUT_REGISTER] = sys_input_register_impl;
-    
-    /* Debug syscalls */
-    syscall_table[SYS_DEBUG_PRINT] = sys_debug_print_impl;
-    
-    /* Cursor syscalls (kernel cursor compositor) */
-    syscall_table[SYS_CURSOR_SET] = sys_cursor_set_impl;
-    
-    /* RTC syscalls (real-time clock) */
-    syscall_table[SYS_RTC_GET] = sys_rtc_get_impl;
-    syscall_table[SYS_RTC_SET] = sys_rtc_set_impl;
-    syscall_priv[SYS_RTC_SET] = PRIV_SYSTEM;  /* Setting clock requires privilege */
-    syscall_table[SYS_RTC_UNIX] = sys_rtc_unix_impl;
-    
-    /* Set up MSRs */
+    /* Set up x86_64 SYSCALL/SYSRET MSRs */
     syscall_msr_init();
     syscall_enable();
-    
-    serial_puts("[SYSCALL] Ready (");
-    serial_dec(49);  /* 23 base + 10 NXGame + 8 Socket + 5 FB/Input + 3 RTC */
-    serial_puts(" syscalls registered)\n");
 }
 
 void syscall_trace(uint64_t num, uint64_t ret) {

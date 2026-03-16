@@ -13,6 +13,7 @@
  */
 
 #include "settings.h"
+#include "../../include/control_center.h"  /* For pending panel from Control Center */
 #include <string.h>
 
 /* ============================================================================
@@ -81,7 +82,11 @@ static const char* panel_names[PANEL_COUNT] = {
     "Color Management",
     "Apps",
     "Display Manager",
-    "Devices"
+    "Devices",
+    "Icons",
+    "Windows",
+    "Mouse",
+    "Date & Time"
 };
 
 static const char* panel_icons[PANEL_COUNT] = {
@@ -89,7 +94,8 @@ static const char* panel_icons[PANEL_COUNT] = {
     "harddisk", "person", "shield", "lock", "paintbrush",
     "battery", "chart.bar", "rocket", "clock", "puzzle",
     "arrow.down.circle", "terminal", "hammer", "info.circle", "keyboard",
-    "hand.tap", "palette", "app.grid", "display.2", "cpu"
+    "hand.tap", "palette", "app.grid", "display.2", "cpu",
+    "photo", "window", "mouse", "clock.fill"
 };
 
 /* Panel descriptions for search and hover preview */
@@ -118,7 +124,11 @@ static const char* panel_descriptions[PANEL_COUNT] = {
     "Display color profiles and calibration",
     "Installed applications and defaults",
     "External displays and arrangement",
-    "Connected hardware devices and drivers"
+    "Connected hardware devices and drivers",
+    "Icon packs and customization",
+    "Window behavior and snap settings",
+    "Mouse speed, buttons, and scrolling",
+    "Timezone, date format, and clock settings"
 };
 
 /* ============================================================================
@@ -208,8 +218,17 @@ static void tabs_init(void) {
     g_tabs.auto_split = 0;  /* Default: full screen for new tabs */
     g_tabs.split_count = 1;
     
-    /* Open System panel by default */
-    g_tabs.tabs[0].panel = PANEL_SYSTEM;
+    /* Check if Control Center requested a specific panel */
+    int pending_panel = control_center_get_pending_panel();
+    panel_id_t initial_panel = PANEL_SYSTEM;
+    if (pending_panel > 0 && pending_panel < PANEL_COUNT) {
+        initial_panel = (panel_id_t)pending_panel;
+        println("[Settings] Opening panel from Control Center:");
+        println(panel_names[initial_panel]);
+    }
+    
+    /* Open initial panel */
+    g_tabs.tabs[0].panel = initial_panel;
     g_tabs.tabs[0].active = 1;
     g_tabs.tabs[0].width_ratio = 1.0f;
     g_tabs.tab_count = 1;
@@ -815,7 +834,10 @@ static rx_view* create_panel_view(panel_id_t panel, float width_ratio) {
             case PANEL_APPS:       panel_content = apps_panel_create(&g_settings); break;
             case PANEL_DISPLAY_MANAGER: panel_content = display_manager_panel_create(&g_settings); break;
             case PANEL_DEVICE:     panel_content = device_panel_create(&g_settings); break;
-            case PANEL_ICONS:      panel_content = icons_panel_create(&g_settings); break;\n            case PANEL_WINDOWS:    panel_content = windows_panel_create(&g_settings); break;\n            case PANEL_MOUSE:      panel_content = mouse_panel_create(&g_settings); break;
+            case PANEL_ICONS:      panel_content = icons_panel_create(&g_settings); break;
+            case PANEL_WINDOWS:    panel_content = windows_panel_create(&g_settings); break;
+            case PANEL_MOUSE:      panel_content = mouse_panel_create(&g_settings); break;
+            case PANEL_DATE_TIME:  panel_content = date_time_panel_create(&g_settings); break;
             default:
                 panel_content = (rx_view*)text_view_new("Select a panel");
                 break;

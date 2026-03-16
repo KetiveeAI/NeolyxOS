@@ -472,14 +472,13 @@ void nxmouse_kdrv_shutdown(void) {
 int nxmouse_get_delta(int32_t *dx, int32_t *dy, uint8_t *buttons) {
     if (!g_mouse.initialized) return -1;
     
-    /* Atomically read and clear */
-    __asm__ volatile("cli");
+    /* NOTE: No CLI/STI here! Syscalls run with interrupts disabled.
+     * Enabling interrupts mid-syscall causes GPF (IRET vs SYSRET conflict) */
     *dx = g_mouse.delta_x;
     *dy = g_mouse.delta_y;
     *buttons = g_mouse.buttons;
     g_mouse.delta_x = 0;
     g_mouse.delta_y = 0;
-    __asm__ volatile("sti");
     
     return 0;
 }
@@ -658,14 +657,12 @@ int mouse_get_event(int16_t *dx, int16_t *dy, uint8_t *buttons) {
         return -1;  /* No event */
     }
     
-    /* Atomically read and clear delta */
-    __asm__ volatile("cli");
+    /* NOTE: No CLI/STI here! Syscalls already disabled interrupts. */
     *dx = (int16_t)g_mouse.delta_x;
     *dy = (int16_t)g_mouse.delta_y;
     *buttons = g_mouse.buttons;
     g_mouse.delta_x = 0;
     g_mouse.delta_y = 0;
-    __asm__ volatile("sti");
     
     return 0;  /* Event available */
 }
@@ -700,13 +697,11 @@ int mouse_poll(int8_t *dx, int8_t *dy, uint8_t *buttons) {
         return 0;  /* No movement */
     }
     
-    /* Atomically read and clear delta */
-    __asm__ volatile("cli");
+    /* NOTE: No CLI/STI in syscall context! */
     int16_t rx = g_mouse.delta_x;
     int16_t ry = g_mouse.delta_y;
     g_mouse.delta_x = 0;
     g_mouse.delta_y = 0;
-    __asm__ volatile("sti");
     
     /* Clamp to int8_t range */
     if (rx > 127) rx = 127;

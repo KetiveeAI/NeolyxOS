@@ -49,11 +49,14 @@ typedef enum {
 } nx_event_type_t;
 
 /* Mouse button */
+#ifndef NX_MOUSE_BUTTON_DEFINED
+#define NX_MOUSE_BUTTON_DEFINED
 typedef enum {
     NX_MOUSE_LEFT = 0,
     NX_MOUSE_RIGHT,
     NX_MOUSE_MIDDLE
 } nx_mouse_button_t;
+#endif
 
 /* Key modifiers */
 typedef struct {

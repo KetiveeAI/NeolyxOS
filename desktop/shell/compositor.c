@@ -524,8 +524,9 @@ int desktop_init(void) {
     return 0;
 }
 
-void desktop_run(void) {
-    serial_puts("[DESKTOP] Starting desktop main loop...\n");
+/* DISABLED - using desktop_shell.c version instead */
+#if 0
+void compositor_run_legacy(void) {
     
     while (desktop.running) {
         desktop_handle_input();
@@ -538,3 +539,4 @@ void desktop_run(void) {
     /* Should never reach here */
     while (1) __asm__ volatile("hlt");
 }
+#endif /* disabled compositor_run_legacy */

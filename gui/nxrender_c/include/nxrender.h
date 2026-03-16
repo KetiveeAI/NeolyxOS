@@ -30,11 +30,14 @@
 #include "nxgfx/nxgfx.h"
 #include "nxgfx/lighting.h"
 #include "nxgfx/gpu_driver.h"
+#include "nxgfx/software_renderer.h"
+#include "nxgfx/hdr.h"
 
 /* Core Rendering */
 #include "nxrender/compositor.h"
 #include "nxrender/window.h"
 #include "nxrender/application.h"
+#include "nxrender/device.h"
 
 /* Widgets */
 #include "widgets/widget.h"
@@ -42,6 +45,15 @@
 #include "widgets/label.h"
 #include "widgets/textfield.h"
 #include "widgets/container.h"
+#include "widgets/slider.h"
+#include "widgets/checkbox.h"
+#include "widgets/switch.h"
+#include "widgets/icon.h"
+#include "widgets/progressbar.h"
+#include "widgets/spinner.h"
+#include "widgets/dropdown.h"
+#include "widgets/listview.h"
+#include "widgets/tabview.h"
 
 /* Layout */
 #include "layout/layout.h"
@@ -52,6 +64,9 @@
 /* Animation */
 #include "animation/animation.h"
 #include "animation/animation_advanced.h"
+
+/* Input */
+#include "input/input.h"
 
 /* Version info */
 #define NXRENDER_VERSION_MAJOR 1

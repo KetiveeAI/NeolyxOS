@@ -30,13 +30,9 @@ if [ ! -f hdd_50g.img ]; then
 fi
 
 echo "Updating kernel in boot image..."
-# mtools doesn't work with FAT32 superfloppy, use mount
-sudo mkdir -p /tmp/neolyx_mount
-sudo mount -o loop neolyx.img /tmp/neolyx_mount
-sudo cp kernel/kernel.bin /tmp/neolyx_mount/EFI/BOOT/kernel.bin
-# Ensure installation marker exists to skip installer (8.3 FAT compatible name!)
-echo "NeolyxOS Installed" | sudo tee /tmp/neolyx_mount/INSTALD.MRK > /dev/null
-sudo umount /tmp/neolyx_mount
+# Use mtools (no sudo required)
+mcopy -i neolyx.img -o kernel/kernel.bin ::/EFI/BOOT/kernel.bin
+echo "NeolyxOS Installed" | mcopy -i neolyx.img -o - ::/INSTALD.MRK
 echo "Kernel updated!"
 echo ""
 
@@ -65,7 +61,7 @@ qemu-system-x86_64 -bios /usr/share/ovmf/OVMF.fd \
   -device ide-hd,drive=boot,bus=ahci0.0 \
   -drive file=hdd_50g.img,format=raw,if=none,id=target,cache=writethrough \
   -device ide-hd,drive=target,bus=ahci0.1 \
-  -m 8G -smp 8 -serial stdio \
+  -m 8G -smp 8 -display gtk -serial file:serial_debug.log \
   -netdev user,id=net0 -device e1000,netdev=net0 \
-  -boot menu=on,splash-time=5000
+  -boot menu=on,splash-time=0
 

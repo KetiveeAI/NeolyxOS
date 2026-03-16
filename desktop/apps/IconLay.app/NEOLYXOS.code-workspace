@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "../../../.."
+		},
+		{
+			"path": "../../../../../REOX"
+		},
+		{
+			"path": "../../../../../reoxweb"
+		}
+	],
+	"settings": {
+		"git.ignoreLimitWarning": true
+	}
+}

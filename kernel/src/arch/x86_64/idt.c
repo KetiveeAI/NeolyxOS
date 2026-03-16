@@ -176,6 +176,18 @@ void idt_set_gate(uint8_t vector, uint64_t handler, uint16_t selector, uint8_t t
     idt[vector].reserved = 0;
 }
 
+/* Set IDT gate with specific IST (Interrupt Stack Table) entry */
+void idt_set_gate_ist(uint8_t vector, uint64_t handler, uint16_t selector, 
+                      uint8_t type_attr, uint8_t ist) {
+    idt[vector].offset_low = handler & 0xFFFF;
+    idt[vector].selector = selector;
+    idt[vector].ist = ist & 0x7;  /* IST is 3 bits (0-7) */
+    idt[vector].type_attr = type_attr;
+    idt[vector].offset_mid = (handler >> 16) & 0xFFFF;
+    idt[vector].offset_high = (handler >> 32) & 0xFFFFFFFF;
+    idt[vector].reserved = 0;
+}
+
 void idt_register_handler(uint8_t vector, interrupt_handler_t handler) {
     handlers[vector] = handler;
 }
@@ -197,6 +209,14 @@ void idt_init(void) {
         idt_set_gate(i, isr_stub_table[i], 0x08, IDT_GATE_INTERRUPT);
         handlers[i] = 0;
     }
+    
+    /* Configure critical exceptions to use IST1 (dedicated stack)
+     * This prevents triple faults when exceptions occur from userspace
+     * with potentially corrupt stack pointers */
+    idt_set_gate_ist(8, isr_stub_table[8], 0x08, IDT_GATE_INTERRUPT, 1);   /* Double Fault */
+    idt_set_gate_ist(13, isr_stub_table[13], 0x08, IDT_GATE_INTERRUPT, 1); /* GPF */
+    idt_set_gate_ist(14, isr_stub_table[14], 0x08, IDT_GATE_INTERRUPT, 1); /* Page Fault */
+    serial_puts("[IDT] Configured IST1 for critical exceptions (8, 13, 14)\n");
     
     /* Set up IRQ handlers (32-47) using assembly stubs */
     for (int i = 0; i < 16; i++) {

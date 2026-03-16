@@ -156,30 +156,40 @@ int arp_resolve(net_interface_t *iface, ipv4_addr_t ip, mac_addr_t *mac) {
     /* Check cache first */
     if (arp_cache_lookup(ip, mac) == 0) return 0;
     
-    /* Send ARP request */
-    uint8_t pkt[42];  /* Ethernet + ARP */
-    eth_frame_t *eth = (eth_frame_t *)pkt;
-    arp_header_t *arp = (arp_header_t *)(pkt + ETH_HEADER_LEN);
+    /* Retry up to 3 times with timeout */
+    for (int attempt = 0; attempt < 3; attempt++) {
+        /* Build ARP request */
+        uint8_t pkt[42];
+        eth_frame_t *eth = (eth_frame_t *)pkt;
+        arp_header_t *arp = (arp_header_t *)(pkt + ETH_HEADER_LEN);
+        
+        for (int i = 0; i < 6; i++) eth->dest.bytes[i] = 0xFF;
+        eth->src = iface->mac;
+        eth->type = htons(ETH_TYPE_ARP);
+        
+        arp->hw_type = htons(1);
+        arp->proto_type = htons(ETH_TYPE_IPV4);
+        arp->hw_len = 6;
+        arp->proto_len = 4;
+        arp->operation = htons(ARP_REQUEST);
+        arp->sender_mac = iface->mac;
+        arp->sender_ip = iface->ip;
+        tcpip_memset(&arp->target_mac, 0, 6);
+        arp->target_ip = ip;
+        
+        network_iface_send(iface, pkt, 42);
+        
+        /* Wait for reply (~100ms per attempt) */
+        volatile int timeout = 100000;
+        while (timeout-- > 0) {
+            __asm__ volatile("pause");
+            if (arp_cache_lookup(ip, mac) == 0) {
+                return 0;  /* Got reply */
+            }
+        }
+    }
     
-    /* Broadcast destination */
-    for (int i = 0; i < 6; i++) eth->dest.bytes[i] = 0xFF;
-    eth->src = iface->mac;
-    eth->type = htons(ETH_TYPE_ARP);
-    
-    arp->hw_type = htons(1);
-    arp->proto_type = htons(ETH_TYPE_IPV4);
-    arp->hw_len = 6;
-    arp->proto_len = 4;
-    arp->operation = htons(ARP_REQUEST);
-    arp->sender_mac = iface->mac;
-    arp->sender_ip = iface->ip;
-    tcpip_memset(&arp->target_mac, 0, 6);
-    arp->target_ip = ip;
-    
-    network_iface_send(iface, pkt, 42);
-    
-    /* TODO: Wait for reply with timeout */
-    return -1;
+    return -1;  /* Failed after retries */
 }
 
 void arp_input(net_interface_t *iface, void *data, uint32_t len) {
@@ -398,6 +408,38 @@ void udp_input(net_interface_t *iface, ipv4_header_t *ip, void *data, uint32_t l
 
 /* ============ TCP ============ */
 
+/* Calculate TCP checksum with pseudo-header */
+static uint16_t tcp_checksum(ipv4_addr_t src, ipv4_addr_t dst,
+                              const void *tcp_seg, uint32_t len) {
+    uint32_t sum = 0;
+    
+    /* Pseudo-header */
+    sum += (src.bytes[0] << 8) | src.bytes[1];
+    sum += (src.bytes[2] << 8) | src.bytes[3];
+    sum += (dst.bytes[0] << 8) | dst.bytes[1];
+    sum += (dst.bytes[2] << 8) | dst.bytes[3];
+    sum += IP_PROTO_TCP;  /* Protocol = 6 */
+    sum += len;           /* TCP segment length */
+    
+    /* TCP segment */
+    const uint16_t *ptr = (const uint16_t *)tcp_seg;
+    uint32_t remaining = len;
+    while (remaining > 1) {
+        sum += *ptr++;
+        remaining -= 2;
+    }
+    if (remaining == 1) {
+        sum += *(const uint8_t *)ptr;
+    }
+    
+    /* Fold 32-bit sum to 16 bits */
+    while (sum >> 16) {
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+    
+    return ~sum;
+}
+
 int tcp_send(socket_t *sock, const void *data, uint32_t len) {
     if (!sock || sock->type != SOCK_STREAM) return -1;
     if (sock->tcp_state != TCP_ESTABLISHED) return -1;
@@ -419,7 +461,8 @@ int tcp_send(socket_t *sock, const void *data, uint32_t len) {
     
     tcpip_memcpy(pkt + TCP_HEADER_LEN, data, len);
     
-    /* TODO: Proper TCP checksum with pseudo-header */
+    /* Calculate proper TCP checksum with pseudo-header */
+    tcp->checksum = tcp_checksum(sock->iface->ip, sock->remote_ip, pkt, total);
     
     sock->seq_num += len;
     
@@ -654,6 +697,60 @@ int socket_recv(int fd, void *buf, uint32_t len) {
     return to_copy;
 }
 
+int socket_sendto(int fd, const void *data, uint32_t len, sockaddr_in_t *addr) {
+    socket_t *sock = socket_find(fd);
+    if (!sock || sock->type != SOCK_DGRAM) return -1;
+    if (!addr) return -1;
+    
+    /* Temporarily set remote for this send */
+    ipv4_addr_t orig_ip = sock->remote_ip;
+    uint16_t orig_port = sock->remote_port;
+    
+    sock->remote_ip = addr->addr;
+    sock->remote_port = ntohs(addr->port);
+    
+    if (sock->local_port == 0) {
+        sock->local_port = next_ephemeral_port++;
+    }
+    if (!sock->iface) {
+        sock->iface = network_get_interface_by_index(0);
+    }
+    if (!sock->iface) return -1;
+    
+    int ret = udp_send(sock, data, len);
+    
+    /* Restore original */
+    sock->remote_ip = orig_ip;
+    sock->remote_port = orig_port;
+    
+    return ret;
+}
+
+int socket_recvfrom(int fd, void *buf, uint32_t len, sockaddr_in_t *addr) {
+    socket_t *sock = socket_find(fd);
+    if (!sock || !sock->rx_buffer) return -1;
+    
+    if (sock->rx_len == 0) return 0;
+    
+    uint32_t to_copy = (len < sock->rx_len) ? len : sock->rx_len;
+    tcpip_memcpy(buf, sock->rx_buffer, to_copy);
+    
+    /* Shift remaining */
+    sock->rx_len -= to_copy;
+    if (sock->rx_len > 0) {
+        tcpip_memcpy(sock->rx_buffer, sock->rx_buffer + to_copy, sock->rx_len);
+    }
+    
+    /* Set addr to last known remote if available */
+    if (addr) {
+        addr->family = AF_INET;
+        addr->port = htons(sock->remote_port);
+        addr->addr = sock->remote_ip;
+    }
+    
+    return to_copy;
+}
+
 int socket_close(int fd) {
     socket_t *sock = socket_find(fd);
     if (!sock) return -1;
@@ -713,138 +810,7 @@ void tcpip_input(net_interface_t *iface, void *data, uint32_t len) {
 
 /* Note: DHCP client implementation is in network.c (dhcp_discover, dhcp_input) */
 
-/* ============ Firewall Security ============ */
-
-#define FW_MAX_RULES 32
-
-typedef enum {
-    FW_ACTION_ALLOW,
-    FW_ACTION_DENY,
-    FW_ACTION_LOG
-} fw_action_t;
-
-typedef struct {
-    int active;
-    fw_action_t action;
-    ipv4_addr_t src_ip;
-    ipv4_addr_t src_mask;
-    ipv4_addr_t dst_ip;
-    ipv4_addr_t dst_mask;
-    uint16_t dst_port;         /* 0 = any */
-    uint8_t protocol;          /* 0 = any */
-    uint32_t hit_count;
-} fw_rule_t;
-
-static fw_rule_t firewall_rules[FW_MAX_RULES];
-static int fw_enabled = 1;
-static uint32_t fw_blocked_count = 0;
-
-void firewall_init(void) {
-    tcpip_memset(firewall_rules, 0, sizeof(firewall_rules));
-    fw_blocked_count = 0;
-    
-    /* Default rules: Allow established, block known bad ports */
-    
-    /* Rule 0: Block incoming telnet (port 23) */
-    firewall_rules[0].active = 1;
-    firewall_rules[0].action = FW_ACTION_DENY;
-    firewall_rules[0].dst_port = 23;
-    
-    /* Rule 1: Block incoming netbios (port 139) */
-    firewall_rules[1].active = 1;
-    firewall_rules[1].action = FW_ACTION_DENY;
-    firewall_rules[1].dst_port = 139;
-    
-    /* Rule 2: Block incoming SMB (port 445) */
-    firewall_rules[2].active = 1;
-    firewall_rules[2].action = FW_ACTION_DENY;
-    firewall_rules[2].dst_port = 445;
-    
-    serial_puts("[FIREWALL] Initialized with default security rules\n");
-}
-
-int firewall_add_rule(fw_action_t action, ipv4_addr_t src, ipv4_addr_t src_mask,
-                      ipv4_addr_t dst, ipv4_addr_t dst_mask,
-                      uint16_t port, uint8_t proto) {
-    for (int i = 0; i < FW_MAX_RULES; i++) {
-        if (!firewall_rules[i].active) {
-            firewall_rules[i].active = 1;
-            firewall_rules[i].action = action;
-            firewall_rules[i].src_ip = src;
-            firewall_rules[i].src_mask = src_mask;
-            firewall_rules[i].dst_ip = dst;
-            firewall_rules[i].dst_mask = dst_mask;
-            firewall_rules[i].dst_port = port;
-            firewall_rules[i].protocol = proto;
-            firewall_rules[i].hit_count = 0;
-            return i;
-        }
-    }
-    return -1;  /* No free slots */
-}
-
-static int ip_matches(ipv4_addr_t ip, ipv4_addr_t rule_ip, ipv4_addr_t mask) {
-    for (int i = 0; i < 4; i++) {
-        if ((ip.bytes[i] & mask.bytes[i]) != (rule_ip.bytes[i] & mask.bytes[i])) {
-            return 0;
-        }
-    }
-    return 1;
-}
-
-int firewall_check(ipv4_addr_t src, ipv4_addr_t dst, uint16_t port, uint8_t proto) {
-    if (!fw_enabled) return 1;  /* Allow if firewall disabled */
-    
-    for (int i = 0; i < FW_MAX_RULES; i++) {
-        fw_rule_t *rule = &firewall_rules[i];
-        if (!rule->active) continue;
-        
-        /* Check protocol */
-        if (rule->protocol != 0 && rule->protocol != proto) continue;
-        
-        /* Check port */
-        if (rule->dst_port != 0 && rule->dst_port != port) continue;
-        
-        /* Check source IP */
-        if (!ip_matches(src, rule->src_ip, rule->src_mask)) continue;
-        
-        /* Check destination IP */
-        if (!ip_matches(dst, rule->dst_ip, rule->dst_mask)) continue;
-        
-        /* Rule matched */
-        rule->hit_count++;
-        
-        if (rule->action == FW_ACTION_DENY) {
-            fw_blocked_count++;
-            serial_puts("[FIREWALL] BLOCKED packet to port ");
-            if (port >= 100) serial_putc('0' + port / 100);
-            if (port >= 10) serial_putc('0' + (port / 10) % 10);
-            serial_putc('0' + port % 10);
-            serial_puts("\n");
-            return 0;  /* Deny */
-        } else if (rule->action == FW_ACTION_LOG) {
-            serial_puts("[FIREWALL] LOG: Connection to port ");
-            if (port >= 100) serial_putc('0' + port / 100);
-            if (port >= 10) serial_putc('0' + (port / 10) % 10);
-            serial_putc('0' + port % 10);
-            serial_puts("\n");
-        }
-        
-        return 1;  /* Allow */
-    }
-    
-    /* Default: allow if no rule matched */
-    return 1;
-}
-
-void firewall_enable(int enable) {
-    fw_enabled = enable;
-    serial_puts(enable ? "[FIREWALL] Enabled\n" : "[FIREWALL] Disabled\n");
-}
-
-uint32_t firewall_get_blocked_count(void) {
-    return fw_blocked_count;
-}
+/* Firewall is initialized by boot.c boot sequence */
 
 void tcpip_init(void) {
     serial_puts("[TCP/IP] Initializing protocol stack...\n");
@@ -852,9 +818,8 @@ void tcpip_init(void) {
     tcpip_memset(arp_cache, 0, sizeof(arp_cache));
     sockets = NULL;
     
-    /* Initialize firewall with security rules */
-    firewall_init();
+    /* Note: firewall_init() is called by boot_services, not here */
     
-    serial_puts("[TCP/IP] Ready with security enabled\n");
+    serial_puts("[TCP/IP] Ready\n");
 }
 

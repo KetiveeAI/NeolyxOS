@@ -1,0 +1,26 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# cloud icon
+
+[nxi]
+version = 1.0
+name = cloud
+size = 24
+author = KetiveeAI
+category = system
+viewbox = 0 0 24 24
+
+[canvas]
+width = 24
+height = 24
+background = transparent
+
+[colors]
+primary = #FFFFFF
+accent = #00B4FF
+color_0 = white
+
+[paths]
+path_0 = M21 14C21 12.3523 19.6477 11 18 11H16C15.4477 11 15 10.5523 15 10C15 8.35228 13.6477 7 12 7C10.3523 7 9 8.35228 9 10C9 10.5523 8.55228 11 8 11H6C4.35228 11 3 12.3523 3 14C3 15.6477 4.35228 17 6 17H18C19.6477 17 21 15.6477 21 14ZM23 14C23 16.7523 20.7523 19 18 19H6C3.24772 19 1 16.7523 1 14C1 11.2477 3.24772 9 6 9H7.10059C7.56646 6.72342 9.58994 5 12 5C14.4101 5 16.4335 6.72342 16.8994 9H18C20.7523 9 23 11.2477 23 14Z
+
+[style]
+path_0.fill = color_0

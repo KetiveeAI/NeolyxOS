@@ -1,0 +1,128 @@
+// Reolab - Main Window (REOX UI)
+// NeolyxOS Application
+// Copyright (c) 2025 KetiveeAI. All Rights Reserved.
+
+import { VStack, HStack, ZStack } from "reox/layout"
+import { Text, Button } from "reox/controls"
+import { Color, Font } from "reox/style"
+
+// Main application window layout
+fn MainWindow() -> View {
+    HStack(0) {
+        // Sidebar (file browser, outline)
+        Sidebar()
+            .frame(width: 250)
+            .background(color_hex(0x1E1E1E))
+        
+        // Main content area
+        VStack(0) {
+            // Toolbar
+            Toolbar()
+                .frame(height: 40)
+            
+            // Editor area with tabs
+            EditorArea()
+            
+            // Status bar
+            StatusBar()
+                .frame(height: 24)
+        }
+    }
+}
+
+// File browser sidebar
+fn Sidebar() -> View {
+    VStack(0) {
+        // Project name header
+        HStack(8) {
+            Text("PROJECT")
+                .font_size(11)
+                .foreground(color_hex(0x888888))
+        }
+        .padding(12)
+        
+        // File tree
+        FileTree()
+        
+        Spacer()
+        
+        // Outline section
+        Text("OUTLINE")
+            .font_size(11)
+            .foreground(color_hex(0x888888))
+            .padding(12)
+        
+        OutlineView()
+    }
+}
+
+// Top toolbar
+fn Toolbar() -> View {
+    HStack(8) {
+        // File operations
+        ToolButton(icon: "folder", tooltip: "Open Project")
+        ToolButton(icon: "save", tooltip: "Save")
+        
+        Divider()
+        
+        // Edit operations
+        ToolButton(icon: "undo", tooltip: "Undo")
+        ToolButton(icon: "redo", tooltip: "Redo")
+        
+        Divider()
+        
+        // Build operations
+        ToolButton(icon: "play", tooltip: "Run", accent: true)
+        ToolButton(icon: "hammer", tooltip: "Build")
+        
+        Spacer()
+        
+        // Search
+        SearchField()
+            .frame(width: 200)
+    }
+    .padding(horizontal: 8)
+    .background(color_hex(0x252526))
+}
+
+// Editor tabs and content
+fn EditorArea() -> View {
+    VStack(0) {
+        // Tab bar
+        TabBar()
+            .frame(height: 35)
+        
+        // Code editor
+        CodeEditor()
+    }
+}
+
+// Bottom status bar
+fn StatusBar() -> View {
+    HStack(12) {
+        Text("Ln 1, Col 1")
+            .font_size(12)
+            .foreground(color_hex(0xAAAAAA))
+        
+        Spacer()
+        
+        Text("REOX")
+            .font_size(12)
+            .foreground(color_hex(0xAAAAAA))
+        
+        Text("UTF-8")
+            .font_size(12)
+            .foreground(color_hex(0xAAAAAA))
+    }
+    .padding(horizontal: 12)
+    .background(color_hex(0x007ACC))
+}
+
+// Reusable toolbar button
+fn ToolButton(icon: String, tooltip: String, accent: Bool = false) -> View {
+    Button(icon)
+        .frame(width: 28, height: 28)
+        .corner_radius(4)
+        .background(accent ? color_hex(0x0E639C) : color_clear())
+        .foreground(color_white())
+}

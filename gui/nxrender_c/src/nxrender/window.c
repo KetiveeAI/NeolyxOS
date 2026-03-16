@@ -219,3 +219,165 @@ bool nx_wm_handle_event(nx_window_manager_t* wm, nx_event_t* event) {
     }
     return false;
 }
+
+/* ============================================================================
+ * Window Focus Management
+ * ============================================================================ */
+
+nx_window_t* nx_wm_get_focus(nx_window_manager_t* wm) {
+    return wm ? wm->focused : NULL;
+}
+
+void nx_wm_cycle_focus(nx_window_manager_t* wm, bool forward) {
+    if (!wm || !wm->windows) return;
+    
+    /* Count windows and build array */
+    nx_window_t* sorted[64];
+    int count = 0;
+    for (nx_window_t* w = wm->windows; w && count < 64; w = w->next) {
+        if (w->visible) sorted[count++] = w;
+    }
+    if (count == 0) return;
+    
+    /* Sort by z-order */
+    for (int i = 0; i < count - 1; i++) {
+        for (int j = i + 1; j < count; j++) {
+            if (sorted[i]->z_order > sorted[j]->z_order) {
+                nx_window_t* tmp = sorted[i];
+                sorted[i] = sorted[j];
+                sorted[j] = tmp;
+            }
+        }
+    }
+    
+    /* Find current focus index */
+    int focus_idx = -1;
+    for (int i = 0; i < count; i++) {
+        if (sorted[i] == wm->focused) { focus_idx = i; break; }
+    }
+    
+    /* Calculate next index */
+    int next_idx;
+    if (focus_idx < 0) next_idx = 0;
+    else if (forward) next_idx = (focus_idx + 1) % count;
+    else next_idx = (focus_idx - 1 + count) % count;
+    
+    nx_wm_focus_window(wm, sorted[next_idx]);
+}
+
+void nx_wm_focus_next(nx_window_manager_t* wm) {
+    nx_wm_cycle_focus(wm, true);
+}
+
+void nx_wm_focus_prev(nx_window_manager_t* wm) {
+    nx_wm_cycle_focus(wm, false);
+}
+
+/* ============================================================================
+ * Z-Order Stacking
+ * ============================================================================ */
+
+void nx_wm_bring_to_front(nx_window_manager_t* wm, nx_window_t* win) {
+    if (!wm || !win) return;
+    int32_t max_z = 0;
+    for (nx_window_t* w = wm->windows; w; w = w->next) {
+        if (w->z_order > max_z) max_z = w->z_order;
+    }
+    win->z_order = max_z + 1;
+    win->dirty = true;
+}
+
+void nx_wm_send_to_back(nx_window_manager_t* wm, nx_window_t* win) {
+    if (!wm || !win) return;
+    int32_t min_z = 0;
+    for (nx_window_t* w = wm->windows; w; w = w->next) {
+        if (w->z_order < min_z) min_z = w->z_order;
+    }
+    win->z_order = min_z - 1;
+    win->dirty = true;
+}
+
+void nx_wm_move_forward(nx_window_manager_t* wm, nx_window_t* win) {
+    if (!wm || !win) return;
+    /* Find next window in z-order and swap */
+    nx_window_t* next = NULL;
+    int32_t next_z = 0x7FFFFFFF;
+    for (nx_window_t* w = wm->windows; w; w = w->next) {
+        if (w->z_order > win->z_order && w->z_order < next_z) {
+            next = w;
+            next_z = w->z_order;
+        }
+    }
+    if (next) {
+        int32_t tmp = win->z_order;
+        win->z_order = next->z_order;
+        next->z_order = tmp;
+        win->dirty = true;
+        next->dirty = true;
+    }
+}
+
+void nx_wm_move_backward(nx_window_manager_t* wm, nx_window_t* win) {
+    if (!wm || !win) return;
+    /* Find previous window in z-order and swap */
+    nx_window_t* prev = NULL;
+    int32_t prev_z = -0x7FFFFFFF;
+    for (nx_window_t* w = wm->windows; w; w = w->next) {
+        if (w->z_order < win->z_order && w->z_order > prev_z) {
+            prev = w;
+            prev_z = w->z_order;
+        }
+    }
+    if (prev) {
+        int32_t tmp = win->z_order;
+        win->z_order = prev->z_order;
+        prev->z_order = tmp;
+        win->dirty = true;
+        prev->dirty = true;
+    }
+}
+
+int32_t nx_wm_window_count(nx_window_manager_t* wm) {
+    if (!wm) return 0;
+    int32_t count = 0;
+    for (nx_window_t* w = wm->windows; w; w = w->next) count++;
+    return count;
+}
+
+/* ============================================================================
+ * Window State Management
+ * ============================================================================ */
+
+void nx_window_minimize(nx_window_t* win) {
+    if (!win) return;
+    win->flags |= NX_WINDOW_MINIMIZED;
+    win->visible = false;
+}
+
+void nx_window_maximize(nx_window_manager_t* wm, nx_window_t* win) {
+    if (!wm || !win) return;
+    /* Store original frame for restore */
+    if (!(win->flags & NX_WINDOW_MAXIMIZED)) {
+        /* Save to user_data as temp storage - real impl would use dedicated field */
+    }
+    win->flags |= NX_WINDOW_MAXIMIZED;
+    win->flags &= ~NX_WINDOW_MINIMIZED;
+    win->frame = (nx_rect_t){ 0, 0, wm->screen_width, wm->screen_height };
+    /* Recalculate content rect */
+    uint32_t tb = (win->flags & NX_WINDOW_BORDERLESS) ? 0 : win->style.title_bar_height;
+    uint32_t bw = (win->flags & NX_WINDOW_BORDERLESS) ? 0 : win->style.border_width;
+    win->content_rect = (nx_rect_t){
+        win->frame.x + bw, win->frame.y + tb,
+        win->frame.width - 2*bw, win->frame.height - tb - bw
+    };
+    if (win->root_widget) nx_widget_layout(win->root_widget, win->content_rect);
+    win->visible = true;
+    win->dirty = true;
+}
+
+void nx_window_restore(nx_window_t* win) {
+    if (!win) return;
+    win->flags &= ~(NX_WINDOW_MINIMIZED | NX_WINDOW_MAXIMIZED);
+    win->visible = true;
+    win->dirty = true;
+}

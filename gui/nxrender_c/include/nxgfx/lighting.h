@@ -62,6 +62,21 @@ float nx_vec3_length(nx_vec3_t v);
 nx_vec3_t nx_vec3_reflect(nx_vec3_t incident, nx_vec3_t normal);
 nx_vec3_t nx_vec3_cross(nx_vec3_t a, nx_vec3_t b);
 
+/* Matrix operations */
+nx_mat4_t nx_mat4_identity(void);
+nx_mat4_t nx_mat4_translate(float x, float y, float z);
+nx_mat4_t nx_mat4_scale(float x, float y, float z);
+nx_mat4_t nx_mat4_rotate_x(float radians);
+nx_mat4_t nx_mat4_rotate_y(float radians);
+nx_mat4_t nx_mat4_rotate_z(float radians);
+nx_mat4_t nx_mat4_perspective(float fov_y, float aspect, float near, float far);
+nx_mat4_t nx_mat4_ortho(float left, float right, float bottom, float top, float near, float far);
+nx_mat4_t nx_mat4_lookat(nx_vec3_t eye, nx_vec3_t center, nx_vec3_t up);
+nx_mat4_t nx_mat4_multiply(nx_mat4_t a, nx_mat4_t b);
+nx_vec4_t nx_mat4_transform_vec4(nx_mat4_t m, nx_vec4_t v);
+nx_vec3_t nx_mat4_transform_point(nx_mat4_t m, nx_vec3_t p);
+nx_vec3_t nx_mat4_transform_dir(nx_mat4_t m, nx_vec3_t d);
+
 /* ============================================================================
  * Light Types
  * ============================================================================ */
@@ -113,7 +128,7 @@ typedef struct {
     nx_vec3_t normal;       /* Surface normal (normalized) */
     nx_vec3_t view_dir;     /* Direction to camera (normalized) */
     nx_material_t material;
-} nx_surface_t;
+} nx_lighting_surface_t;
 
 /* ============================================================================
  * Lighting Scene
@@ -178,13 +193,13 @@ nx_material_t nx_material_glass(float ior);
 /* Calculate final color for a surface point */
 nx_vec3_t nx_lighting_calculate(
     const nx_lighting_scene_t* scene,
-    const nx_surface_t* surface
+    const nx_lighting_surface_t* surface
 );
 
 /* Calculate light contribution from single light */
 nx_vec3_t nx_light_contribution(
     const nx_light_t* light,
-    const nx_surface_t* surface
+    const nx_lighting_surface_t* surface
 );
 
 /* Calculate reflection direction */

@@ -1,0 +1,26 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# chevron-down icon
+
+[nxi]
+version = 1.0
+name = chevron-down
+size = 24
+author = KetiveeAI
+category = system
+viewbox = 0 0 24 24
+
+[canvas]
+width = 24
+height = 24
+background = transparent
+
+[colors]
+primary = #FFFFFF
+accent = #00B4FF
+color_0 = white
+
+[paths]
+path_0 = M17.293 8.29302C17.6835 7.90249 18.3165 7.90249 18.707 8.29302C19.0975 8.68354 19.0975 9.31655 18.707 9.70708L12.707 15.7071C12.3165 16.0976 11.6835 16.0976 11.293 15.7071L5.29295 9.70708C4.90243 9.31655 4.90243 8.68354 5.29295 8.29302C5.68348 7.90249 6.31649 7.90249 6.70702 8.29302L12 13.586L17.293 8.29302Z
+
+[style]
+path_0.fill = color_0

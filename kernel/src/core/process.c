@@ -273,42 +273,20 @@ void process_exit(int exit_code) {
 }
 
 void process_sleep(uint32_t ms) {
-    uint64_t start = pit_get_ticks();
-    uint64_t wake_time = start + ms;
+    /*
+     * CRITICAL: Do NOT enable interrupts (STI) during syscall handling!
+     * Timer interrupts during kernel syscall execution cause a GPF because
+     * the ISR tries to IRET when the stack is set up for SYSRET.
+     * 
+     * Use pure busy-wait for now. This is inefficient but stable.
+     * TODO: Proper solution is to switch to a dedicated kernel thread
+     * that can safely receive interrupts, or use a timer callback.
+     */
     
-    /* Debug: trace sleep start/end */
-    static int psleep_cnt = 0;
-    psleep_cnt++;
-    if (psleep_cnt <= 5 || psleep_cnt % 500 == 0) {
-        serial_puts("[PSLEEP] start=");
-        serial_dec(start);
-        serial_puts(" wake=");
-        serial_dec(wake_time);
-        serial_puts("\n");
-    }
-    
-    if (current_process) {
-        current_process->state = PROC_STATE_SLEEPING;
-    }
-    
-    /* Enable interrupts and busy-wait - allows IRQs to fire during sleep */
-    while (pit_get_ticks() < wake_time) {
-        __asm__ volatile(
-            "sti\n\t"       /* Enable interrupts */
-            "hlt\n\t"       /* Wait for interrupt */
-            ::: "memory"
-        );
-    }
-    
-    /* Debug: confirm sleep completed */
-    if (psleep_cnt <= 5 || psleep_cnt % 500 == 0) {
-        serial_puts("[PSLEEP] done, ticks=");
-        serial_dec(pit_get_ticks());
-        serial_puts("\n");
-    }
-    
-    if (current_process) {
-        current_process->state = PROC_STATE_RUNNING;
+    /* Pure busy-wait - ~100k loops ≈ 1ms on QEMU */
+    uint64_t delay_loops = (uint64_t)ms * 100000ULL;
+    for (volatile uint64_t i = 0; i < delay_loops; i++) {
+        __asm__ volatile("pause");
     }
 }
 
@@ -760,6 +738,15 @@ int32_t process_create_user(const char *name, uint64_t entry_point, uint64_t use
         free_process(proc);
         return -1;
     }
+    
+    /* DEBUG: Log kernel stack allocation and check for overlap with ELF */
+    serial_puts("[PROC_DEBUG] Kernel stack allocated at 0x");
+    serial_hex64(proc->kernel_stack);
+    serial_puts("\n");
+    if (proc->kernel_stack >= 0x1000000 && proc->kernel_stack < 0x1480000) {
+        serial_puts("[PROC_DEBUG] WARNING: Kernel stack IN ELF REGION! CORRUPTION LIKELY!\n");
+    }
+    
     proc->kernel_stack_top = proc->kernel_stack + KERNEL_STACK_SIZE;
     
     /* Set user stack */

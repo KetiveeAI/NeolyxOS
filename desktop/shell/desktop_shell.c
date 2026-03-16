@@ -13,13 +13,32 @@
 #include "../include/app_drawer.h"
 #include "../include/nxsyscall.h"
 #include "../include/dock.h"
+#include "../include/control_center.h"
+#include "../include/notification_center.h"
 #include "../include/nxevent.h"
 #include "../include/anveshan.h"
 #include "../include/window_manager.h"
+#include "../include/nxrender_bridge.h"
+
+/* Import Calendar.app functions for time handling (no duplicate code) */
+#include "../apps/Calendar.app/calendar.h"
+
+#include "../include/wallpaper.h"
+#include "../include/vm_detect.h"
+#include "../include/volume_osd.h"
+#include "../include/keyboard_osd.h"
+#include "../include/theme_osd.h"
+#include "../include/battery_warning.h"
+#include "../include/network_indicator.h"
+
+/* Centralized config system */
+#include "nx_config.h"
 
 /* ============ Forward Declarations ============ */
 static void serial_dec(int64_t val);
 static void serial_hex64(uint64_t val);
+static inline void serial_puts(const char *s);
+static inline void serial_putc(char c);
 
 /* ============ Userspace Syscall Wrappers ============ */
 
@@ -49,34 +68,32 @@ static int init_framebuffer(void) {
         return -1;
     }
     
-    /* Calculate buffer size */
-    g_buffer_size = (uint64_t)g_fb_info.pitch * g_fb_info.height;
+    /*
+     * CRITICAL FIX: For backbuffer (allocated linear memory), use width*4 as stride.
+     * The hardware pitch may have padding that doesn't apply to our linear buffer.
+     * The kernel's fb_flip will handle the pitch conversion.
+     */
+    uint32_t bb_stride = g_fb_info.width * 4;  /* Bytes per row for linear backbuffer */
+    g_buffer_size = (uint64_t)bb_stride * g_fb_info.height;
     
     /*
      * Double buffering: Allocate backbuffer from userspace heap.
      * Desktop renders to backbuffer, then kernel copies to framebuffer.
      * This eliminates flicker by showing complete frames only.
      */
-    nx_debug_print("[DESKTOP] Requesting backbuffer: ");
-    serial_dec((int64_t)g_buffer_size);
-    nx_debug_print(" bytes\n");
+    nx_debug_print("[DESKTOP] Allocating backbuffer...\n");
     
-    /* Debug: trace brk before allocation */
-    int64_t brk_before = nx_brk(0);
-    nx_debug_print("[DESKTOP] brk before: ");
-    serial_hex64((uint64_t)brk_before);
-    nx_debug_print("\n");
-    
-    g_backbuffer = (uint32_t*)nx_alloc(g_buffer_size);
-    
-    int64_t brk_after = nx_brk(0);
-    nx_debug_print("[DESKTOP] brk after: ");
-    serial_hex64((uint64_t)brk_after);
-    nx_debug_print("\n");
+    /* TEMPORARY: Force single-buffer mode to bypass pitch issues
+     * Renders directly to hardware framebuffer (may have tearing but should work)
+     */
+    g_backbuffer = NULL;  /* Force fallback to framebuffer */
+    nx_debug_print("[DESKTOP] nx_alloc skipped (forcing single buffer)\n");
     
     if (!g_backbuffer) {
-        nx_debug_print("[DESKTOP] backbuffer alloc failed - using single buffer\n");
+        nx_debug_print("[DESKTOP] Using single buffer mode (direct to HW FB)\n");
         g_backbuffer = (uint32_t*)g_framebuffer;
+        /* For direct framebuffer access, use hardware pitch */
+        g_buffer_size = (uint64_t)g_fb_info.pitch * g_fb_info.height;
     } else {
         nx_debug_print("[DESKTOP] Double buffering enabled\n");
         /* Clear backbuffer to black */
@@ -97,6 +114,11 @@ static int init_framebuffer(void) {
         nx_debug_print("[DESKTOP] Static layer caching enabled\n");
     }
     g_static_cache_valid = 0;
+    
+    /* Initialize NXRender graphics library */
+    if (nxr_bridge_init(g_backbuffer, g_fb_info.width, g_fb_info.height, g_fb_info.pitch) < 0) {
+        nx_debug_print("[DESKTOP] NXRender init failed - using fallback\n");
+    }
     
     g_fb_initialized = 1;
     return 0;
@@ -158,12 +180,55 @@ static rtc_time_t g_cached_rtc_time;
 static uint64_t g_rtc_cache_last_update = 0;
 static int g_rtc_cache_valid = 0;
 
+/* Use Calendar.app's calendar_days_in_month() instead of duplicate array */
+
 static int get_cached_rtc_time(rtc_time_t *out) {
     uint64_t now_ms = nx_gettime();
     
     /* Update cache if invalid or 1 second has passed */
     if (!g_rtc_cache_valid || (now_ms - g_rtc_cache_last_update >= 1000)) {
         if (nx_rtc_get(&g_cached_rtc_time) == 0) {
+            /* Apply timezone offset from config (not hardcoded) */
+            int16_t tz_offset = nx_config_tz_offset();  /* Minutes from UTC */
+            int16_t offset_hours = tz_offset / 60;
+            int16_t offset_mins = tz_offset % 60;
+            
+            g_cached_rtc_time.minute += offset_mins;
+            if (g_cached_rtc_time.minute >= 60) {
+                g_cached_rtc_time.minute -= 60;
+                offset_hours += 1;
+            } else if (g_cached_rtc_time.minute < 0) {
+                g_cached_rtc_time.minute += 60;
+                offset_hours -= 1;
+            }
+            g_cached_rtc_time.hour += offset_hours;
+            if (g_cached_rtc_time.hour >= 24) {
+                g_cached_rtc_time.hour -= 24;
+                /* Day rollover - increment date properly */
+                uint8_t max_day = (uint8_t)calendar_days_in_month(g_cached_rtc_time.year, g_cached_rtc_time.month);
+                g_cached_rtc_time.day += 1;
+                if (g_cached_rtc_time.day > max_day) {
+                    g_cached_rtc_time.day = 1;
+                    g_cached_rtc_time.month += 1;
+                    if (g_cached_rtc_time.month > 12) {
+                        g_cached_rtc_time.month = 1;
+                        g_cached_rtc_time.year += 1;
+                    }
+                }
+            } else if (g_cached_rtc_time.hour < 0) {
+                g_cached_rtc_time.hour += 24;
+                /* Day rollback */
+                g_cached_rtc_time.day -= 1;
+                if (g_cached_rtc_time.day < 1) {
+                    g_cached_rtc_time.month -= 1;
+                    if (g_cached_rtc_time.month < 1) {
+                        g_cached_rtc_time.month = 12;
+                        g_cached_rtc_time.year -= 1;
+                    }
+                    g_cached_rtc_time.day = (uint8_t)calendar_days_in_month(g_cached_rtc_time.year, g_cached_rtc_time.month);
+                }
+            }
+            
             g_rtc_cache_valid = 1;
             g_rtc_cache_last_update = now_ms;
         } else {
@@ -340,6 +405,7 @@ static void serial_hex64(uint64_t val) {
     const char *hex = "0123456789ABCDEF";
     serial_puts("0x");
     for (int i = 60; i >= 0; i -= 4) {
+        serial_puts("."); // Debug: verify loop runs
         serial_putc(hex[(val >> i) & 0xF]);
     }
 }
@@ -602,42 +668,28 @@ static void draw_text_large(int32_t x, int32_t y, const char *text, uint32_t col
 /* ============ Desktop Rendering ============ */
 
 static void render_background(void) {
-    /* Modern gradient wallpaper - deep navy to dark purple-pink */
-    for (uint32_t y = 0; y < g_desktop.height; y++) {
-        uint32_t t = (y * 256) / g_desktop.height;
-        
-        /* Top: Deep navy (0x0A0B1A), Bottom: Dark purple-pink (0x1A0F20) */
-        uint32_t r = (0x0A * (256 - t) + 0x1A * t) >> 8;
-        uint32_t g = (0x0B * (256 - t) + 0x0F * t) >> 8;
-        uint32_t b = (0x1A * (256 - t) + 0x20 * t) >> 8;
-        
-        uint32_t color = 0xFF000000 | (r << 16) | (g << 8) | b;
-        
-        for (uint32_t x = 0; x < g_desktop.width; x++) {
-            g_desktop.framebuffer[y * (g_desktop.pitch / 4) + x] = color;
-        }
+    if (!g_desktop.framebuffer) {
+        return;
     }
     
-    /* Flowing color wave effect (pink/purple tones) */
-    uint32_t cx = g_desktop.width / 2 + 50;
-    uint32_t cy = g_desktop.height / 2;
-    for (int32_t oy = -200; oy < 200; oy++) {
-        for (int32_t ox = -150; ox < 150; ox++) {
-            int32_t px = cx + ox;
-            int32_t py = cy + oy;
-            if (px >= 0 && px < (int32_t)g_desktop.width && py >= 0 && py < (int32_t)g_desktop.height) {
-                int32_t dist = (ox * ox + oy * oy);
-                if (dist < 30000) {
-                    uint8_t blend = 40 - (dist * 40 / 30000);
-                    uint32_t idx = py * (g_desktop.pitch / 4) + px;
-                    uint32_t bg = g_desktop.framebuffer[idx];
-                    uint8_t br = (bg >> 16) & 0xFF, bgg = (bg >> 8) & 0xFF, bb = bg & 0xFF;
-                    /* Pink accent: 0xAD5389 */
-                    uint8_t nr = br + ((0x80 - br) * blend / 100);
-                    uint8_t ng = bgg + ((0x20 - bgg) * blend / 150);
-                    uint8_t nb = bb + ((0x60 - bb) * blend / 100);
-                    g_desktop.framebuffer[idx] = 0xFF000000 | (nr << 16) | (ng << 8) | nb;
-                }
+    /* Try to render wallpaper image first */
+    if (wallpaper_is_loaded()) {
+        wallpaper_render(g_desktop.framebuffer, g_desktop.pitch, 
+                        g_desktop.width, g_desktop.height);
+    } else {
+        /* Fallback: Simple gradient wallpaper */
+        for (uint32_t y = 0; y < g_desktop.height; y++) {
+            uint32_t t = (y * 256) / g_desktop.height;
+            
+            /* Top: Deep navy, Bottom: Dark purple */
+            uint32_t r = (0x0A * (256 - t) + 0x1A * t) >> 8;
+            uint32_t g = (0x0B * (256 - t) + 0x0F * t) >> 8;
+            uint32_t b = (0x1A * (256 - t) + 0x20 * t) >> 8;
+            
+            uint32_t color = 0xFF000000 | (r << 16) | (g << 8) | b;
+            
+            for (uint32_t x = 0; x < g_desktop.width; x++) {
+                g_desktop.framebuffer[y * (g_desktop.pitch / 4) + x] = color;
             }
         }
     }
@@ -645,7 +697,7 @@ static void render_background(void) {
 
 /* Navigation Menu Bar - top of screen */
 static void render_navigation_bar(void) {
-    int bar_h = 28;
+    int bar_h = g_nx_config.ui.navbar_height;  /* From config, not hardcoded */
     
     /* Translucent glass bar background */
     for (uint32_t y = 0; y < (uint32_t)bar_h; y++) {
@@ -699,22 +751,45 @@ static void render_navigation_bar(void) {
         desktop_draw_text(clock_x, 8, time_str, COLOR_TEXT_WHITE);
     }
     
-    /* Right side icons */
-    int rx = g_desktop.width - 120;
+    /* Right side: Control Center icons (PC-style status menu) */
+    int rx = g_desktop.width - 120;  /* Moved left to make room for network */
     
-    /* WiFi icon (4 arcs) */
-    for (int arc = 0; arc < 4; arc++) {
-        int r = 4 + arc * 3;
-        draw_circle(rx + 12, 18, r, arc < 2 ? COLOR_TEXT_WHITE : COLOR_TEXT_DIM);
+    /* Network status indicator (uses NXI icons) */
+    network_indicator_render(rx, 6);
+    rx += 24;
+    
+    /* Volume icon (speaker shape) - PC has speakers, not mobile signal */
+    fill_rounded_rect(rx, 8, 6, 10, 1, COLOR_TEXT_WHITE);  /* Speaker body */
+    fill_rounded_rect(rx + 6, 6, 3, 14, 1, COLOR_TEXT_WHITE);  /* Speaker cone */
+    /* Sound waves */
+    for (int wave = 0; wave < 2; wave++) {
+        int woff = 12 + wave * 4;
+        fill_rounded_rect(rx + woff, 10 + wave, 2, 6 - wave * 2, 1, 
+                          wave == 0 ? COLOR_TEXT_WHITE : 0x80FFFFFF);
     }
-    fill_circle(rx + 12, 18, 2, COLOR_TEXT_WHITE);  /* Center dot */
-    desktop_draw_text(rx + 25, 8, "WiFi", COLOR_TEXT_DIM);
+    rx += 30;
     
-    /* Battery indicator */
-    int bx = rx + 70;
-    fill_rounded_rect(bx, 9, 24, 12, 2, COLOR_TEXT_WHITE);
-    fill_rounded_rect(bx + 24, 12, 2, 6, 1, COLOR_TEXT_WHITE);  /* Nub */
-    fill_rounded_rect(bx + 2, 11, 18, 8, 1, 0xFF40FF40);  /* Green fill (charged) */
+    /* Bluetooth icon (simplified B shape) */
+    fill_rounded_rect(rx, 7, 12, 14, 2, 0x80007AFF);  /* Blue pill */
+    desktop_draw_text(rx + 2, 8, "B", COLOR_TEXT_WHITE);
+    rx += 20;
+    
+    /* Notification bell icon - left of grid */
+    fill_rounded_rect(rx, 7, 14, 14, 3, notification_center_is_visible() ? 0xFF007AFF : 0x60FFFFFF);
+    /* Bell shape: top dome + bottom */
+    fill_circle(rx + 7, 11, 4, COLOR_TEXT_WHITE);
+    fill_rounded_rect(rx + 4, 14, 6, 4, 1, COLOR_TEXT_WHITE);
+    /* Bell clapper dot */
+    fill_circle(rx + 7, 19, 1, COLOR_TEXT_WHITE);
+    rx += 22;
+    
+    /* Control Center toggle (grid icon) - clicking shows settings panel */
+    fill_rounded_rect(rx, 7, 14, 14, 3, control_center_is_visible() ? 0xFF007AFF : 0x60FFFFFF);
+    /* 2x2 grid dots */
+    fill_circle(rx + 5, 11, 2, COLOR_TEXT_WHITE);
+    fill_circle(rx + 11, 11, 2, COLOR_TEXT_WHITE);
+    fill_circle(rx + 5, 17, 2, COLOR_TEXT_WHITE);
+    fill_circle(rx + 11, 17, 2, COLOR_TEXT_WHITE);
 }
 
 /* Globe Clock Widget - top left */
@@ -739,9 +814,8 @@ static void render_globe_clock_widget(void) {
     fill_circle(globe_cx - 10, globe_cy - 12, 5, 0x40FFFFFF);
     
     /* Get real date/time from RTC */
-    static const char *weekdays[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-    static const char *months[] = {"January", "February", "March", "April", "May", "June",
-                                    "July", "August", "September", "October", "November", "December"};
+    /* Use Calendar.app's arrays instead of duplicate definitions */
+    /* day_names_short[] and month_names_full[] from calendar.h */
     
     rtc_time_t now;
     uint32_t hours, minutes, day, month, year, weekday;
@@ -751,9 +825,13 @@ static void render_globe_clock_widget(void) {
         hours = now.hour;
         minutes = now.minute;
         day = now.day;
-        month = now.month - 1;  /* 0-indexed for array */
+        month = now.month;  /* 1-12 */
         year = now.year;
-        weekday = now.weekday;
+        
+        /* Use Calendar.app's calendar_day_of_week() - no duplicate algorithm */
+        weekday = calendar_day_of_week(year, month, day);
+        
+        month = month - 1;  /* 0-indexed for months array */
     } else {
         /* Fallback to boot ticks if RTC fails */
         uint64_t ticks_ms = nx_gettime();
@@ -761,22 +839,22 @@ static void render_globe_clock_widget(void) {
         uint32_t secs_in_day = total_secs % 86400;
         hours = (secs_in_day / 3600) % 24;
         minutes = (secs_in_day / 60) % 60;
-        day = 2;
+        day = 9;
         month = 0;  /* January */
         year = 2026;
-        weekday = 4;  /* Thursday */
+        weekday = 5;  /* Friday (Jan 9 2026) */
     }
     
-    /* Format date string: "Wed, 2. January" */
+    /* Format date string: "Fri, 9. January" */
     char date_str[40];
     int pos = 0;
-    const char *wd = weekdays[weekday % 7];
+    const char *wd = day_names_short[weekday % 7];  /* From Calendar.app */
     while (*wd) date_str[pos++] = *wd++;
     date_str[pos++] = ','; date_str[pos++] = ' ';
     if (day >= 10) date_str[pos++] = '0' + (day / 10);
     date_str[pos++] = '0' + (day % 10);
     date_str[pos++] = '.'; date_str[pos++] = ' ';
-    const char *mn = months[month % 12];
+    const char *mn = month_names_full[month % 12];  /* From Calendar.app */
     while (*mn) date_str[pos++] = *mn++;
     date_str[pos] = '\0';
     
@@ -824,20 +902,29 @@ static void render_search_bar(void) {
     fill_circle(bar_x + bar_w - 24, bar_y + 8, 4, COLOR_TEXT_DIM);
 }
 
-/* Desktop Icons - top right */
+/* External storage connected flag - set by kernel when USB/storage detected */
+static int g_external_storage_connected = 0;
+
+/* Desktop Icons - only show connected devices
+ * External storage icon appears only when USB/external drive is detected */
 static void render_desktop_icons(void) {
+    /* Only render external storage icon when actually connected */
+    if (!g_external_storage_connected) {
+        return;  /* No connected devices - clean desktop */
+    }
+    
+    /* External storage icon when connected */
     int icon_x = g_desktop.width - 85;
     int icon_y = 45;
     int icon_size = 48;
     
-    /* External Storage icon */
+    /* Icon background */
     fill_rounded_rect(icon_x, icon_y, icon_size, icon_size, 8, 0x60506080);
-    
-    /* Hard drive shape inside */
+    /* Storage device representation */
     fill_rounded_rect(icon_x + 8, icon_y + 16, 32, 18, 3, 0xFF4A5A6A);
+    /* Activity LED */
     desktop_fill_rect(icon_x + 12, icon_y + 28, 4, 4, 0xFF88FF88);
-    
-    /* Label */
+    /* Labels */
     desktop_draw_text(icon_x - 8, icon_y + icon_size + 5, "External", COLOR_TEXT_WHITE);
     desktop_draw_text(icon_x + 2, icon_y + icon_size + 15, "Storage", COLOR_TEXT_WHITE);
 }
@@ -860,7 +947,8 @@ static void render_dock_legacy(void) {
     int dock_w = (base_size + 8) * icon_count + 40;
     int dock_h = base_size + 18;                 /* Dynamic height based on icon size */
     int dock_x = (g_desktop.width - dock_w) / 2;
-    int dock_y = g_desktop.height - dock_h - 15;
+    int dock_margin = 15;  /* TODO: Read from g_nx_config when dock config added */
+    int dock_y = g_desktop.height - dock_h - dock_margin;
     
     /* Detect hover */
     hover_idx = -1;
@@ -943,6 +1031,12 @@ static void render_dock_legacy(void) {
     }
 }
 
+/* Forward declarations */
+static inline void serial_puts(const char *s);
+static inline void serial_putc(char c);
+static void serial_hex64(uint64_t val);
+
+/* Main application state */
 static void render_window(desktop_window_t *win) {
     if (!win->visible) return;
     
@@ -1103,60 +1197,31 @@ static void render_windows(void) {
 }
 
 static void render_desktop(void) {
-    /* Only print once every 60 frames to avoid spamming serial */
+    /* Only log once every 60 frames to avoid serial spam */
     static int frame_count = 0;
     static uint64_t last_time = 0;
+    
+    if (frame_count++ % 60 == 0) {
+        serial_puts("[DESKTOP] Frame\n");
+    }
     
     uint64_t now = pit_get_ticks();
     float dt = (last_time > 0) ? (float)(now - last_time) / 1000.0f : 0.016f;
     if (dt > 0.1f) dt = 0.016f;  /* Cap delta time */
     last_time = now;
     
-    if (frame_count++ % 60 == 0) {
-        serial_puts("[DESKTOP] Rendering frame...\n");
-    }
-    
     /* Update window manager animations */
     wm_tick(dt);
     
     /*
-     * Static layer caching to eliminate flicker:
-     * 
-     * FIRST FRAME: Render all static elements (background, nav bar, clock, 
-     * search bar, icons) to backbuffer, then copy to static cache.
-     * 
-     * SUBSEQUENT FRAMES: Copy static cache to backbuffer (fast memcpy),
-     * then overlay dynamic content (windows, dock hover, cursor).
-     * 
-     * This ensures the backbuffer always starts with a clean, complete
-     * static layer - no partial redraws or stale content.
+     * TEMPORARILY DISABLED: Static layer caching was causing missing UI issues.
+     * Always render static elements every frame for now.
      */
-    if (!g_static_cache_valid && g_static_cache) {
-        /* First frame: render all static elements */
-        render_background();
-        render_navigation_bar();
-        render_globe_clock_widget();
-        render_search_bar();
-        render_desktop_icons();
-        
-        /* Copy rendered frame to static cache */
-        uint64_t count = g_buffer_size / 4;
-        for (uint64_t i = 0; i < count; i++) {
-            g_static_cache[i] = g_backbuffer[i];
-        }
-        g_static_cache_valid = 1;
-        nx_debug_print("[DESKTOP] Static layer cached\n");
-    } else if (g_static_cache_valid) {
-        /* Subsequent frames: restore cached static layer */
-        restore_static_layer();
-    } else {
-        /* Fallback: no cache available, render static elements every frame */
-        render_background();
-        render_navigation_bar();
-        render_globe_clock_widget();
-        render_search_bar();
-        render_desktop_icons();
-    }
+    render_background();
+    render_navigation_bar();
+    render_globe_clock_widget();
+    render_search_bar();
+    render_desktop_icons();
     
     /* Render tile preview overlay (below windows) */
     int32_t tile_x, tile_y;
@@ -1199,6 +1264,28 @@ static void render_desktop(void) {
     
     /* Render App Drawer overlay (above everything except cursor) */
     app_drawer_render();
+    
+    /* Render Control Center overlay */
+    control_center_tick();
+    control_center_render(g_desktop.framebuffer, g_desktop.pitch);
+    
+    /* Render Notification Center overlay */
+    notification_center_tick();
+    notification_center_render(g_desktop.framebuffer, g_desktop.pitch);
+    
+    /* Render OSD overlays (above notification center) */
+    volume_osd_tick();
+    volume_osd_render(g_desktop.framebuffer, g_desktop.pitch);
+    keyboard_osd_tick();
+    keyboard_osd_render(g_desktop.framebuffer, g_desktop.pitch);
+    theme_osd_tick();
+    theme_osd_render(g_desktop.framebuffer, g_desktop.pitch);
+    battery_warning_tick();
+    battery_warning_render(g_desktop.framebuffer, g_desktop.pitch);
+    
+    /* Render keyboard shortcut help overlay (full-screen, above everything) */
+    keyboard_osd_help_render(g_desktop.framebuffer, g_desktop.pitch,
+                             g_desktop.width, g_desktop.height);
     
     /* Render Quick Access Menu if visible */
     wm_quick_menu_t *qm = wm_get_quick_menu();
@@ -1279,6 +1366,8 @@ uint32_t desktop_create_window(const char *title, int32_t x, int32_t y,
     win->z_order = g_desktop.window_count;
     win->render_content = NULL;
     win->render_ctx = NULL;
+    win->key_handler = NULL;
+    win->key_ctx = NULL;
     
     g_desktop.window_count++;
     
@@ -1342,20 +1431,60 @@ void desktop_set_window_render(uint32_t window_id,
     }
 }
 
+void desktop_set_window_key_handler(uint32_t window_id,
+                                    void (*handler)(desktop_window_t *win, 
+                                                    uint8_t scancode, 
+                                                    uint8_t pressed, 
+                                                    void *ctx),
+                                    void *ctx) {
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (g_windows[i].id == window_id) {
+            g_windows[i].key_handler = handler;
+            g_windows[i].key_ctx = ctx;
+            break;
+        }
+    }
+}
+
 /* ============ Input Handling ============ */
 
+/* Mouse smoothing state - exponential moving average */
+static int32_t g_smooth_mouse_x = 0;
+static int32_t g_smooth_mouse_y = 0;
+static int g_mouse_smooth_init = 0;
+#define MOUSE_SMOOTH_FACTOR 1  /* Higher = smoother but slower (1-4 range, 1 is fastest) */
+
 void desktop_handle_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
-    /* Update mouse position */
-    g_desktop.mouse_x += dx;
-    g_desktop.mouse_y += dy;
     
-    /* Clamp to screen */
-    if (g_desktop.mouse_x < 0) g_desktop.mouse_x = 0;
-    if (g_desktop.mouse_y < 0) g_desktop.mouse_y = 0;
-    if (g_desktop.mouse_x >= (int32_t)g_desktop.width) 
-        g_desktop.mouse_x = g_desktop.width - 1;
-    if (g_desktop.mouse_y >= (int32_t)g_desktop.height)
-        g_desktop.mouse_y = g_desktop.height - 1;
+    /* Calculate target position */
+    int32_t target_x = g_desktop.mouse_x + dx;
+    int32_t target_y = g_desktop.mouse_y + dy;
+    
+    /* Clamp target to screen */
+    if (target_x < 0) target_x = 0;
+    if (target_y < 0) target_y = 0;
+    if (target_x >= (int32_t)g_desktop.width) target_x = g_desktop.width - 1;
+    if (target_y >= (int32_t)g_desktop.height) target_y = g_desktop.height - 1;
+    
+    /* Initialize smooth position on first use */
+    if (!g_mouse_smooth_init) {
+        g_smooth_mouse_x = target_x * 256;  /* Fixed-point 8.8 */
+        g_smooth_mouse_y = target_y * 256;
+        g_mouse_smooth_init = 1;
+    }
+    
+    /* Exponential moving average for smooth cursor movement
+     * new_pos = old_pos + (target - old_pos) / smooth_factor
+     * Using fixed-point arithmetic (8-bit fractional) */
+    int32_t target_fp_x = target_x * 256;
+    int32_t target_fp_y = target_y * 256;
+    
+    g_smooth_mouse_x += (target_fp_x - g_smooth_mouse_x) >> MOUSE_SMOOTH_FACTOR;
+    g_smooth_mouse_y += (target_fp_y - g_smooth_mouse_y) >> MOUSE_SMOOTH_FACTOR;
+    
+    /* Convert back to integer position */
+    g_desktop.mouse_x = g_smooth_mouse_x >> 8;
+    g_desktop.mouse_y = g_smooth_mouse_y >> 8;
     
     uint8_t prev_buttons = g_desktop.mouse_buttons;
     g_desktop.mouse_buttons = buttons;
@@ -1364,6 +1493,41 @@ void desktop_handle_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
     if (app_drawer_is_open()) {
         app_drawer_handle_mouse(g_desktop.mouse_x, g_desktop.mouse_y, buttons);
         return;  /* Drawer consumes all mouse events when open */
+    }
+    
+    /* Handle Control Center input */
+    if (control_center_handle_input(g_desktop.mouse_x, g_desktop.mouse_y, buttons, prev_buttons)) {
+        return;  /* Control Center consumed the event */
+    }
+    
+    /* Handle Notification Center input */
+    if (notification_center_handle_input(g_desktop.mouse_x, g_desktop.mouse_y, buttons, prev_buttons)) {
+        return;  /* Notification Center consumed the event */
+    }
+    
+    /* Check for navbar icon clicks - top-right area */
+    if ((buttons & 0x01) && !(prev_buttons & 0x01)) {
+        if (g_desktop.mouse_y < 28) {  /* Menu bar height */
+            /* Grid icon (Control Center toggle) - rightmost */
+            if (g_desktop.mouse_x >= (int32_t)g_desktop.width - 50 &&
+                g_desktop.mouse_x <= (int32_t)g_desktop.width - 20) {
+                control_center_toggle();
+                notification_center_hide();  /* Close NC when opening CC */
+                return;
+            }
+            /* Bell icon (Notification Center toggle) - left of grid */
+            if (g_desktop.mouse_x >= (int32_t)g_desktop.width - 80 &&
+                g_desktop.mouse_x <= (int32_t)g_desktop.width - 55) {
+                notification_center_toggle();
+                control_center_hide();  /* Close CC when opening NC */
+                return;
+            }
+        }
+    }
+    
+    /* Check dock clicks FIRST - dock is above most things */
+    if (dock_handle_mouse(g_desktop.mouse_x, g_desktop.mouse_y, buttons, prev_buttons)) {
+        return;  /* Dock consumed the click */
     }
     
     /* Update quick menu hover state */
@@ -1581,10 +1745,64 @@ void desktop_handle_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
     }
 }
 
+/* ============ NX Key Long-Press Tracking (File Scope) ============ */
+
+static uint64_t g_nx_key_press_time = 0;
+static int g_nx_key_held = 0;
+static int g_nx_help_shown = 0;
+#define NX_LONGPRESS_MS 500  /* 500ms threshold */
+
+/* Called every frame to check if NX key was held long enough */
+void nx_key_tick(void) {
+    if (g_nx_key_held && !g_nx_help_shown) {
+        uint64_t held_time = nx_gettime() - g_nx_key_press_time;
+        if (held_time >= NX_LONGPRESS_MS) {
+            keyboard_osd_help_show();
+            g_nx_help_shown = 1;
+            serial_puts("[KBD] NX key held 500ms, showing help overlay\n");
+        }
+    }
+}
+
 void desktop_handle_key(uint8_t scancode, uint8_t pressed) {
-    /* NX key (left: 0x5B, right: 0x5C) - toggle App Drawer */
-    if ((scancode == 0x5B || scancode == 0x5C) && pressed) {
-        app_drawer_toggle();
+    /* Track Caps Lock state */
+    static int caps_lock_on = 0;
+    
+    /* Caps Lock key (scancode 0x3A) - toggle and show OSD */
+    if (scancode == 0x3A && pressed) {
+        caps_lock_on = !caps_lock_on;
+        keyboard_osd_caps_lock(caps_lock_on);
+        return;
+    }
+    
+    /* Num Lock key (scancode 0x45) - toggle and show OSD */
+    static int num_lock_on = 1;  /* Usually starts ON */
+    if (scancode == 0x45 && pressed) {
+        num_lock_on = !num_lock_on;
+        keyboard_osd_num_lock(num_lock_on);
+        return;
+    }
+    
+    /* NX key (left: 0x5B, right: 0x5C) - quick tap for App Drawer, long-press for help */
+    if (scancode == 0x5B || scancode == 0x5C) {
+        if (pressed) {
+            /* Key pressed - start tracking for long-press */
+            g_nx_key_press_time = nx_gettime();
+            g_nx_key_held = 1;
+            g_nx_help_shown = 0;
+        } else {
+            /* Key released */
+            if (g_nx_help_shown) {
+                /* Was showing help overlay - just hide it */
+                keyboard_osd_help_hide();
+                serial_puts("[KBD] NX key released, hiding help overlay\n");
+            } else if (g_nx_key_held) {
+                /* Quick tap - toggle App Drawer */
+                app_drawer_toggle();
+            }
+            g_nx_key_held = 0;
+            g_nx_help_shown = 0;
+        }
         return;
     }
     
@@ -1595,7 +1813,15 @@ void desktop_handle_key(uint8_t scancode, uint8_t pressed) {
         }
     }
     
-    /* TODO: Forward to focused window */
+    /* Forward to focused window */
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        desktop_window_t *win = &g_windows[i];
+        if (win->id != 0 && win->visible && win->focused && 
+            !win->minimized && win->key_handler) {
+            win->key_handler(win, scancode, pressed, win->key_ctx);
+            return;
+        }
+    }
 }
 
 /* ============ Main Entry Points ============ */
@@ -1606,14 +1832,18 @@ int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pit
     /* For userspace mode, use syscalls to get framebuffer */
     /* If parameters are 0, use syscall to get FB info */
     if (fb_addr == 0 || width == 0) {
+        /* Initialize config system first */
+        nx_config_init();
+        
         if (init_framebuffer() != 0) {
             serial_puts("[DESKTOP] Failed to init framebuffer via syscall\n");
             return -1;
         }
-        /* Use back buffer for rendering (double buffering) */
+        /* Use back buffer for rendering */
         g_desktop.framebuffer = g_backbuffer;
         g_desktop.width = g_fb_info.width;
         g_desktop.height = g_fb_info.height;
+        /* SINGLE BUFFER MODE: Using hardware framebuffer directly - use hardware pitch */
         g_desktop.pitch = g_fb_info.pitch;
     } else {
         /* Fallback: use passed parameters (kernel mode, no double buffering) */
@@ -1654,12 +1884,36 @@ int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pit
     
     /* Initialize Dock */
     dock_init(g_desktop.width, g_desktop.height);
-    nx_debug_print("[DESKTOP] Dock done, app drawer init...\n");
+    nx_debug_print("[DESKTOP] Dock done, control center init...\n");
+    
+    /* Initialize Control Center */
+    control_center_init(g_desktop.width, g_desktop.height);
+    nx_debug_print("[DESKTOP] Control center done, notification center init...\n");
+    
+    /* Initialize Notification Center */
+    notification_center_init(g_desktop.width, g_desktop.height);
+    nx_debug_print("[DESKTOP] Notification center done, app drawer init...\n");
     
     /* Initialize App Drawer */
     app_drawer_init(g_desktop.width, g_desktop.height);
-    nx_debug_print("[DESKTOP] All init done! Returning 0...\n");
     
+    /* Initialize Wallpaper (loads image via libnximage if available) */
+    wallpaper_init(g_desktop.width, g_desktop.height);
+    
+    /* Initialize OSD components */
+    volume_osd_init(g_desktop.width, g_desktop.height);
+    keyboard_osd_init(g_desktop.width, g_desktop.height);
+    theme_osd_init(g_desktop.width, g_desktop.height);
+    battery_warning_init(g_desktop.width, g_desktop.height);
+    nx_debug_print("[DESKTOP] OSD components initialized\n");
+    
+    nx_debug_print("[DESKTOP] All init done! Starting main loop...\n");
+    
+    /* Call desktop_run directly instead of returning to avoid stack corruption issue */
+    extern void desktop_run(void);
+    desktop_run();
+    
+    /* Should never reach here */
     return 0;
 }
 
@@ -1779,6 +2033,7 @@ void desktop_run(void) {
     serial_puts("[DESKTOP] Starting desktop event loop\n");
     
     /* Initial render */
+    serial_puts("[DR] About to call render_desktop\n");
     render_desktop();
     serial_puts("[DESKTOP] Initial render complete\n");
     
@@ -1824,6 +2079,9 @@ void desktop_run(void) {
         
         /* Process pending events from event bus */
         nxevent_process();
+        
+        /* Check NX key long-press for help overlay */
+        nx_key_tick();
         
         /* Always render every frame */
         render_desktop();

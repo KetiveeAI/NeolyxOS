@@ -1,0 +1,26 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# arrow-down icon
+
+[nxi]
+version = 1.0
+name = arrow-down
+size = 24
+author = KetiveeAI
+category = system
+viewbox = 0 0 24 24
+
+[canvas]
+width = 24
+height = 24
+background = transparent
+
+[colors]
+primary = #FFFFFF
+accent = #00B4FF
+color_0 = white
+
+[paths]
+path_0 = M11 5C11 4.44772 11.4477 4 12 4C12.5523 4 13 4.44772 13 5V16.5859L18.293 11.293C18.6835 10.9024 19.3165 10.9024 19.707 11.293C20.0975 11.6835 20.0975 12.3165 19.707 12.707L12.707 19.707C12.3165 20.0976 11.6835 20.0976 11.293 19.707L4.29295 12.707C3.90243 12.3165 3.90243 11.6835 4.29295 11.293C4.68348 10.9024 5.31649 10.9024 5.70702 11.293L11 16.5859V5Z
+
+[style]
+path_0.fill = color_0

@@ -31,6 +31,20 @@
 #define SYS_READ        22
 #define SYS_WRITE       23
 #define SYS_STAT        25
+#define SYS_SEEK        24
+
+/* File open flags */
+#define O_RDONLY  0x0000
+#define O_WRONLY  0x0001
+#define O_RDWR    0x0002
+#define O_CREAT   0x0040
+#define O_TRUNC   0x0200
+#define O_APPEND  0x0400
+
+/* Seek origins */
+#define SEEK_SET  0
+#define SEEK_CUR  1
+#define SEEK_END  2
 
 /* Framebuffer (120-122) */
 #define SYS_FB_MAP      120
@@ -95,13 +109,10 @@ static inline int64_t syscall0(int64_t num) {
 
 static inline int64_t syscall1(int64_t num, int64_t a1) {
     int64_t ret;
-    /* Force num into a register that compiler can't reuse */
-    register int64_t syscall_num __asm__("rax") = num;
-    register int64_t arg1 __asm__("rdi") = a1;
     __asm__ volatile(
         "syscall"
         : "=a"(ret)
-        : "r"(syscall_num), "r"(arg1)
+        : "0"(num), "D"(a1)   /* "0" ties num to same register as output operand 0 (RAX) */
         : "rcx", "r11", "memory"
     );
     return ret;
@@ -128,6 +139,33 @@ static inline int64_t syscall3(int64_t num, int64_t a1, int64_t a2, int64_t a3) 
         : "rcx", "r11", "memory"
     );
     return ret;
+}
+
+/* ============ File I/O Wrappers ============ */
+
+/* Open a file, returns fd or negative error */
+static inline int nx_open(const char *path, int flags) {
+    return (int)syscall3(SYS_OPEN, (int64_t)path, (int64_t)flags, 0);
+}
+
+/* Close a file descriptor */
+static inline int nx_close(int fd) {
+    return (int)syscall1(SYS_CLOSE, (int64_t)fd);
+}
+
+/* Read from file, returns bytes read or negative error */
+static inline int64_t nx_read(int fd, void *buf, uint64_t count) {
+    return syscall3(SYS_READ, (int64_t)fd, (int64_t)buf, (int64_t)count);
+}
+
+/* Write to file, returns bytes written or negative error */
+static inline int64_t nx_write(int fd, const void *buf, uint64_t count) {
+    return syscall3(SYS_WRITE, (int64_t)fd, (int64_t)buf, (int64_t)count);
+}
+
+/* Seek in file, returns new position or negative error */
+static inline int64_t nx_seek(int fd, int64_t offset, int whence) {
+    return syscall3(SYS_SEEK, (int64_t)fd, offset, (int64_t)whence);
 }
 
 /* ============ API Wrappers ============ */
@@ -167,45 +205,17 @@ static inline int64_t nx_brk(uint64_t addr) {
     return (int64_t)syscall1(SYS_BRK, addr);
 }
 
-/* Simple sbrk-style allocator using brk syscall */
-static inline void* nx_alloc(uint64_t size) {
-    static uint64_t heap_end = 0;
-    static int initialized = 0;
-    
-    /* First call: get current break from kernel */
-    if (!initialized) {
-        int64_t result = nx_brk(0);
-        if (result < 0) {
-            return (void*)0;  /* brk not available */
-        }
-        heap_end = (uint64_t)result;
-        initialized = 1;
-    }
-    
-    if (size == 0) return (void*)0;
-    
-    /* Align size to 16 bytes (standard malloc alignment) */
-    size = (size + 15) & ~15;
-    
-    /* Request more heap from kernel */
-    uint64_t new_end = heap_end + size;
-    int64_t result = nx_brk(new_end);
-    
-    if (result < 0 || (uint64_t)result < new_end) {
-        return (void*)0;  /* Allocation failed */
-    }
-    
-    void *ptr = (void*)heap_end;
-    heap_end = new_end;
-    return ptr;
-}
+/* Heap allocator - implemented in nx_malloc.c with proper global state
+ * NOTE: These MUST NOT be inline functions with file-local statics,
+ * because each translation unit would get its own heap_end, causing
+ * allocations from different files to collide!
+ */
+extern void* nx_malloc(uint64_t size);
+extern void nx_mfree(void *ptr);
 
-static inline void nx_free(void *ptr) {
-    /* Simple allocator doesn't track individual allocations.
-     * For proper free(), would need a more complex allocator (dlmalloc, etc.)
-     * This is acceptable for desktop shell - Windows Explorer works similarly. */
-    (void)ptr;
-}
+/* Legacy compatibility wrappers */
+#define nx_alloc(size) nx_malloc(size)
+#define nx_free(ptr) nx_mfree(ptr)
 
 /* Get system time (milliseconds since boot) */
 static inline uint64_t nx_gettime(void) {
@@ -266,5 +276,16 @@ static inline int nx_rtc_set(const rtc_time_t *time) {
 static inline uint64_t nx_rtc_unix(void) {
     return (uint64_t)syscall0(SYS_RTC_UNIX);
 }
+
+/* ============ Image Loading (Userspace Only) ============ */
+/* 
+ * Image loading is handled entirely in userspace via libnximage.
+ * The kernel only provides file I/O (open/read/close) and memory (brk).
+ * 
+ * Include "nximage.h" and link with libnximage.a for:
+ *   nxi_load(path, &img)   - Load image to RGBA32 buffer
+ *   nxi_info(path, &w, &h) - Get dimensions without loading pixels
+ *   nxi_free(&img)         - Free pixel buffer
+ */
 
 #endif /* NXSYSCALL_H */

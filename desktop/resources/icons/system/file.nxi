@@ -1,0 +1,28 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# file icon
+
+[nxi]
+version = 1.0
+name = file
+size = 24
+author = KetiveeAI
+category = system
+viewbox = 0 0 24 24
+
+[canvas]
+width = 24
+height = 24
+background = transparent
+
+[colors]
+primary = #FFFFFF
+accent = #00B4FF
+color_0 = white
+
+[paths]
+path_0 = M4 19V5C4 3.34772 5.34772 2 7 2H13C13.2652 2 13.5195 2.10543 13.707 2.29297L19.707 8.29297C19.8946 8.4805 20 8.73478 20 9V19C20 20.6523 18.6523 22 17 22H7C5.34772 22 4 20.6523 4 19ZM6 19C6 19.5477 6.45228 20 7 20H17C17.5477 20 18 19.5477 18 19V9.41406L12.5859 4H7C6.45228 4 6 4.45228 6 5V19Z
+path_1 = M12 7V3C12 2.44772 12.4477 2 13 2C13.5523 2 14 2.44772 14 3V7C14 7.54772 14.4523 8 15 8H19C19.5523 8 20 8.44772 20 9C20 9.55228 19.5523 10 19 10H15C13.3477 10 12 8.65228 12 7Z
+
+[style]
+path_0.fill = color_0
+path_1.fill = color_0

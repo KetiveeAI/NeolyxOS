@@ -72,6 +72,7 @@ obj-y += vmm.o
 
 # System calls and process management
 obj-y += syscall.o
+obj-y += nx_syscall.o
 obj-y += process.o
 obj-y += elf.o
 obj-y += runtime.o
@@ -95,6 +96,10 @@ obj-y += nxpt.o
 obj-y += code_integrity.o
 obj-y += csr.o
 obj-y += task_port_protection.o
+
+# Network security (firewall / IDS)
+obj-y += firewall.o
+# obj-y += ids.o  # TEMPORARILY DISABLED FOR DEBUG
 
 # Fault Tolerance Subsystem (kernel never crashes, never reboots)
 obj-y += fault_router.o
@@ -263,6 +268,9 @@ vmm.o: src/mm/vmm.c
 # System calls and process management rules
 syscall.o: src/core/syscall.c include/core/syscall.h include/core/kernel.h include/core/process.h include/network/network.h include/storage/storage.h include/utils/log.h include/fs/file.h
 	$(CC) $(CFLAGS) -c src/core/syscall.c -o syscall.o
+
+nx_syscall.o: src/core/nx_syscall.c include/core/nx_abi.h include/core/syscall.h include/core/process.h include/core/syscall_table.def
+	$(CC) $(CFLAGS) -c src/core/nx_syscall.c -o nx_syscall.o
 
 process.o: src/core/process.c include/core/process.h include/core/kernel.h include/utils/log.h
 	$(CC) $(CFLAGS) -c src/core/process.c -o process.o
@@ -586,7 +594,15 @@ csr.o: src/security/csr.c include/security/csr.h
 	$(CC) $(CFLAGS) -c src/security/csr.c -o csr.o
 
 task_port_protection.o: src/security/task_port_protection.c include/security/task_port.h
-	$(CC) $(CFLAGS) -c src/security/task_port_protection.c -o task_port_protection.o
+	$(CC) $(CFLAGS) -I../config -c src/security/task_port_protection.c -o task_port_protection.o
+
+# Network Security - Firewall with rate limiting, connection tracking
+firewall.o: src/security/firewall.c include/security/firewall.h
+	$(CC) $(CFLAGS) -I../config -c src/security/firewall.c -o firewall.o
+
+# Network Security - Intrusion Detection System
+ids.o: src/security/ids.c include/security/ids.h
+	$(CC) $(CFLAGS) -I../config -c src/security/ids.c -o ids.o
 
 # Phase D: GPU Acceleration and 3D
 nxgfx_accel.o: src/drivers/graphics/nxgfx_accel.c include/drivers/nxgfx_accel.h

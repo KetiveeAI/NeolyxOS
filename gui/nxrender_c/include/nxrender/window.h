@@ -80,8 +80,21 @@ void nx_window_destroy(nx_window_t* win);
 /* Window manager operations */
 void nx_wm_add_window(nx_window_manager_t* wm, nx_window_t* win);
 void nx_wm_remove_window(nx_window_manager_t* wm, nx_window_t* win);
-void nx_wm_focus_window(nx_window_manager_t* wm, nx_window_t* win);
 nx_window_t* nx_wm_window_at(nx_window_manager_t* wm, nx_point_t pos);
+
+/* Window focus management */
+void nx_wm_focus_window(nx_window_manager_t* wm, nx_window_t* win);
+nx_window_t* nx_wm_get_focus(nx_window_manager_t* wm);
+void nx_wm_cycle_focus(nx_window_manager_t* wm, bool forward);
+void nx_wm_focus_next(nx_window_manager_t* wm);
+void nx_wm_focus_prev(nx_window_manager_t* wm);
+
+/* Z-order stacking */
+void nx_wm_bring_to_front(nx_window_manager_t* wm, nx_window_t* win);
+void nx_wm_send_to_back(nx_window_manager_t* wm, nx_window_t* win);
+void nx_wm_move_forward(nx_window_manager_t* wm, nx_window_t* win);
+void nx_wm_move_backward(nx_window_manager_t* wm, nx_window_t* win);
+int32_t nx_wm_window_count(nx_window_manager_t* wm);
 
 /* Window operations */
 void nx_window_set_title(nx_window_t* win, const char* title);
@@ -91,7 +104,8 @@ void nx_window_resize(nx_window_t* win, nx_size_t size);
 void nx_window_show(nx_window_t* win);
 void nx_window_hide(nx_window_t* win);
 void nx_window_minimize(nx_window_t* win);
-void nx_window_maximize(nx_window_t* win, nx_window_manager_t* wm);
+void nx_window_maximize(nx_window_manager_t* wm, nx_window_t* win);
+void nx_window_restore(nx_window_t* win);
 
 /* Rendering */
 void nx_wm_render(nx_window_manager_t* wm);

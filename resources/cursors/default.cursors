@@ -1,0 +1,41 @@
+# NeolyxOS Cursor Theme
+# Default cursor set for desktop
+
+[cursor]
+name = "NeolyxOS Default"
+version = "1.0"
+author = "KetiveeAI"
+
+# Cursor definitions: name = hotspot_x, hotspot_y, filename
+# Hotspot is the click point relative to top-left
+
+[cursors]
+default = 1, 1, "pointer.nxi"
+pointer = 1, 1, "pointer.nxi"
+text = 8, 8, "text.nxi"
+hand = 6, 1, "hand.nxi"
+grab = 8, 8, "grab.nxi"
+grabbing = 8, 8, "grabbing.nxi"
+crosshair = 8, 8, "crosshair.nxi"
+move = 8, 8, "move.nxi"
+nw_resize = 4, 4, "nw_resize.nxi"
+ne_resize = 12, 4, "ne_resize.nxi"
+sw_resize = 4, 12, "sw_resize.nxi"
+se_resize = 12, 12, "se_resize.nxi"
+ew_resize = 8, 8, "ew_resize.nxi"
+ns_resize = 8, 8, "ns_resize.nxi"
+wait = 8, 8, "wait.nxi"
+progress = 1, 1, "progress.nxi"
+not_allowed = 8, 8, "not_allowed.nxi"
+help = 1, 1, "help.nxi"
+zoom_in = 6, 6, "zoom_in.nxi"
+zoom_out = 6, 6, "zoom_out.nxi"
+
+[sizes]
+# Available cursor sizes
+default = 16
+available = 16, 24, 32, 48
+
+[animation]
+# For animated cursors (wait, progress)
+frame_delay_ms = 100

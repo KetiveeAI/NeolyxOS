@@ -1,0 +1,28 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# clock icon
+
+[nxi]
+version = 1.0
+name = clock
+size = 24
+author = KetiveeAI
+category = system
+viewbox = 0 0 24 24
+
+[canvas]
+width = 24
+height = 24
+background = transparent
+
+[colors]
+primary = #FFFFFF
+accent = #00B4FF
+color_0 = white
+
+[paths]
+path_0 = M20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20C16.4183 20 20 16.4183 20 12ZM22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z
+path_1 = M11 7C11 6.44772 11.4477 6 12 6C12.5523 6 13 6.44772 13 7V11.5859L15.707 14.293C16.0976 14.6835 16.0976 15.3165 15.707 15.707C15.3165 16.0976 14.6835 16.0976 14.293 15.707L11.293 12.707C11.1054 12.5195 11 12.2652 11 12V7Z
+
+[style]
+path_0.fill = color_0
+path_1.fill = color_0

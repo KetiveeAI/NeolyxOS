@@ -1,0 +1,53 @@
+// Frame - Image Viewer (Reox UI)
+// NeolyxOS Application
+
+import { VStack, ZStack, HStack } from "reox/layout"
+import { Text } from "reox/controls"
+import { Color } from "reox/style"
+
+panel MainWindow {
+    title: "Frame"
+    size: (800, 600)
+    
+    // Bindings exposed to C
+    @Bind image_path: string = ""
+    @Bind has_image: bool = false
+    
+    ZStack {
+        // Background
+        Rectangle()
+            .fill(color_hex(0x1E1E1E))
+            
+        // Image Content (handled by native renderer, placeholder here for layout)
+        NativeView("ImageCanvas")
+            .visible(has_image)
+            
+        // Empty State
+        VStack(8) {
+            Text("No Image Loaded")
+                .font_size(16)
+                .foreground(color_hex(0x666666))
+            Text("Open an image file to view")
+                .font_size(12)
+                .foreground(color_hex(0x444444))
+        }
+        .visible(!has_image)
+        .alignment(.center)
+        
+        // UI Overlay (e.g. filename on hover)
+        VStack {
+            Spacer()
+            HStack {
+                Text(image_path)
+                    .font_size(12)
+                    .foreground(color_white())
+                    .padding(8)
+                    .background(color_rgba(0, 0, 0, 180))
+                    .corner_radius(4)
+                Spacer()
+            }
+            .padding(16)
+            .visible(has_image)
+        }
+    }
+}

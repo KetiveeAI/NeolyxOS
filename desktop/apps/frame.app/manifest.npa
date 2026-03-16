@@ -1,0 +1,25 @@
+{
+    "name": "Frame",
+    "version": "1.0.0",
+    "bundle_id": "com.neolyx.frame",
+    "category": "Utilities",
+    "description": "Native image viewer for NeolyxOS",
+    
+    "binary": "bin/frame",
+    "library": "",
+    "icon": "resources/frame.nxi",
+    
+    "permissions": [
+        "filesystem.read",
+        "filesystem.write"
+    ],
+    
+    "requirements": {
+        "os_version": "1.0.0",
+        "drivers": ["nxgfx"]
+    },
+    
+    "author": "KetiveeAI",
+    "copyright": "Copyright (c) 2025 KetiveeAI",
+    "license": "Proprietary"
+}

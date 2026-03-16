@@ -173,6 +173,13 @@ static int split_2mb_page(pde_t *pd_entry) {
         return -1;
     }
     
+    /* DEBUG: Check if PT allocation is in user region */
+    if (pt_phys >= 0x1000000 && pt_phys < 0x1200000) {
+        serial_puts("[PAGING] WARNING: PT allocated at 0x");
+        serial_hex64(pt_phys);
+        serial_puts(" - INSIDE ELF REGION!\n");
+    }
+    
     /* Fill PT with 512x 4KB mappings covering the original 2MB region */
     pte_t *pt = (pte_t *)pt_phys;
     for (int i = 0; i < 512; i++) {
@@ -256,6 +263,16 @@ int paging_map_page(uint64_t virt, uint64_t phys, uint64_t flags) {
     /* Set the final page table entry */
     pte_t *pt = (pte_t *)pt_phys;
     pt[i1] = (phys & PAGE_MASK) | flags | PAGE_PRESENT;
+    
+    /* DEBUG: Log first heap page mapping */
+    if (virt == 0x114E000) {
+        serial_puts("[DEBUG] Heap first page: PTE=0x");
+        serial_hex64(pt[i1]);
+        serial_puts(" flags=0x");
+        serial_hex64(flags);
+        serial_puts("\n");
+        serial_puts("\n");
+    }
     
     /* Invalidate TLB for this page if paging is active */
     if (g_paging_active) {
@@ -427,6 +444,40 @@ int paging_add_user_flag(uint64_t virt_start, uint64_t size) {
         }
     }
     
+    /* DEBUG: Dump page table hierarchy for heap first address */
+    {
+        uint64_t va = virt_start;
+        uint64_t i4 = pml4_index(va);
+        uint64_t i3 = pdpt_index(va);
+        uint64_t i2 = pd_index(va);
+        uint64_t i1 = pt_index(va);
+        
+        pml4e_t *pml4 = (pml4e_t*)g_pml4_phys;
+        serial_puts("[PT_DUMP] 0x");
+        serial_hex64(va);
+        serial_puts(" PML4=0x");
+        serial_hex64(pml4[i4]);
+        
+        if (pml4[i4] & PAGE_PRESENT) {
+            pdpte_t *pdpt = (pdpte_t*)(pml4[i4] & PAGE_MASK);
+            serial_puts(" PDPT=0x");
+            serial_hex64(pdpt[i3]);
+            
+            if ((pdpt[i3] & PAGE_PRESENT) && !(pdpt[i3] & PAGE_LARGE)) {
+                pde_t *pd = (pde_t*)(pdpt[i3] & PAGE_MASK);
+                serial_puts(" PD=0x");
+                serial_hex64(pd[i2]);
+                
+                if ((pd[i2] & PAGE_PRESENT) && !(pd[i2] & PAGE_LARGE)) {
+                    pte_t *pt = (pte_t*)(pd[i2] & PAGE_MASK);
+                    serial_puts(" PT=0x");
+                    serial_hex64(pt[i1]);
+                }
+            }
+        }
+        serial_puts("\n");
+    }
+    
     serial_puts("[PAGING] User mappings created successfully\n");
     return 0;
 }
@@ -506,24 +557,10 @@ void paging_init(void) {
     }
     serial_puts("[PAGING] Identity mapped 0-4GB with 2MB pages\n");
     
-    /* Step 4: Map userspace regions with 4KB PAGE_USER pages */
-    /*         This overwrites part of 2MB mapping with fine-grained 4KB */
-    serial_puts("[PAGING] Mapping userspace with 4KB PAGE_USER pages...\n");
-    
-    /* User code region: 0x1000000 - 0x1200000 (2MB) */
-    if (paging_add_user_flag(0x1000000, 0x200000) != 0) {
-        serial_puts("[PAGING] ERROR: Failed to map user code region!\n");
-        return;
-    }
-    
-    /* User stack region: 0x1200000 - 0x1280000 (512KB) */
-    if (paging_add_user_flag(0x1200000, 0x80000) != 0) {
-        serial_puts("[PAGING] ERROR: Failed to map user stack region!\n");
-        return;
-    }
-    
-    serial_puts("[PAGING] User region 0x1000000-0x1280000 mapped with 4KB pages\n");
-    serial_puts("[PAGING] Fresh page tables ready!\n");
+    /* Note: User regions (code, stack) are mapped dynamically in main.c
+     * based on actual ELF size. This prevents hardcoded value mismatches.
+     * paging_add_user_flag() will be called by main.c after ELF loading. */
+    serial_puts("[PAGING] Fresh page tables ready (user regions mapped later)!\n");
 }
 
 /*

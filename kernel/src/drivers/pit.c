@@ -59,13 +59,7 @@ static void pit_serial_dec(uint64_t val) {
 
 void pit_tick(void) {
     pit_ticks++;
-    
-    /* Debug: trace first 5 ticks and every 5000th tick */
-    if (pit_ticks <= 5 || pit_ticks % 5000 == 0) {
-        serial_puts("[PIT] tick #");
-        pit_serial_dec(pit_ticks);
-        serial_puts("\n");
-    }
+    /* NOTE: Debug prints removed - corrupted stack in hot path */
     
     /* TODO: Re-enable when desktop has proper process structure
      * The desktop was started with IRETQ directly, not via process_create(),

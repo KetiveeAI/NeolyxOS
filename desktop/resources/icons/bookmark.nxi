@@ -1,0 +1,26 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# bookmark icon
+
+[nxi]
+version = 1.0
+name = bookmark
+size = 24
+author = KetiveeAI
+category = system
+viewbox = 0 0 24 24
+
+[canvas]
+width = 24
+height = 24
+background = transparent
+
+[colors]
+primary = #FFFFFF
+accent = #00B4FF
+color_0 = white
+
+[paths]
+path_0 = M18 5C18 4.45228 17.5477 4 17 4H7C6.45228 4 6 4.45228 6 5V19.0566L11.4189 15.1865L11.5547 15.1045C11.8817 14.9418 12.277 14.9693 12.5811 15.1865L18 19.0566V5ZM20 21C20 21.3745 19.791 21.7182 19.458 21.8896C19.1249 22.0611 18.7238 22.0312 18.4189 21.8135L12 17.2285L5.58105 21.8135C5.27624 22.0312 4.87506 22.0611 4.54199 21.8896C4.209 21.7182 4 21.3745 4 21V5C4 3.34772 5.34772 2 7 2H17C18.6523 2 20 3.34772 20 5V21Z
+
+[style]
+path_0.fill = color_0

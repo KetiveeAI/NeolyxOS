@@ -1,0 +1,26 @@
+{
+    "name": "Reolab",
+    "version": "1.0.0",
+    "bundle_id": "com.neolyx.reolab",
+    "category": "Development",
+    "description": "REOX Development Environment - IDE for building REOX and NeolyxOS applications",
+    
+    "binary": "bin/reolab",
+    "library": "lib/libreolab.so",
+    "icon": "resources/reolab.nxi",
+    
+    "permissions": [
+        "filesystem.read",
+        "filesystem.write",
+        "process.spawn"
+    ],
+    
+    "requirements": {
+        "os_version": "1.0.0",
+        "drivers": ["nxgfx", "nxrender"]
+    },
+    
+    "author": "KetiveeAI",
+    "copyright": "Copyright (c) 2025 KetiveeAI",
+    "license": "Proprietary"
+}

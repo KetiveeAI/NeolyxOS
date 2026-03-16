@@ -57,29 +57,29 @@ Phase 4: Integration (Weeks 13-16)  → Browser Integration + Examples
 
 - [x] **Step 1.7**: Backend implementations ✅ OpenGL COMPLETE
   - [x] OpenGL ES 3.0 backend (primary for now)
-  - [ ] Software fallback (CPU renderer)
+  - [x] Software fallback (CPU renderer)
   - [ ] Vulkan backend (future)
 
 **Deliverable**: Working graphics library that can draw primitives, text, and images.
 
 ---
 
-  - [ ] `Layer` struct with z-ordering
-  - [ ] Opacity blending
-  - [ ] Transform support (translate, scale, rotate)
-  - [ ] Clipping regions
+  - [x] `Layer` struct with z-ordering
+  - [x] Opacity blending
+  - [x] Transform support (translate, scale, rotate)
+  - [x] Clipping regions
 
-- [ ] **Step 2.3**: Damage tracking
-  - [ ] `DamageTracker` for changed regions
-  - [ ] Merge overlapping damage rects
-  - [ ] Skip rendering unchanged areas
-  - [ ] Performance optimization
+- [x] **Step 2.3**: Damage tracking
+  - [x] `DamageTracker` for changed regions
+  - [x] Merge overlapping damage rects
+  - [x] Skip rendering unchanged areas
+  - [x] Performance optimization
 
-- [ ] **Step 2.4**: Compositor core
-  - [ ] Main `Compositor` struct
-  - [ ] Frame compositing loop
-  - [ ] VSync support
-  - [ ] Layer blending
+- [x] **Step 2.4**: Compositor core
+  - [x] Main `Compositor` struct
+  - [x] Frame compositing loop
+  - [x] VSync support
+  - [x] Layer blending
 
 - [ ] **Step 2.5**: Window management
   - [ ] Basic window creation

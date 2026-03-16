@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>libnximage - NeolyxOS</title>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>libnximage</h1>
+            <p class="subtitle">Pure Userspace Image Loading Library</p>
+            <div class="quick-links">
+                <a href="../index.html">Home</a>
+                <a href="desktop.html">Desktop</a>
+                <a href="nxrender.html">NXRender</a>
+                <a href="../bugs/index.html">Bug Fixes</a>
+            </div>
+        </header>
+
+        <h2>Overview</h2>
+        <div class="card">
+            <p><strong>libnximage</strong> is a pure userspace library for loading images. No kernel involvement
+                required -
+                it uses existing VFS syscalls (<code>open/read/close</code>) and <code>nx_malloc</code> for memory
+                allocation.</p>
+            <table>
+                <tr>
+                    <td><strong>Location</strong></td>
+                    <td><code>desktop/lib/nximage/</code></td>
+                </tr>
+                <tr>
+                    <td><strong>Output</strong></td>
+                    <td><code>libnximage.a</code> (~25KB static library)</td>
+                </tr>
+                <tr>
+                    <td><strong>Formats</strong></td>
+                    <td>PNG (full), NXI (vector icons), SVG/AVIF (stub)</td>
+                </tr>
+                <tr>
+                    <td><strong>Dependencies</strong></td>
+                    <td>None (pure C, zero external libs)</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>Architecture</h2>
+        <div class="card">
+            <pre style="background: var(--bg-primary); padding: 1rem; border-radius: 8px;">
+User App
+    |
+    v
+nxi_load("/icon.png", &img)
+    |
+    v
+libnximage (userspace)
+    |
+    +-- open() syscall --> Kernel VFS
+    +-- read() syscall --> File bytes
+    +-- close() syscall
+    |
+    v
+DEFLATE/PNG decode (pure userspace)
+    |
+    v
+RGBA32 pixels in nx_malloc buffer</pre>
+            <table style="margin-top: 1rem;">
+                <tr>
+                    <th>Component</th>
+                    <th>Responsibility</th>
+                </tr>
+                <tr>
+                    <td>Kernel</td>
+                    <td>File I/O (open/read/close) + memory allocation (brk)</td>
+                </tr>
+                <tr>
+                    <td>libnximage</td>
+                    <td>All decoding, decompression, and pixel conversion</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>Source Files</h2>
+        <div class="grid">
+            <div class="card">
+                <h2>nxpng.c <span class="status complete">~435 lines</span></h2>
+                <p>PNG decoder with inline DEFLATE decompressor</p>
+                <ul>
+                    <li>Huffman table building and decoding</li>
+                    <li>ZLIB header parsing</li>
+                    <li>Filter reconstruction (None/Sub/Up/Average/Paeth)</li>
+                    <li>RGB, RGBA, Grayscale color type support</li>
+                    <li>8-bit depth only (no 16-bit or palette)</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h2>nxnxi.c <span class="status complete">~330 lines</span></h2>
+                <p>NXI vector icon parser and rasterizer</p>
+                <ul>
+                    <li>INI-style format parsing</li>
+                    <li>Circle and rectangle primitives</li>
+                    <li>Solid color fills</li>
+                    <li>Theme color support (future)</li>
+                    <li>Resolution-independent rendering</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h2>nximage.c <span class="status complete">~195 lines</span></h2>
+                <p>Main loader dispatcher</p>
+                <ul>
+                    <li>Magic byte detection (PNG, NXI, JPEG, etc.)</li>
+                    <li>File I/O wrappers using VFS syscalls</li>
+                    <li>Error code propagation</li>
+                    <li>Format routing to appropriate decoder</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h2>nxavif_stub.c <span class="status">Stub</span></h2>
+                <p>AVIF placeholder (returns NXI_ERR_UNSUPPORTED)</p>
+                <p style="margin-top: 0.5rem; color: var(--text-secondary);">
+                    Future: Port dav1d or libgav1 for AV1-based image support
+                </p>
+            </div>
+        </div>
+
+        <h2>API Reference</h2>
+        <div class="card">
+            <h3>Header: nximage.h</h3>
+            <pre style="background: var(--bg-primary); padding: 1rem; border-radius: 8px;">
+typedef struct {
+    uint32_t width;
+    uint32_t height;
+    uint32_t bpp;        // Bytes per pixel (always 4 for RGBA)
+    uint8_t *pixels;     // RGBA32 pixel data
+} nximage_t;
+
+// Load image from filesystem path
+int nxi_load(const char *path, nximage_t *out);
+
+// Free image pixel buffer
+void nxi_free(nximage_t *img);
+
+// Error codes
+#define NXI_OK              0
+#define NXI_ERR_FILE       -1   // File not found / read error
+#define NXI_ERR_FORMAT     -2   // Unknown or corrupt format
+#define NXI_ERR_MEMORY     -3   // Allocation failed
+#define NXI_ERR_UNSUPPORTED -4  // Format not implemented</pre>
+        </div>
+
+        <div class="card">
+            <h3>Usage Example</h3>
+            <pre style="background: var(--bg-primary); padding: 1rem; border-radius: 8px;">
+#include "nximage.h"
+
+void load_icon(void) {
+    nximage_t img;
+    int err = nxi_load("/System/Icons/app.png", &img);
+    
+    if (err == NXI_OK) {
+        // img.pixels = RGBA32 buffer (img.width * img.height * 4 bytes)
+        // img.width, img.height = dimensions
+        // img.bpp = 4 (bytes per pixel)
+        
+        blit_to_framebuffer(img.pixels, img.width, img.height);
+        nxi_free(&img);
+    } else {
+        // Handle error
+        debug_print("Image load failed: %d\n", err);
+    }
+}</pre>
+        </div>
+
+        <h2>Supported Formats</h2>
+        <div class="card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Format</th>
+                        <th>Magic Bytes</th>
+                        <th>Status</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>PNG</strong></td>
+                        <td><code>89 50 4E 47</code></td>
+                        <td><span class="badge complete">Full</span></td>
+                        <td>8-bit RGB/RGBA/Gray, DEFLATE decompression</td>
+                    </tr>
+                    <tr>
+                        <td><strong>NXI</strong></td>
+                        <td><code># NeolyxOS NXI</code></td>
+                        <td><span class="badge complete">Full</span></td>
+                        <td>Vector icons, circle/rect primitives</td>
+                    </tr>
+                    <tr>
+                        <td>SVG</td>
+                        <td><code>&lt;svg</code></td>
+                        <td><span class="badge">Stub</span></td>
+                        <td>Returns NXI_ERR_UNSUPPORTED</td>
+                    </tr>
+                    <tr>
+                        <td>JPEG</td>
+                        <td><code>FF D8 FF</code></td>
+                        <td><span class="badge">Planned</span></td>
+                        <td>Not implemented</td>
+                    </tr>
+                    <tr>
+                        <td>AVIF</td>
+                        <td><code>ftyp avif</code></td>
+                        <td><span class="badge">Stub</span></td>
+                        <td>Requires AV1 decoder (future)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <h2>NXI Format Specification</h2>
+        <div class="card">
+            <p>NXI is a simple text-based vector icon format for NeolyxOS:</p>
+            <pre style="background: var(--bg-primary); padding: 1rem; border-radius: 8px;">
+# NeolyxOS NXI v1.0
+[icon]
+size = 64
+
+[shape.background]
+type = circle
+cx = 32
+cy = 32
+r = 30
+fill = #3B82F6
+
+[shape.symbol]
+type = rect
+x = 20
+y = 24
+w = 24
+h = 16
+fill = #FFFFFF</pre>
+            <p style="margin-top: 1rem;">Benefits: Human-readable, no binary parsing, easy to generate, theme-aware
+                colors.</p>
+        </div>
+
+        <h2>Build Instructions</h2>
+        <div class="card">
+            <pre style="background: var(--bg-primary); padding: 1rem; border-radius: 8px;">
+# Build library standalone
+cd desktop/lib/nximage
+make
+# Output: libnximage.a
+
+# Build with desktop (automatic via Makefile)
+cd desktop
+make
+# Links libnximage.a automatically
+
+# Link manually in other projects
+gcc myapp.c -o myapp -Idesktop/lib/nximage -Ldesktop/lib/nximage -lnximage</pre>
+        </div>
+
+        <h2>Related Documentation</h2>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="nxrender.html">NXRender</a></h2>
+                <p>GUI framework that uses libnximage for icon/image display</p>
+            </div>
+            <div class="card">
+                <h2><a href="desktop.html">Desktop Shell</a></h2>
+                <p>Userspace desktop environment</p>
+            </div>
+            <div class="card">
+                <h2><a href="../bugs/gpf_sysret_gdt_fix.html">GPF/GDT Bug Fix</a></h2>
+                <p>Critical crash fix during image loading integration</p>
+            </div>
+        </div>
+
+        <footer>
+            <p><strong>Date:</strong> January 2026 | <strong>Status:</strong> Complete (PNG + NXI)</p>
+            <p><a href="../index.html">&larr; Back to Documentation</a></p>
+        </footer>
+    </div>
+</body>
+
+</html>

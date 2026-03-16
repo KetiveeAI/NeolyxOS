@@ -23,6 +23,21 @@ static uint8_t default_policy[3] = { FW_ACTION_ALLOW, FW_ACTION_ALLOW, FW_ACTION
 /* Statistics */
 static firewall_stats_t stats;
 
+/* Rate limiting state */
+static rate_limit_entry_t rate_limit_table[FW_RATE_LIMIT_ENTRIES];
+static uint32_t rate_limit_max_pps = 1000;
+static uint16_t rate_limit_burst = 50;
+
+/* Connection tracking state */
+static conn_track_entry_t conn_table[FW_CONN_TABLE_SIZE];
+static int conn_tracking_enabled = 1;
+
+/* Port scan detection */
+static scan_detect_entry_t scan_table[64];
+
+/* Time helper (from kernel) */
+extern uint64_t pit_get_ticks(void);
+
 /* ============ Initialization ============ */
 
 void firewall_init(void) {
@@ -51,7 +66,25 @@ void firewall_init(void) {
     default_policy[FW_DIR_OUTPUT] = FW_ACTION_ALLOW;
     default_policy[FW_DIR_FORWARD] = FW_ACTION_DENY;
     
-    serial_puts("[FIREWALL] Initialized with default ALLOW policy\n");
+    /* Initialize rate limiting */
+    rate_limit_max_pps = 1000;  /* Default: 1000 packets/sec from config */
+    rate_limit_burst = 50;
+    for (int i = 0; i < FW_RATE_LIMIT_ENTRIES; i++) {
+        rate_limit_table[i].ip = 0;
+    }
+    
+    /* Initialize connection tracking */
+    conn_tracking_enabled = 1;
+    for (int i = 0; i < FW_CONN_TABLE_SIZE; i++) {
+        conn_table[i].state = FW_CONN_NONE;
+    }
+    
+    /* Initialize scan detection */
+    for (int i = 0; i < 64; i++) {
+        scan_table[i].src_ip = 0;
+    }
+    
+    serial_puts("[FIREWALL] Initialized with rate limiting and connection tracking\n");
 }
 
 /* ============ Enable/Disable ============ */
@@ -413,3 +446,212 @@ void firewall_get_app_stats(uint32_t pid, firewall_app_t *out) {
     }
 }
 
+/* ============ Rate Limiting Implementation ============ */
+
+void firewall_set_rate_limit(uint32_t max_pps, uint16_t burst) {
+    rate_limit_max_pps = max_pps;
+    rate_limit_burst = burst;
+    serial_puts("[FIREWALL] Rate limit set\n");
+}
+
+int firewall_check_rate_limit(uint32_t ip) {
+    uint64_t now = pit_get_ticks();
+    int lru_idx = 0;
+    uint64_t lru_time = ~0ULL;
+    
+    /* Find existing entry or LRU slot */
+    for (int i = 0; i < FW_RATE_LIMIT_ENTRIES; i++) {
+        if (rate_limit_table[i].ip == ip) {
+            /* Check if in same second window */
+            if (now - rate_limit_table[i].window_start < 1000) {
+                rate_limit_table[i].packet_count++;
+                if (rate_limit_table[i].packet_count > rate_limit_max_pps + rate_limit_burst) {
+                    stats.packets_denied++;
+                    return FW_ACTION_DENY;
+                }
+            } else {
+                /* New window */
+                rate_limit_table[i].window_start = now;
+                rate_limit_table[i].packet_count = 1;
+            }
+            return FW_ACTION_ALLOW;
+        }
+        if (rate_limit_table[i].window_start < lru_time) {
+            lru_time = rate_limit_table[i].window_start;
+            lru_idx = i;
+        }
+    }
+    
+    /* New IP - use LRU slot */
+    rate_limit_table[lru_idx].ip = ip;
+    rate_limit_table[lru_idx].window_start = now;
+    rate_limit_table[lru_idx].packet_count = 1;
+    return FW_ACTION_ALLOW;
+}
+
+void firewall_rate_limit_reset(void) {
+    for (int i = 0; i < FW_RATE_LIMIT_ENTRIES; i++) {
+        rate_limit_table[i].ip = 0;
+        rate_limit_table[i].packet_count = 0;
+    }
+}
+
+/* ============ Connection Tracking Implementation ============ */
+
+void firewall_enable_conn_tracking(int enable) {
+    conn_tracking_enabled = enable;
+}
+
+static uint32_t conn_hash(uint32_t src_ip, uint32_t dst_ip, uint16_t src_port, uint16_t dst_port) {
+    return (src_ip ^ dst_ip ^ ((uint32_t)src_port << 16) ^ dst_port) % FW_CONN_TABLE_SIZE;
+}
+
+conn_track_entry_t* firewall_conn_lookup(uint32_t src_ip, uint32_t dst_ip,
+                                          uint16_t src_port, uint16_t dst_port) {
+    uint32_t idx = conn_hash(src_ip, dst_ip, src_port, dst_port);
+    
+    for (int i = 0; i < 16; i++) {
+        uint32_t slot = (idx + i) % FW_CONN_TABLE_SIZE;
+        conn_track_entry_t *e = &conn_table[slot];
+        if (e->state != FW_CONN_NONE &&
+            e->src_ip == src_ip && e->dst_ip == dst_ip &&
+            e->src_port == src_port && e->dst_port == dst_port) {
+            return e;
+        }
+    }
+    return (conn_track_entry_t*)0;
+}
+
+int firewall_conn_track_packet(packet_info_t *pkt) {
+    if (!conn_tracking_enabled || !pkt) return FW_CONN_NEW;
+    
+    /* Look for existing connection */
+    conn_track_entry_t *conn = firewall_conn_lookup(pkt->src_ip, pkt->dst_ip,
+                                                     pkt->src_port, pkt->dst_port);
+    
+    /* Check reverse direction */
+    if (!conn) {
+        conn = firewall_conn_lookup(pkt->dst_ip, pkt->src_ip,
+                                    pkt->dst_port, pkt->src_port);
+        if (conn && conn->state == FW_CONN_NEW) {
+            /* Reply to new connection = established */
+            conn->state = FW_CONN_ESTABLISHED;
+        }
+    }
+    
+    if (conn) {
+        conn->last_seen = pit_get_ticks();
+        conn->packets++;
+        conn->bytes += pkt->length;
+        return conn->state;
+    }
+    
+    /* New connection - find empty slot */
+    uint32_t idx = conn_hash(pkt->src_ip, pkt->dst_ip, pkt->src_port, pkt->dst_port);
+    for (int i = 0; i < 16; i++) {
+        uint32_t slot = (idx + i) % FW_CONN_TABLE_SIZE;
+        if (conn_table[slot].state == FW_CONN_NONE || 
+            conn_table[slot].state == FW_CONN_CLOSED) {
+            conn_table[slot].src_ip = pkt->src_ip;
+            conn_table[slot].dst_ip = pkt->dst_ip;
+            conn_table[slot].src_port = pkt->src_port;
+            conn_table[slot].dst_port = pkt->dst_port;
+            conn_table[slot].protocol = pkt->protocol;
+            conn_table[slot].state = FW_CONN_NEW;
+            conn_table[slot].last_seen = pit_get_ticks();
+            conn_table[slot].packets = 1;
+            conn_table[slot].bytes = pkt->length;
+            return FW_CONN_NEW;
+        }
+    }
+    
+    return FW_CONN_NEW; /* Table full, treat as new */
+}
+
+void firewall_conn_cleanup(uint16_t tcp_timeout, uint16_t udp_timeout) {
+    uint64_t now = pit_get_ticks();
+    
+    for (int i = 0; i < FW_CONN_TABLE_SIZE; i++) {
+        conn_track_entry_t *e = &conn_table[i];
+        if (e->state == FW_CONN_NONE) continue;
+        
+        uint16_t timeout = (e->protocol == FW_PROTO_TCP) ? tcp_timeout : udp_timeout;
+        uint64_t timeout_ms = timeout * 1000ULL;
+        
+        if (now - e->last_seen > timeout_ms) {
+            e->state = FW_CONN_CLOSED;
+        }
+    }
+}
+
+int firewall_conn_count(void) {
+    int count = 0;
+    for (int i = 0; i < FW_CONN_TABLE_SIZE; i++) {
+        if (conn_table[i].state != FW_CONN_NONE && 
+            conn_table[i].state != FW_CONN_CLOSED) {
+            count++;
+        }
+    }
+    return count;
+}
+
+/* ============ Port Scan Detection ============ */
+
+int firewall_check_port_scan(uint32_t src_ip, uint16_t port) {
+    uint64_t now = pit_get_ticks();
+    int lru_idx = 0;
+    uint64_t lru_time = ~0ULL;
+    
+    for (int i = 0; i < 64; i++) {
+        scan_detect_entry_t *e = &scan_table[i];
+        
+        if (e->src_ip == src_ip) {
+            /* Check if window expired (60 seconds) */
+            if (now - e->first_access > 60000) {
+                e->port_count = 0;
+                e->first_access = now;
+            }
+            
+            /* Check if port already recorded */
+            for (int j = 0; j < e->port_count; j++) {
+                if (e->ports_accessed[j] == port) {
+                    return 0; /* Already seen this port */
+                }
+            }
+            
+            /* Add new port */
+            if (e->port_count < 32) {
+                e->ports_accessed[e->port_count++] = port;
+            }
+            
+            /* Check threshold */
+            if (e->port_count >= 10) {
+                serial_puts("[FIREWALL] Port scan detected!\n");
+                return 1; /* Scan detected */
+            }
+            return 0;
+        }
+        
+        if (e->first_access < lru_time) {
+            lru_time = e->first_access;
+            lru_idx = i;
+        }
+    }
+    
+    /* New IP */
+    scan_table[lru_idx].src_ip = src_ip;
+    scan_table[lru_idx].first_access = now;
+    scan_table[lru_idx].port_count = 1;
+    scan_table[lru_idx].ports_accessed[0] = port;
+    return 0;
+}
+
+void firewall_scan_cleanup(void) {
+    uint64_t now = pit_get_ticks();
+    for (int i = 0; i < 64; i++) {
+        if (now - scan_table[i].first_access > 60000) {
+            scan_table[i].src_ip = 0;
+            scan_table[i].port_count = 0;
+        }
+    }
+}

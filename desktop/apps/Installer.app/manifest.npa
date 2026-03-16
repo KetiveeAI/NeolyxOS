@@ -1,0 +1,25 @@
+{
+    "name": "Installer",
+    "version": "1.0.0",
+    "bundle_id": "com.neolyx.installer",
+    "category": "System",
+    "description": "Native application installer for NeolyxOS",
+    
+    "binary": "bin/installer",
+    "icon": "resources/installer.nxi",
+    
+    "permissions": [
+        "filesystem.read",
+        "filesystem.write",
+        "system.registry"
+    ],
+    
+    "requirements": {
+        "os_version": "1.0.0",
+        "drivers": ["nxgfx"]
+    },
+    
+    "author": "KetiveeAI",
+    "copyright": "Copyright (c) 2025-2026 KetiveeAI",
+    "license": "Proprietary"
+}

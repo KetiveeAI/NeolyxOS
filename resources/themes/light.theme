@@ -1,0 +1,84 @@
+# NeolyxOS Light Theme
+# Clean, bright appearance for daytime use
+
+[theme]
+name = "NeolyxOS Light"
+version = "1.0"
+author = "KetiveeAI"
+variant = "light"
+
+[colors]
+# Primary palette
+primary = "#6366F1"
+primary_hover = "#4F46E5"
+primary_active = "#4338CA"
+
+# Background
+background = "#F2F2F7"
+background_secondary = "#FFFFFF"
+background_tertiary = "#E5E5EA"
+background_elevated = "#FFFFFF"
+
+# Surface (cards, modals)
+surface = "#FFFFFF"
+surface_hover = "#F2F2F7"
+surface_active = "#E5E5EA"
+
+# Text
+text_primary = "#000000"
+text_secondary = "#3C3C43"
+text_tertiary = "#8E8E93"
+text_disabled = "#C7C7CC"
+
+# Borders
+border = "#D1D1D6"
+border_light = "#E5E5EA"
+
+# Status colors
+success = "#34C759"
+warning = "#FF9500"
+error = "#FF3B30"
+info = "#007AFF"
+
+[opacity]
+glass = 0.85
+blur_radius = 20
+dock = 0.90
+menubar = 0.95
+control_center = 0.85
+
+[fonts]
+system = "NX Sans"
+monospace = "NX Sans Mono"
+size_small = 11
+size_normal = 13
+size_large = 16
+size_title = 20
+size_heading = 24
+
+[shadows]
+window = "0 8 32 0 #00000020"
+popup = "0 4 16 0 #00000015"
+button = "0 2 8 0 #00000010"
+
+[animations]
+fast = 150
+normal = 250
+slow = 400
+spring_damping = 0.8
+spring_stiffness = 300
+
+[dimensions]
+corner_radius_small = 6
+corner_radius_medium = 10
+corner_radius_large = 14
+menubar_height = 24
+dock_height = 70
+dock_icon_size = 48
+titlebar_height = 28
+button_height = 28
+spacing_xs = 4
+spacing_sm = 8
+spacing_md = 12
+spacing_lg = 16
+spacing_xl = 24

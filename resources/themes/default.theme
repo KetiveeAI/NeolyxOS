@@ -1,0 +1,88 @@
+# NeolyxOS Default Theme
+# This file defines the system-wide appearance settings
+
+[theme]
+name = "NeolyxOS Dark"
+version = "1.0"
+author = "KetiveeAI"
+variant = "dark"
+
+[colors]
+# Primary palette
+primary = "#6366F1"
+primary_hover = "#818CF8"
+primary_active = "#4F46E5"
+
+# Background
+background = "#1C1C1E"
+background_secondary = "#2C2C2E"
+background_tertiary = "#3A3A3C"
+background_elevated = "#1C1C1E"
+
+# Surface (cards, modals)
+surface = "#2C2C2E"
+surface_hover = "#3A3A3C"
+surface_active = "#48484A"
+
+# Text
+text_primary = "#FFFFFF"
+text_secondary = "#EBEBF5"
+text_tertiary = "#8E8E93"
+text_disabled = "#636366"
+
+# Borders
+border = "#48484A"
+border_light = "#38383A"
+
+# Status colors
+success = "#30D158"
+warning = "#FFD60A"
+error = "#FF453A"
+info = "#64D2FF"
+
+[opacity]
+# Used for glass effects
+glass = 0.7
+blur_radius = 20
+dock = 0.85
+menubar = 0.90
+control_center = 0.75
+
+[fonts]
+system = "NX Sans"
+monospace = "NX Sans Mono"
+size_small = 11
+size_normal = 13
+size_large = 16
+size_title = 20
+size_heading = 24
+
+[shadows]
+# Format: x y blur spread color
+window = "0 8 32 0 #00000060"
+popup = "0 4 16 0 #00000040"
+button = "0 2 8 0 #00000020"
+
+[animations]
+# Duration in milliseconds
+fast = 150
+normal = 250
+slow = 400
+spring_damping = 0.8
+spring_stiffness = 300
+
+[dimensions]
+# In pixels
+corner_radius_small = 6
+corner_radius_medium = 10
+corner_radius_large = 14
+menubar_height = 24
+dock_height = 70
+dock_icon_size = 48
+titlebar_height = 28
+button_height = 28
+spacing_xs = 4
+spacing_sm = 8
+spacing_md = 12
+spacing_lg = 16
+spacing_xl = 24

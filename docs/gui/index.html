@@ -5,74 +5,91 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GUI Documentation | NeolyxOS</title>
-    
     <link rel="stylesheet" href="../assets/navbar.css">
     <script src="../assets/navbar.js"></script>
 </head>
 
 <body>
-    <div class="nav">
-        <a href="../index.html">← NeolyxOS Documentation</a>
-    </div>
-
     <div class="container">
-        <h1>GUI Documentation</h1>
-        <p>NXRender is NeolyxOS's native GUI framework. Pure C, zero dependencies, designed for kernel integration.</p>
+        <header>
+            <h1>GUI Framework</h1>
+            <p class="subtitle">NXRender - Pure C GUI for NeolyxOS</p>
+            <div class="quick-links">
+                <a href="../index.html">Home</a>
+                <a href="../kernel/syscalls.html">Syscalls</a>
+                <a href="desktop.html">Desktop</a>
+            </div>
+        </header>
 
-        <div class="doc-list">
-            <div class="doc-item">
-                <a href="nxrender.html">
-                    <h3>NXRender Overview</h3>
-                    <p>Architecture, quick start, modules, and API reference for the complete GUI framework.</p>
-                </a>
+        <h2>Core Documentation</h2>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="nxrender.html">NXRender Overview</a> <span class="status complete">4,747 lines</span></h2>
+                <p>Architecture, quick start, modules, and API reference for the complete GUI framework.</p>
             </div>
 
-            <div class="doc-item">
-                <a href="animation.html">
-                    <h3>Animation System</h3>
-                    <p>Spring physics, cubic bezier easing, keyframe animations, timelines, and precision timing.</p>
-                </a>
+            <div class="card">
+                <h2><a href="animation.html">Animation System</a></h2>
+                <p>Spring physics, cubic bezier easing, keyframe animations, timelines, and precision timing.</p>
             </div>
 
-            <div class="doc-item">
-                <a href="lighting.html">
-                    <h3>3D Lighting</h3>
-                    <p>Physically-based lighting with Blinn-Phong shading, reflections, Fresnel effect, and materials.
-                    </p>
-                </a>
+            <div class="card">
+                <h2><a href="lighting.html">3D Lighting</a></h2>
+                <p>Physically-based lighting with Blinn-Phong shading, reflections, Fresnel effect, and materials.</p>
             </div>
 
-            <div class="doc-item">
-                <a href="gpu_driver.html">
-                    <h3>GPU Driver Interface</h3>
-                    <p>Command buffers, texture management, VSync, and kernel GPU integration.</p>
-                </a>
+            <div class="card">
+                <h2><a href="gpu_driver.html">GPU Driver Interface</a></h2>
+                <p>Command buffers, texture management, VSync, and kernel GPU integration.</p>
             </div>
         </div>
 
-        <h2 style="font-size: 1.5rem; margin: 40px 0 20px; color: var(--text-primary);">Quick Stats</h2>
-        <table style="width: 100%; border-collapse: collapse;">
-            <tr style="border-bottom: 1px solid var(--border);">
-                <td style="padding: 12px; color: var(--text-secondary);">Total Lines of C</td>
-                <td style="padding: 12px; font-weight: bold;">4,747</td>
-            </tr>
-            <tr style="border-bottom: 1px solid var(--border);">
-                <td style="padding: 12px; color: var(--text-secondary);">Library Size</td>
-                <td style="padding: 12px; font-weight: bold;">397 KB</td>
-            </tr>
-            <tr style="border-bottom: 1px solid var(--border);">
-                <td style="padding: 12px; color: var(--text-secondary);">Source Files</td>
-                <td style="padding: 12px; font-weight: bold;">32</td>
-            </tr>
-            <tr style="border-bottom: 1px solid var(--border);">
-                <td style="padding: 12px; color: var(--text-secondary);">External Dependencies</td>
-                <td style="padding: 12px; font-weight: bold;">0 (only libc + libm)</td>
-            </tr>
-            <tr>
-                <td style="padding: 12px; color: var(--text-secondary);">Location</td>
-                <td style="padding: 12px; font-family: monospace;">gui/nxrender_c/</td>
-            </tr>
-        </table>
+        <h2>Libraries</h2>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="libnximage.html">libnximage</a> <span class="status complete">New</span></h2>
+                <p>Pure userspace image loading library. PNG decoder, NXI vector icons, no kernel dependencies.</p>
+            </div>
+
+            <div class="card">
+                <h2><a href="desktop.html">Desktop Shell</a></h2>
+                <p>Userspace desktop environment running in Ring 3 with window management and compositor.</p>
+            </div>
+        </div>
+
+        <h2>Quick Stats</h2>
+        <div class="card">
+            <table>
+                <tr>
+                    <td><strong>Total Lines of C</strong></td>
+                    <td>4,747 (NXRender) + 960 (libnximage)</td>
+                </tr>
+                <tr>
+                    <td><strong>Library Size</strong></td>
+                    <td>397 KB (NXRender) + 25 KB (libnximage)</td>
+                </tr>
+                <tr>
+                    <td><strong>Source Files</strong></td>
+                    <td>32 (NXRender) + 4 (libnximage)</td>
+                </tr>
+                <tr>
+                    <td><strong>External Dependencies</strong></td>
+                    <td>0 (only libc + libm)</td>
+                </tr>
+                <tr>
+                    <td><strong>NXRender Location</strong></td>
+                    <td><code>gui/nxrender_c/</code></td>
+                </tr>
+                <tr>
+                    <td><strong>libnximage Location</strong></td>
+                    <td><code>desktop/lib/nximage/</code></td>
+                </tr>
+            </table>
+        </div>
+
+        <footer>
+            <p><a href="../index.html">&larr; Back to Documentation</a></p>
+        </footer>
     </div>
 </body>
 

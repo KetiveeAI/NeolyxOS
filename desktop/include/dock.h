@@ -1,5 +1,5 @@
 /*
- * NeolyxOS Dock Module
+ * NeolyxOS Dock Module Header
  * 
  * Modular dock component with configurable icons, magnification,
  * and autohide. Uses nxappearance for settings.
@@ -13,6 +13,32 @@
 #include <stdint.h>
 #include "nxappearance.h"
 #include "nxevent.h"
+
+/* ==============================================================================
+ * ⚠️  ICON RENDERING POLICY - READ BEFORE EDITING  ⚠️
+ * ==============================================================================
+ *
+ * ALL ICONS MUST BE LOADED FROM .NXI FILES
+ * 
+ * ❌ DO NOT:
+ *   - Draw hardcoded shapes (circles, rectangles) as icons
+ *   - Add inline icon drawing functions (dock_draw_folder_icon, etc.)
+ *   - Use placeholder colors as icon representation
+ *
+ * ✅ DO:
+ *   - Use nxi_render.h functions to render icons
+ *   - Load icons from /System/Icons/ or app bundle resources
+ *   - Create missing icons using IconLay.app, then reference by ID
+ *
+ * Icon files: /System/Icons/*.nxi
+ * API: nxi_draw_icon_fallback(), nxi_render_icon_by_name()
+ * See: desktop/include/nxi_render.h
+ *
+ * This policy ensures:
+ *   - Consistent icon quality across the OS
+ *   - Themeable/swappable icons
+ *   - No hardcoded visual elements in code
+ * ============================================================================== */
 
 /* ============ Constants ============ */
 
@@ -32,10 +58,12 @@ typedef enum {
 
 typedef struct {
     uint32_t app_id;            /* App bundle ID hash */
-    uint32_t color;             /* Icon base color */
+    uint32_t icon_id;           /* NXI icon ID (resolved at add-time, NOT per-frame) */
+    uint32_t color;             /* Icon background color (fallback) */
     char label[32];             /* App name */
-    int active;                 /* Has active windows */
-    int running;                /* App is running */
+    int active;                 /* Has focused windows */
+    int running;                /* App is running (background) */
+    int minimized;              /* Has minimized windows */
     int bouncing;               /* Launch animation */
     int bounce_frame;           /* Animation frame counter */
 } dock_icon_t;
@@ -87,7 +115,7 @@ void dock_init(uint32_t screen_w, uint32_t screen_h);
  * Add icon to dock
  * @param app_id App bundle ID hash
  * @param label App display name
- * @param color Icon color
+ * @param color Fallback background color
  * @return Index in dock, or -1 on error
  */
 int dock_add_icon(uint32_t app_id, const char *label, uint32_t color);
@@ -113,19 +141,12 @@ void dock_start_bounce(uint32_t app_id);
 
 /**
  * Render dock to framebuffer
- * @param fb Framebuffer pointer
- * @param pitch Framebuffer pitch in bytes
- * @param mouse_x Current mouse X
- * @param mouse_y Current mouse Y
+ * Note: Uses nxi_render.h for icon drawing - NO hardcoded icons
  */
 void dock_render(uint32_t *fb, uint32_t pitch, int mouse_x, int mouse_y);
 
 /**
  * Handle mouse input
- * @param mouse_x Mouse X position
- * @param mouse_y Mouse Y position
- * @param buttons Button state (bit 0 = left)
- * @param prev_buttons Previous button state
  * @return 1 if event was consumed, 0 otherwise
  */
 int dock_handle_mouse(int mouse_x, int mouse_y, uint8_t buttons, uint8_t prev_buttons);
@@ -137,7 +158,6 @@ dock_state_t* dock_get_state(void);
 
 /**
  * Update dock from settings
- * Called when appearance settings change
  */
 void dock_update_settings(void);
 
@@ -146,11 +166,8 @@ void dock_update_settings(void);
  */
 void dock_tick(void);
 
-/* ============ Event Handler ============ */
-
 /**
  * Event bus handler for dock-related events
- * Auto-registered during dock_init()
  */
 void dock_event_handler(const nx_event_t *event, void *userdata);
 

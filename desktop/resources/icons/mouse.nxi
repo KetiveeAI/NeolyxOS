@@ -1,0 +1,28 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# mouse icon
+
+[nxi]
+version = 1.0
+name = mouse
+size = 24
+author = KetiveeAI
+category = system
+viewbox = 0 0 24 24
+
+[canvas]
+width = 24
+height = 24
+background = transparent
+
+[colors]
+primary = #FFFFFF
+accent = #00B4FF
+color_0 = white
+
+[paths]
+path_0 = M18 9C18 5.65228 15.3477 3 12 3C8.65228 3 6 5.65228 6 9V15C6 18.3477 8.65228 21 12 21C15.3477 21 18 18.3477 18 15V9ZM20 15C20 19.4523 16.4523 23 12 23C7.54772 23 4 19.4523 4 15V9C4 4.54772 7.54772 1 12 1C16.4523 1 20 4.54772 20 9V15Z
+path_1 = M13 6V12H11V6H13Z
+
+[style]
+path_0.fill = color_0
+path_1.fill = color_0

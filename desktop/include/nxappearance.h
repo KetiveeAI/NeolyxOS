@@ -122,6 +122,10 @@ typedef struct {
     /* Transparency */
     bool reduce_transparency;
     
+    /* Wallpaper */
+    char wallpaper_path[256];    /* Path to wallpaper PNG */
+    bool wallpaper_enabled;
+    
 } appearance_settings_t;
 
 /* ============ Default Values ============ */
@@ -146,7 +150,9 @@ typedef struct {
     .window_animations_enabled = true, \
     .reduce_motion = false, \
     .animation_speed = 1.0f, \
-    .reduce_transparency = false \
+    .reduce_transparency = false, \
+    .wallpaper_path = "/System/Wallpapers/default.png", \
+    .wallpaper_enabled = true \
 }
 
 /* ============ API Functions ============ */

@@ -1205,6 +1205,14 @@ void kernel_main(NeolyxBootInfo *boot_info) {
     extern void gdt_init(void);
     gdt_init();
     
+    /* CRITICAL: Initialize IDT with exception handlers IMMEDIATELY after GDT
+     * This enables page fault, GPF, and double fault handlers with IST1 stack.
+     * Without this, any exception causes a triple fault (CPU reset). */
+    serial_puts("[BOOT] Initializing IDT with IST1 exception handlers...\\n");
+    extern void idt_init(void);
+    idt_init();
+    serial_puts("[BOOT] IDT ready with exception handling\\n");
+    
     g_boot_info = boot_info;  /* Save for kernel */
     
     if (!boot_info || boot_info->magic != NEOLYX_BOOT_MAGIC) {
@@ -1276,9 +1284,12 @@ void kernel_main(NeolyxBootInfo *boot_info) {
         /* Initialize kernel heap for dynamic memory allocation */
         {
             extern void heap_init(uint64_t start_addr, uint64_t size);
-            /* Use memory after 16MB mark for heap (16MB of heap space) */
-            heap_init(0x1000000, 0x1000000);
-            serial_puts("[OK] Heap initialized\n");
+            /* Use memory at 32MB mark for heap (16MB of heap space) 
+             * IMPORTANT: Desktop ELF is loaded at 0x1000000-0x1280000, so heap must be AFTER that!
+             * Using 0x2000000 (32MB) as heap start to leave room for userspace
+             */
+            heap_init(0x2000000, 0x1000000);
+            serial_puts("[OK] Heap initialized at 0x2000000\n");
         }
         
         /* Initialize Filesystem Layer */
@@ -1439,6 +1450,7 @@ void kernel_main(NeolyxBootInfo *boot_info) {
                     }
                     __asm__ volatile("pause");
                 }
+                serial_puts("[BOOT] F2 check complete\n");
                 
                 if (!f2_pressed) {
                     /* Direct boot to NeolyxOS */
@@ -1458,7 +1470,10 @@ void kernel_main(NeolyxBootInfo *boot_info) {
                     while(1) { __asm__ volatile("hlt"); }
                 }
             } else {
-                serial_puts("[BOOT] Fresh system - showing boot menu\n");
+                serial_puts("[BOOT] Fresh system - AUTO-BOOT for DEBUG\\n");
+                /* DEBUG: Skip boot menu and directly test ELF loading */
+                nx_kernel_start();
+                while(1) { __asm__ volatile("hlt"); }
             }
         }
         

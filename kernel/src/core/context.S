@@ -130,8 +130,8 @@ enter_usermode:
     /* RFLAGS (IF enabled) */
     pushq $0x202
     
-    /* CS (user code segment = 0x1B) */
-    pushq $0x1B
+    /* CS (user code 64-bit segment = 0x2B) */
+    pushq $0x2B
     
     /* RIP (entry point) */
     push %rdi

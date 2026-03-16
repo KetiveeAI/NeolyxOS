@@ -316,7 +316,7 @@ nx_vec3_t nx_calculate_reflection(nx_vec3_t incident, nx_vec3_t normal) {
  * 4. Apply attenuation
  * ============================================================================ */
 
-nx_vec3_t nx_light_contribution(const nx_light_t* light, const nx_surface_t* surface) {
+nx_vec3_t nx_light_contribution(const nx_light_t* light, const nx_lighting_surface_t* surface) {
     if (!light->enabled) return nx_vec3(0, 0, 0);
     
     nx_vec3_t light_dir;
@@ -383,7 +383,7 @@ nx_vec3_t nx_light_contribution(const nx_light_t* light, const nx_surface_t* sur
 
 nx_vec3_t nx_lighting_calculate(
     const nx_lighting_scene_t* scene,
-    const nx_surface_t* surface
+    const nx_lighting_surface_t* surface
 ) {
     if (!scene || !surface) return nx_vec3(0, 0, 0);
     
@@ -443,4 +443,135 @@ void nx_gpu_upload_scene(nx_gpu_interface_t* gpu, const nx_lighting_scene_t* sce
 void nx_gpu_render_lit(nx_gpu_interface_t* gpu, const nx_lighting_scene_t* scene) {
     (void)gpu; (void)scene;
     /* GPU rendering path - implemented by kernel graphics driver */
+}
+
+/* ============================================================================
+ * Matrix Operations (Column-Major Order for GPU compatibility)
+ * ============================================================================ */
+
+nx_mat4_t nx_mat4_identity(void) {
+    nx_mat4_t m = {0};
+    m.m[0] = 1.0f;  m.m[5] = 1.0f;  m.m[10] = 1.0f;  m.m[15] = 1.0f;
+    return m;
+}
+
+nx_mat4_t nx_mat4_translate(float x, float y, float z) {
+    nx_mat4_t m = nx_mat4_identity();
+    m.m[12] = x;
+    m.m[13] = y;
+    m.m[14] = z;
+    return m;
+}
+
+nx_mat4_t nx_mat4_scale(float x, float y, float z) {
+    nx_mat4_t m = {0};
+    m.m[0] = x;
+    m.m[5] = y;
+    m.m[10] = z;
+    m.m[15] = 1.0f;
+    return m;
+}
+
+nx_mat4_t nx_mat4_rotate_x(float radians) {
+    nx_mat4_t m = nx_mat4_identity();
+    float c = cosf(radians);
+    float s = sinf(radians);
+    m.m[5] = c;   m.m[6] = s;
+    m.m[9] = -s;  m.m[10] = c;
+    return m;
+}
+
+nx_mat4_t nx_mat4_rotate_y(float radians) {
+    nx_mat4_t m = nx_mat4_identity();
+    float c = cosf(radians);
+    float s = sinf(radians);
+    m.m[0] = c;   m.m[2] = -s;
+    m.m[8] = s;   m.m[10] = c;
+    return m;
+}
+
+nx_mat4_t nx_mat4_rotate_z(float radians) {
+    nx_mat4_t m = nx_mat4_identity();
+    float c = cosf(radians);
+    float s = sinf(radians);
+    m.m[0] = c;   m.m[1] = s;
+    m.m[4] = -s;  m.m[5] = c;
+    return m;
+}
+
+nx_mat4_t nx_mat4_perspective(float fov_y, float aspect, float near, float far) {
+    nx_mat4_t m = {0};
+    float tan_half = tanf(fov_y * 0.5f);
+    m.m[0] = 1.0f / (aspect * tan_half);
+    m.m[5] = 1.0f / tan_half;
+    m.m[10] = -(far + near) / (far - near);
+    m.m[11] = -1.0f;
+    m.m[14] = -(2.0f * far * near) / (far - near);
+    return m;
+}
+
+nx_mat4_t nx_mat4_ortho(float left, float right, float bottom, float top, float near, float far) {
+    nx_mat4_t m = {0};
+    m.m[0] = 2.0f / (right - left);
+    m.m[5] = 2.0f / (top - bottom);
+    m.m[10] = -2.0f / (far - near);
+    m.m[12] = -(right + left) / (right - left);
+    m.m[13] = -(top + bottom) / (top - bottom);
+    m.m[14] = -(far + near) / (far - near);
+    m.m[15] = 1.0f;
+    return m;
+}
+
+nx_mat4_t nx_mat4_lookat(nx_vec3_t eye, nx_vec3_t center, nx_vec3_t up) {
+    nx_vec3_t f = nx_vec3_normalize(nx_vec3_sub(center, eye));
+    nx_vec3_t s = nx_vec3_normalize(nx_vec3_cross(f, up));
+    nx_vec3_t u = nx_vec3_cross(s, f);
+    
+    nx_mat4_t m = nx_mat4_identity();
+    m.m[0] = s.x;   m.m[4] = s.y;   m.m[8]  = s.z;
+    m.m[1] = u.x;   m.m[5] = u.y;   m.m[9]  = u.z;
+    m.m[2] = -f.x;  m.m[6] = -f.y;  m.m[10] = -f.z;
+    m.m[12] = -nx_vec3_dot(s, eye);
+    m.m[13] = -nx_vec3_dot(u, eye);
+    m.m[14] = nx_vec3_dot(f, eye);
+    return m;
+}
+
+nx_mat4_t nx_mat4_multiply(nx_mat4_t a, nx_mat4_t b) {
+    nx_mat4_t m = {0};
+    for (int col = 0; col < 4; col++) {
+        for (int row = 0; row < 4; row++) {
+            m.m[col * 4 + row] = 
+                a.m[0 * 4 + row] * b.m[col * 4 + 0] +
+                a.m[1 * 4 + row] * b.m[col * 4 + 1] +
+                a.m[2 * 4 + row] * b.m[col * 4 + 2] +
+                a.m[3 * 4 + row] * b.m[col * 4 + 3];
+        }
+    }
+    return m;
+}
+
+nx_vec4_t nx_mat4_transform_vec4(nx_mat4_t m, nx_vec4_t v) {
+    return (nx_vec4_t){
+        m.m[0] * v.x + m.m[4] * v.y + m.m[8]  * v.z + m.m[12] * v.w,
+        m.m[1] * v.x + m.m[5] * v.y + m.m[9]  * v.z + m.m[13] * v.w,
+        m.m[2] * v.x + m.m[6] * v.y + m.m[10] * v.z + m.m[14] * v.w,
+        m.m[3] * v.x + m.m[7] * v.y + m.m[11] * v.z + m.m[15] * v.w
+    };
+}
+
+nx_vec3_t nx_mat4_transform_point(nx_mat4_t m, nx_vec3_t p) {
+    nx_vec4_t v = nx_mat4_transform_vec4(m, (nx_vec4_t){p.x, p.y, p.z, 1.0f});
+    if (fabsf(v.w) > 0.0001f) {
+        return (nx_vec3_t){v.x / v.w, v.y / v.w, v.z / v.w};
+    }
+    return (nx_vec3_t){v.x, v.y, v.z};
+}
+
+nx_vec3_t nx_mat4_transform_dir(nx_mat4_t m, nx_vec3_t d) {
+    return (nx_vec3_t){
+        m.m[0] * d.x + m.m[4] * d.y + m.m[8]  * d.z,
+        m.m[1] * d.x + m.m[5] * d.y + m.m[9]  * d.z,
+        m.m[2] * d.x + m.m[6] * d.y + m.m[10] * d.z
+    };
 }

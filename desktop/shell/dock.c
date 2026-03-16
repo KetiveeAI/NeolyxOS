@@ -11,7 +11,9 @@
 #include "../include/dock.h"
 #include "../include/nxconfig.h"
 #include "../include/nxsyscall.h"
+#include "../include/nxi_render.h"
 #include <stddef.h>
+
 
 /* ============ Static State ============ */
 
@@ -47,13 +49,15 @@ static void dock_put_pixel_alpha(uint32_t *fb, uint32_t pitch,
         y < 0 || y >= (int32_t)g_dock.screen_height) return;
     
     uint8_t a = (color >> 24) & 0xFF;
+    uint32_t *row = fb + y * (pitch >> 2);  /* Optimized: compute row once */
+    
     if (a == 0xFF) {
-        fb[y * (pitch / 4) + x] = color;
+        row[x] = color;
         return;
     }
     if (a == 0x00) return;
     
-    uint32_t bg = fb[y * (pitch / 4) + x];
+    uint32_t bg = row[x];
     uint8_t br = (bg >> 16) & 0xFF, bg_ = (bg >> 8) & 0xFF, bb = bg & 0xFF;
     uint8_t fr = (color >> 16) & 0xFF, fg = (color >> 8) & 0xFF, fbb = color & 0xFF;
     
@@ -61,7 +65,7 @@ static void dock_put_pixel_alpha(uint32_t *fb, uint32_t pitch,
     uint8_t g = (fg * a + bg_ * (255 - a)) / 255;
     uint8_t b = (fbb * a + bb * (255 - a)) / 255;
     
-    fb[y * (pitch / 4) + x] = 0xFF000000 | (r << 16) | (g << 8) | b;
+    row[x] = 0xFF000000 | (r << 16) | (g << 8) | b;
 }
 
 static void dock_fill_rect_alpha(uint32_t *fb, uint32_t pitch,
@@ -146,7 +150,38 @@ static void dock_draw_pill_border(uint32_t *fb, uint32_t pitch,
     dock_draw_circle(fb, pitch, x + w - r - 1, y + r, r, color);
 }
 
-/* ============ Initialization ============ */
+/* ============================================================================
+ * ICON LOADING FROM NXI FILES
+ * ============================================================================
+ * 
+ * !!! DO NOT ADD HARDCODED ICON DRAWING HERE !!!
+ * 
+ * All icons MUST be loaded from .nxi files stored in:
+ *   /System/Icons/  - System icons
+ *   /Applications/[App].app/resources/icons/  - App icons
+ * 
+ * Use nxi_draw_icon_fallback() or nxi_render_icon_by_name() to render.
+ * If an icon is missing, the system will show a placeholder.
+ * To add a new icon, create the .nxi file using IconLay.app.
+ * 
+ * Icon ID is resolved ONCE at add-time via dock_resolve_icon_id(),
+ * NOT per-frame. This is a performance and architecture decision.
+ * 
+ * See: desktop/include/nxi_render.h for available icon IDs
+ * ============================================================================ */
+
+/* Draw dock icon using NXI renderer with pre-resolved icon_id */
+static void dock_draw_app_icon(uint32_t *fb, uint32_t pitch,
+                                int cx, int cy, int size, 
+                                dock_icon_t *icon) {
+    if (!icon) return;
+    
+    /* Use pre-resolved icon_id (set at add-time, NOT per-frame label lookup) */
+    nxi_draw_icon_fallback(fb, pitch, icon->icon_id, 
+                           cx - size/2, cy - size/2, size,
+                           0xFFFFFFFF);  /* White tint for visibility */
+}
+
 
 void dock_init(uint32_t screen_w, uint32_t screen_h) {
     extern void nx_debug_print(const char *msg);
@@ -195,17 +230,49 @@ void dock_init(uint32_t screen_w, uint32_t screen_h) {
 
 /* ============ Icon Management ============ */
 
+/* Resolve NXI icon ID from app label (called once at add-time, NOT per-frame) */
+static uint32_t dock_resolve_icon_id(const char *label) {
+    if (!label || !label[0]) return NXI_ICON_APP;
+    
+    /* Match app name to pre-defined icon ID */
+    switch (label[0]) {
+        case 'F':
+            if (label[1] == 'i') return NXI_ICON_FOLDER;  /* Files */
+            break;
+        case 'S':
+            if (label[1] == 'a') return NXI_ICON_SEARCH;   /* Safari */
+            if (label[1] == 'e') return NXI_ICON_SETTINGS; /* Settings */
+            break;
+        case 'M':
+            if (label[1] == 'u') return NXI_ICON_PLAY;     /* Music */
+            break;
+        case 'N':
+            return NXI_ICON_FILE;  /* Notes */
+        case 'T':
+            return NXI_ICON_TERMINAL;
+        default:
+            break;
+    }
+    
+    return NXI_ICON_APP;  /* Default app icon */
+}
+
 int dock_add_icon(uint32_t app_id, const char *label, uint32_t color) {
     if (g_dock.icon_count >= DOCK_MAX_ICONS) return -1;
     
     dock_icon_t *icon = &g_dock.icons[g_dock.icon_count];
+    
+    /* CRITICAL: Zero entire struct first to prevent undefined behavior */
+    /* As struct grows, this ensures all new fields are initialized */
+    for (int i = 0; i < (int)sizeof(dock_icon_t); i++) {
+        ((char*)icon)[i] = 0;
+    }
+    
+    /* Set known values */
     icon->app_id = app_id;
     icon->color = color;
+    icon->icon_id = dock_resolve_icon_id(label);  /* Resolve ONCE, not per-frame */
     dock_strcpy(icon->label, label, 32);
-    icon->active = 0;
-    icon->running = 0;
-    icon->bouncing = 0;
-    icon->bounce_frame = 0;
     
     return g_dock.icon_count++;
 }
@@ -245,7 +312,17 @@ void dock_start_bounce(uint32_t app_id) {
 /* ============ Rendering ============ */
 
 void dock_render(uint32_t *fb, uint32_t pitch, int mouse_x, int mouse_y) {
-    if (!g_dock.visible || !g_dock_initialized) return;
+    extern void nx_debug_print(const char *msg);
+    static int dock_debug_count = 0;
+    
+    if (!g_dock.visible || !g_dock_initialized) {
+        if (dock_debug_count < 3) {
+            dock_debug_count++;
+            if (!g_dock.visible) nx_debug_print("[DOCK] Not visible\n");
+            if (!g_dock_initialized) nx_debug_print("[DOCK] Not initialized\n");
+        }
+        return;
+    }
     
     appearance_settings_t *app = g_dock.settings;
     if (!app) app = nxappearance_get();
@@ -334,12 +411,21 @@ void dock_render(uint32_t *fb, uint32_t pitch, int mouse_x, int mouse_y) {
         int cx = ix + size / 2;
         int cy = iy + y_offset + size / 2;
         
-        /* Icon circle */
+        /* Drop shadow (offset, lower opacity) */
+        dock_fill_circle(fb, pitch, cx + 2, cy + 2, size / 2 - 2, 0x40000000);
+        
+        /* Icon background circle */
         dock_fill_circle(fb, pitch, cx, cy, size / 2 - 2, icon->color);
         
-        /* Hover highlight */
+        /* Icon from NXI file (file-based icons, NOT hardcoded shapes) */
+        dock_draw_app_icon(fb, pitch, cx, cy, size, icon);
+        
+        /* Subtle top highlight for glass effect */
+        dock_fill_circle(fb, pitch, cx - size/6, cy - size/6, size/6, 0x20FFFFFF);
+        
+        /* Hover highlight ring */
         if (i == g_dock.hover_idx) {
-            dock_draw_circle(fb, pitch, cx, cy, size / 2 - 1, 0x60FFFFFF);
+            dock_draw_circle(fb, pitch, cx, cy, size / 2 - 1, 0x80FFFFFF);
         }
         
         /* Running indicator dot */

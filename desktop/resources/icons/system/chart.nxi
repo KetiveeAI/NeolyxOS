@@ -1,0 +1,28 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# chart icon
+
+[nxi]
+version = 1.0
+name = chart
+size = 24
+author = KetiveeAI
+category = system
+viewbox = 0 0 24 24
+
+[canvas]
+width = 24
+height = 24
+background = transparent
+
+[colors]
+primary = #FFFFFF
+accent = #00B4FF
+color_0 = white
+
+[paths]
+path_0 = M2 18V3H4V18C4 19.1477 4.85228 20 6 20H21V22H6C3.74772 22 2 20.2523 2 18Z
+path_1 = M17.293 7.29302C17.6835 6.90249 18.3165 6.90249 18.707 7.29302C19.0975 7.68354 19.0975 8.31655 18.707 8.70708L13.707 13.7071C13.3165 14.0976 12.6835 14.0976 12.293 13.7071L10.1074 11.5215L7.7998 14.5997C7.46847 15.0414 6.8422 15.1311 6.40038 14.7999C5.95861 14.4685 5.86896 13.8423 6.20019 13.4004L9.20019 9.40044L9.26952 9.31743C9.44082 9.1341 9.67583 9.02106 9.9287 9.00298C10.2179 8.98243 10.502 9.08803 10.707 9.29302L13 11.586L17.293 7.29302Z
+
+[style]
+path_0.fill = color_0
+path_1.fill = color_0

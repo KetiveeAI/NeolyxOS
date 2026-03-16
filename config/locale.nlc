@@ -1,0 +1,45 @@
+# NeolyxOS Locale Configuration (.nlc)
+# Date, time, and regional settings
+# Located at: /System/Config/locale.nlc
+#
+# Copyright (c) 2025-2026 KetiveeAI
+
+[timezone]
+# Timezone identifier
+name = "Asia/Kolkata"
+# UTC offset in minutes (IST = +5:30 = 330 minutes)
+offset_minutes = "330"
+# Auto-detect timezone from network (future feature)
+auto_detect = "false"
+
+[time]
+# Time format: "24h" or "12h"
+format = "24h"
+# Show seconds in clock
+show_seconds = "false"
+# Flash time separators
+flash_separators = "false"
+
+[date]
+# Date format options:
+# "DD/MM/YYYY" - Day first (India, UK, Europe)
+# "MM/DD/YYYY" - Month first (USA)
+# "YYYY-MM-DD" - ISO format
+format = "DD/MM/YYYY"
+# First day of week: "sunday" or "monday"
+first_day_of_week = "monday"
+# Show week numbers in calendar
+show_week_numbers = "false"
+
+[region]
+# Language code
+language = "en_IN"
+# Measurement system: "metric" or "imperial"
+measurement = "metric"
+# Temperature: "celsius" or "fahrenheit"
+temperature = "celsius"
+# Currency symbol
+currency = "INR"
+# Number format: use comma/period for thousands/decimals
+decimal_separator = "."
+thousands_separator = ","

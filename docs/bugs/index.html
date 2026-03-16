@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bug Fixes - NeolyxOS</title>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Bug Fixes &amp; Resolved Issues</h1>
+            <p class="subtitle">Documentation for resolved critical bugs in NeolyxOS</p>
+            <div class="quick-links">
+                <a href="../index.html">Docs Home</a>
+                <a href="../kernel/syscalls.html">Syscalls</a>
+                <a href="../gui/index.html">GUI</a>
+            </div>
+        </header>
+
+        <h2>Critical Fixes</h2>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="gpf_sysret_gdt_fix.html">GPF SYSRET/GDT Fix</a> <span class="status complete">Jan
+                        2026</span></h2>
+                <p>Fixed triple fault caused by SYSRET loading TSS as code segment due to incorrect GDT layout.
+                    User CS selector 0x2B was pointing to TSS descriptor instead of User Code 64 segment.</p>
+            </div>
+        </div>
+
+        <h2>Documentation Standards</h2>
+        <div class="card">
+            <p>Each bug fix document includes:</p>
+            <ul>
+                <li><strong>Symptom</strong> - What the user/developer observed</li>
+                <li><strong>Root Cause</strong> - Technical explanation of why it happened</li>
+                <li><strong>Before/After</strong> - What changed (GDT layout, code, etc.)</li>
+                <li><strong>Files Modified</strong> - Which source files were touched</li>
+                <li><strong>Verification</strong> - How to confirm the fix works</li>
+                <li><strong>Key Lesson</strong> - Takeaway for preventing similar bugs</li>
+            </ul>
+        </div>
+
+        <footer>
+            <p><a href="../index.html">&larr; Back to Documentation</a></p>
+        </footer>
+    </div>
+</body>
+
+</html>

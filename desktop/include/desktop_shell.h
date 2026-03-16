@@ -109,6 +109,10 @@ typedef struct {
     /* Content render callback */
     void (*render_content)(void *win, void *ctx);
     void *render_ctx;
+    
+    /* Keyboard handler callback (optional) */
+    void (*key_handler)(void *win, uint8_t scancode, uint8_t pressed, void *ctx);
+    void *key_ctx;
 } desktop_window_t;
 
 /* ============ Desktop API ============ */
@@ -167,6 +171,16 @@ void desktop_focus_window(uint32_t window_id);
 void desktop_set_window_render(uint32_t window_id, 
                                void (*callback)(desktop_window_t *win, void *ctx),
                                void *ctx);
+
+/**
+ * desktop_set_window_key_handler - Set keyboard handler for a window
+ */
+void desktop_set_window_key_handler(uint32_t window_id,
+                                    void (*handler)(desktop_window_t *win, 
+                                                    uint8_t scancode, 
+                                                    uint8_t pressed, 
+                                                    void *ctx),
+                                    void *ctx);
 
 /* ============ Drawing Helpers ============ */
 

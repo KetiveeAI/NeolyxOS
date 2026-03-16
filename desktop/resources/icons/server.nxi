@@ -1,0 +1,38 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# server icon
+
+[nxi]
+version = 1.0
+name = server
+size = 24
+author = KetiveeAI
+category = system
+viewbox = 0 0 24 24
+
+[canvas]
+width = 24
+height = 24
+background = transparent
+
+[colors]
+primary = #FFFFFF
+accent = #00B4FF
+color_0 = white
+
+[paths]
+path_0 = M3 5V7H21V5H3ZM23 7C23 8.10457 22.1046 9 21 9H3C1.89543 9 1 8.10457 1 7V5C1 3.89543 1.89543 3 3 3H21C22.1046 3 23 3.89543 23 5V7Z
+path_1 = M3 13V15H21V13H3ZM23 15C23 16.1046 22.1046 17 21 17H3C1.89543 17 1 16.1046 1 15V13C1 11.8954 1.89543 11 3 11H21C22.1046 11 23 11.8954 23 13V15Z
+path_2 = M3 21V23H21V21H3ZM23 23C23 24.1046 22.1046 25 21 25H3C1.89543 25 1 24.1046 1 23V21C1 19.8954 1.89543 19 3 19H21C22.1046 19 23 19.8954 23 21V23Z
+path_3 = M5 7C5.55228 7 6 6.55228 6 6C6 5.44772 5.55228 5 5 5C4.44772 5 4 5.44772 4 6C4 6.55228 4.44772 7 5 7Z
+path_4 = M5 15C5.55228 15 6 14.5523 6 14C6 13.4477 5.55228 13 5 13C4.44772 13 4 13.4477 4 14C4 14.5523 4.44772 15 5 15Z
+path_5 = M5 23C5.55228 23 6 22.5523 6 22C6 21.4477 5.55228 21 5 21C4.44772 21 4 21.4477 4 22C4 22.5523 4.44772 23 5 23Z
+rect_6 = M0.0,0.0 L24.0,0.0 L24.0,24.0 L0.0,24.0 Z
+
+[style]
+path_0.fill = color_0
+path_1.fill = color_0
+path_2.fill = color_0
+path_3.fill = color_0
+path_4.fill = color_0
+path_5.fill = color_0
+rect_6.fill = color_0

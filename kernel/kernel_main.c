@@ -68,17 +68,17 @@ typedef struct {
 
 /* ============ Framebuffer ============ */
 
-/* These globals are exported for syscall access (userspace desktop) */
-volatile uint32_t *framebuffer = 0;
-uint32_t fb_width = 0;
-uint32_t fb_height = 0;
-uint32_t fb_pitch = 0;
+/* These globals are DEFINED in framebuffer.c - just extern here */
+extern volatile uint32_t *framebuffer;
+extern uint32_t fb_width;
+extern uint32_t fb_height;
+extern uint32_t fb_pitch;
 
-/* Aliases for syscall.c - exported for userspace desktop access */
-uint64_t g_framebuffer_addr = 0;
-uint32_t g_framebuffer_width = 0;
-uint32_t g_framebuffer_height = 0;
-uint32_t g_framebuffer_pitch = 0;
+/* Aliases for syscall.c - DEFINED in framebuffer.c */
+extern uint64_t g_framebuffer_addr;
+extern uint32_t g_framebuffer_width;
+extern uint32_t g_framebuffer_height;
+extern uint32_t g_framebuffer_pitch;
 
 static void fb_put_pixel(uint32_t x, uint32_t y, uint32_t color) {
     if (framebuffer && x < fb_width && y < fb_height) {
@@ -190,6 +190,42 @@ extern int dm_run(disk_manager_t *mgr, uint64_t fb_addr,
 /* Disk manager storage */
 static uint8_t disk_manager_storage[4096];
 
+/* ============ FPU/SSE Initialization ============ */
+
+/* Enable FPU and SSE for userspace floating-point operations */
+static void fpu_init(void) {
+    uint64_t cr0, cr4;
+    
+    /* Read CR0 */
+    __asm__ volatile("mov %%cr0, %0" : "=r"(cr0));
+    
+    /* Clear CR0.EM (bit 2) - disable x87 emulation */
+    /* Clear CR0.TS (bit 3) - clear task switched flag */
+    /* Set CR0.MP (bit 1) - enable FPU monitoring */
+    cr0 &= ~((uint64_t)1 << 2);  /* Clear EM */
+    cr0 &= ~((uint64_t)1 << 3);  /* Clear TS */
+    cr0 |= ((uint64_t)1 << 1);   /* Set MP */
+    
+    /* Write CR0 */
+    __asm__ volatile("mov %0, %%cr0" : : "r"(cr0));
+    
+    /* Read CR4 */
+    __asm__ volatile("mov %%cr4, %0" : "=r"(cr4));
+    
+    /* Set CR4.OSFXSR (bit 9) - enable FXSAVE/FXRSTOR */
+    /* Set CR4.OSXMMEXCPT (bit 10) - enable unmasked SSE exceptions */
+    cr4 |= ((uint64_t)1 << 9);   /* Set OSFXSR */
+    cr4 |= ((uint64_t)1 << 10);  /* Set OSXMMEXCPT */
+    
+    /* Write CR4 */
+    __asm__ volatile("mov %0, %%cr4" : : "r"(cr4));
+    
+    /* Initialize x87 FPU */
+    __asm__ volatile("fninit");
+    
+    serial_puts("[OK] FPU/SSE initialized\n");
+}
+
 /* ============ Kernel Entry ============ */
 
 void kernel_main(NeolyxBootInfo *boot_info) {
@@ -239,9 +275,14 @@ void kernel_main(NeolyxBootInfo *boot_info) {
     extern void gdt_init(void);
     gdt_init();
     
+    /* Initialize FPU/SSE for floating-point operations */
+    fpu_init();
+    
     /* Initialize IDT with PIC remapping */
+    serial_puts("[KERNEL] Calling idt_init()...\n");
     extern void idt_init(void);
     idt_init();
+    serial_puts("[KERNEL] IDT initialized with IST1 for exceptions\n");
     
     /* Initialize PMM with memory map from bootloader */
     extern void pmm_init(uint64_t mmap, uint64_t size, uint64_t desc_size);
@@ -672,10 +713,10 @@ void kernel_main(NeolyxBootInfo *boot_info) {
                 serial_puts("\n");
                 
                 /* Use fixed userspace stack address within mapped 8MB region
-                 * Stack: 0x500000 - 0x504000 (16KB)
+                 * Stack: 0x500000 - 0x510000 (64KB)
                  * This is identity-mapped with USER flag by paging_init() */
                 #define USER_STACK_BASE 0x500000
-                #define USER_STACK_SIZE 0x4000  /* 16KB */
+                #define USER_STACK_SIZE 0x10000  /* 64 KB - must match process.h */
                 uint64_t user_stack_top = USER_STACK_BASE + USER_STACK_SIZE;
                 
                 serial_puts("[KERNEL] User stack: 0x500000-0x504000\n");
@@ -685,12 +726,47 @@ void kernel_main(NeolyxBootInfo *boot_info) {
                     paging_map_user(addr, addr);  /* Identity map with USER flag */
                 }
                 
-                /* Set TSS0.RSP0 to kernel stack for Ring 3 -> Ring 0 transitions */
-                uint64_t kernel_stack_top = 0x7C00;  /* Use early boot stack */
-                tss_set_kernel_stack(kernel_stack_top);
-                serial_puts("[KERNEL] TSS kernel stack set\n");
+                /* Set TSS.RSP0 to proper kernel stack for Ring 3 -> Ring 0 transitions
+                 * Use g_kernel_rsp0 which is the 16KB kernel stack initialized by gdt_init() */
+                extern uint64_t g_kernel_rsp0;
+                tss_set_kernel_stack(g_kernel_rsp0);
+                serial_puts("[KERNEL] TSS kernel stack set to g_kernel_rsp0\n");
                 
                 serial_puts("[KERNEL] Transitioning to Ring 3 userspace...\n");
+                
+                /* Create proper user process before entering userspace.
+                 * This ensures current_process has a properly initialized
+                 * syscall_dispatch (filter_mode=0=NX_DISPATCH_OFF).
+                 * Without this, syscalls would be blocked. */
+                extern int32_t process_create_user(const char *name, uint64_t entry, uint64_t stack);
+                extern process_t *current_process;
+                
+                int32_t desktop_pid = process_create_user("desktop", elf_info.entry_point, user_stack_top);
+                if (desktop_pid > 0) {
+                    serial_puts("[KERNEL] Desktop process created, PID=");
+                    char pid_buf[12];
+                    int idx = 0;
+                    int32_t p = desktop_pid;
+                    if (p == 0) { pid_buf[idx++] = '0'; }
+                    else {
+                        char tmp[12]; int i = 0;
+                        while (p > 0) { tmp[i++] = '0' + (p % 10); p /= 10; }
+                        while (i > 0) pid_buf[idx++] = tmp[--i];
+                    }
+                    pid_buf[idx] = '\0';
+                    serial_puts(pid_buf);
+                    serial_puts("\n");
+                    
+                    /* Set the desktop process as current before entering userspace */
+                    extern process_t *process_table[];
+                    if (desktop_pid < 256 && process_table[desktop_pid]) {
+                        current_process = process_table[desktop_pid];
+                        current_process->flags |= 0x0002;  /* PROC_FLAG_USER */
+                        serial_puts("[KERNEL] Desktop process set as current\n");
+                    }
+                } else {
+                    serial_puts("[WARN] Failed to create desktop process, continuing anyway\n");
+                }
                 
                 /* Enter userspace - this does not return */
                 enter_user_mode(user_stack_top, elf_info.entry_point);

@@ -1,0 +1,325 @@
+// ============================================================================
+// NeolyxOS App Installer - REOX UI Definition
+// Main installer window with wizard-style navigation
+// 
+// File extensions:
+//   .reox - Main executable files (like .c)
+//   .rx   - Library/modules (like .h)
+//
+// Copyright (c) 2025-2026 KetiveeAI
+// ============================================================================
+
+import nxrender;
+import system;
+
+// Color constants (NeolyxOS dark theme)
+let COL_BG: int        = 0x1C1C1E;
+let COL_SURFACE: int   = 0x2C2C2E;
+let COL_BORDER: int    = 0x48484A;
+let COL_PRIMARY: int   = 0x007AFF;
+let COL_TEXT: int      = 0xFFFFFF;
+let COL_TEXT_DIM: int  = 0xAEAEB2;
+let COL_SUCCESS: int   = 0x34C759;
+let COL_ERROR: int     = 0xFF3B30;
+
+// Install steps
+enum InstallStep {
+    Welcome,
+    Permissions,
+    Location,
+    Progress,
+    Complete
+}
+
+// Installer state
+struct InstallerState {
+    current_step: InstallStep,
+    package_name: string,
+    package_version: string,
+    package_author: string,
+    package_description: string,
+    permissions: [string],
+    install_path: string,
+    progress: int,
+    add_to_dock: bool,
+    create_shortcut: bool,
+    success: bool
+}
+
+// Global state
+let mut state = InstallerState {
+    current_step: InstallStep::Welcome,
+    package_name: "",
+    package_version: "",
+    package_author: "",
+    package_description: "",
+    permissions: [],
+    install_path: "/Applications",
+    progress: 0,
+    add_to_dock: true,
+    create_shortcut: false,
+    success: false
+};
+
+// Main installer window
+window InstallerWindow {
+    title: "NeolyxOS App Installer"
+    size: (600, 450)
+    resizable: false
+    
+    view {
+        vstack(gap: 0) {
+            // Header bar
+            container header {
+                bounds: (0, 0, 600, 60)
+                background: COL_SURFACE
+                
+                label app_title {
+                    text: "NeolyxOS App Installer"
+                    position: (24, 20)
+                    color: COL_TEXT
+                    size: 18
+                }
+                
+                label step_indicator {
+                    text: step_text()
+                    position: (400, 20)
+                    color: COL_TEXT_DIM
+                    size: 12
+                }
+            }
+            
+            // Content area (changes per step)
+            container content {
+                bounds: (0, 60, 600, 330)
+                background: COL_BG
+                
+                // Dynamic content based on step
+            }
+            
+            // Footer with navigation
+            container footer {
+                bounds: (0, 390, 600, 60)
+                background: COL_SURFACE
+                
+                button cancel_btn {
+                    label: "Cancel"
+                    position: (24, 12)
+                    size: (100, 36)
+                    on_click: cancel_install()
+                }
+                
+                button back_btn {
+                    label: "Back"
+                    position: (366, 12)
+                    size: (100, 36)
+                    visible: state.current_step != InstallStep::Welcome
+                    on_click: previous_step()
+                }
+                
+                button next_btn {
+                    label: next_button_label()
+                    position: (476, 12)
+                    size: (100, 36)
+                    primary: true
+                    on_click: next_step()
+                }
+            }
+        }
+    }
+}
+
+// Step 1: Welcome view
+fn render_welcome(content: widget) {
+    // App icon placeholder
+    nxgfx_fill_rounded_rect(252, 100, 96, 96, 16, COL_SURFACE);
+    
+    // App name
+    nxgfx_draw_text_sized(300, 220, state.package_name, 20, COL_TEXT);
+    
+    // Version
+    let version_text = "v" + state.package_version;
+    nxgfx_draw_text_sized(290, 245, version_text, 14, COL_TEXT_DIM);
+    
+    // Author
+    let author_text = "by " + state.package_author;
+    nxgfx_draw_text_sized(280, 270, author_text, 14, COL_TEXT_DIM);
+    
+    // Description
+    nxgfx_draw_text(24, 320, state.package_description, COL_TEXT_DIM);
+}
+
+// Step 2: Permissions view
+fn render_permissions(content: widget) {
+    nxgfx_draw_text(24, 100, "This application requires the following permissions:", COL_TEXT);
+    
+    let mut y = 140;
+    for perm in state.permissions {
+        nxgfx_draw_text(24, y, "• " + perm, COL_TEXT_DIM);
+        y = y + 30;
+    }
+}
+
+// Step 3: Location view
+fn render_location(content: widget) {
+    nxgfx_draw_text(24, 100, "Choose where to install:", COL_TEXT);
+    
+    // Radio buttons area
+    nxgfx_fill_circle(24, 145, 8, COL_PRIMARY);
+    nxgfx_draw_text(44, 140, "/Applications (Recommended)", COL_TEXT);
+    
+    nxgfx_draw_circle(24, 175, 8, COL_BORDER);
+    nxgfx_draw_text(44, 170, "Custom location...", COL_TEXT_DIM);
+    
+    // Path display
+    nxgfx_draw_text(24, 230, "Install path:", COL_TEXT_DIM);
+    nxgfx_fill_rounded_rect(24, 250, 552, 36, 4, COL_SURFACE);
+    nxgfx_draw_text(34, 260, state.install_path, COL_TEXT);
+}
+
+// Step 4: Progress view
+fn render_progress(content: widget) {
+    let msg = "Installing " + state.package_name + "...";
+    nxgfx_draw_text_sized(24, 150, msg, 16, COL_TEXT);
+    
+    // Progress bar background
+    nxgfx_fill_rounded_rect(24, 200, 552, 24, 4, COL_SURFACE);
+    
+    // Progress bar fill
+    let fill_width = (552 * state.progress) / 100;
+    nxgfx_fill_rounded_rect(24, 200, fill_width, 24, 4, COL_PRIMARY);
+    
+    // Percentage
+    let percent_text = state.progress + "%";
+    nxgfx_draw_text(280, 240, percent_text, COL_TEXT_DIM);
+}
+
+// Step 5: Complete view
+fn render_complete(content: widget) {
+    if state.success {
+        nxgfx_draw_text_sized(220, 120, "Installation Complete!", 20, COL_SUCCESS);
+        
+        let path_msg = state.package_name + " has been installed to:";
+        nxgfx_draw_text(24, 180, path_msg, COL_TEXT);
+        nxgfx_draw_text(24, 205, state.install_path, COL_TEXT_DIM);
+        
+        // Checkboxes
+        if state.add_to_dock {
+            nxgfx_fill_rounded_rect(24, 260, 20, 20, 4, COL_PRIMARY);
+        } else {
+            nxgfx_draw_rect(24, 260, 20, 20, COL_BORDER);
+        }
+        nxgfx_draw_text(54, 262, "Add to Dock", COL_TEXT);
+        
+        if state.create_shortcut {
+            nxgfx_fill_rounded_rect(24, 295, 20, 20, 4, COL_PRIMARY);
+        } else {
+            nxgfx_draw_rect(24, 295, 20, 20, COL_BORDER);
+        }
+        nxgfx_draw_text(54, 297, "Create Desktop shortcut", COL_TEXT);
+    } else {
+        nxgfx_draw_text_sized(240, 120, "Installation Failed", 20, COL_ERROR);
+    }
+}
+
+// Helper functions
+fn step_text() -> string {
+    match state.current_step {
+        InstallStep::Welcome => "Step 1 of 5: Welcome",
+        InstallStep::Permissions => "Step 2 of 5: Permissions",
+        InstallStep::Location => "Step 3 of 5: Install Location",
+        InstallStep::Progress => "Step 4 of 5: Installing...",
+        InstallStep::Complete => "Step 5 of 5: Complete"
+    }
+}
+
+fn next_button_label() -> string {
+    match state.current_step {
+        InstallStep::Welcome => "Continue",
+        InstallStep::Permissions => "Continue",
+        InstallStep::Location => "Install",
+        InstallStep::Progress => "",
+        InstallStep::Complete => "Done"
+    }
+}
+
+fn next_step() {
+    match state.current_step {
+        InstallStep::Welcome => state.current_step = InstallStep::Permissions,
+        InstallStep::Permissions => state.current_step = InstallStep::Location,
+        InstallStep::Location => {
+            state.current_step = InstallStep::Progress;
+            do_install();
+        },
+        InstallStep::Progress => {},
+        InstallStep::Complete => nx_event_loop_quit()
+    }
+}
+
+fn previous_step() {
+    match state.current_step {
+        InstallStep::Welcome => {},
+        InstallStep::Permissions => state.current_step = InstallStep::Welcome,
+        InstallStep::Location => state.current_step = InstallStep::Permissions,
+        InstallStep::Progress => {},
+        InstallStep::Complete => {}
+    }
+}
+
+fn cancel_install() {
+    nx_event_loop_quit();
+}
+
+fn do_install() {
+    // Simulate installation
+    for i in 0..100 {
+        state.progress = i;
+        // Update UI
+        system::sleep(20);
+    }
+    state.success = true;
+    state.current_step = InstallStep::Complete;
+}
+
+// Entry point
+fn main() {
+    // Parse command line for package path
+    let args = system::args();
+    
+    if args.len() > 1 {
+        let pkg_path = args[1];
+        load_package(pkg_path);
+    } else {
+        // Demo mode
+        state.package_name = "Calculator";
+        state.package_version = "1.0.0";
+        state.package_author = "KetiveeAI";
+        state.package_description = "A beautiful calculator app for NeolyxOS";
+        state.permissions = ["Read files from disk", "Write files to disk"];
+    }
+    
+    // Create and show window
+    let win = nx_window_create("NeolyxOS App Installer", 100, 100, 600, 450);
+    nx_window_center(win);
+    nx_window_show(win);
+    
+    // Run event loop
+    nx_event_loop_run();
+}
+
+fn load_package(path: string) {
+    // Load manifest from package
+    // This calls into C FFI to parse .nxpkg
+    extern fn installer_load_package(path: string) -> bool;
+    extern fn installer_get_name() -> string;
+    extern fn installer_get_version() -> string;
+    extern fn installer_get_author() -> string;
+    extern fn installer_get_description() -> string;
+    
+    if installer_load_package(path) {
+        state.package_name = installer_get_name();
+        state.package_version = installer_get_version();
+        state.package_author = installer_get_author();
+        state.package_description = installer_get_description();
+    }
+}

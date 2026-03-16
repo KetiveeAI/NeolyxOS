@@ -1,7 +1,0 @@
-// hello.rx - REOX Hello World
-// Test program for REOX compiler
-
-fn main() -> int {
-    println("Hello from REOX!");
-    return 0;
-}

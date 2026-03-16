@@ -1,0 +1,113 @@
+// Reolab - Code Editor Component (REOX UI)
+// NeolyxOS Application
+// Copyright (c) 2025 KetiveeAI. All Rights Reserved.
+
+import { VStack, HStack, ZStack, ScrollView } from "reox/layout"
+import { Text } from "reox/controls"
+import { Color, Font } from "reox/style"
+
+// Code editor component
+fn CodeEditor() -> View {
+    HStack(0) {
+        // Line numbers gutter
+        LineNumbers()
+            .frame(width: 50)
+            .background(color_hex(0x1E1E1E))
+        
+        // Main editor content
+        ScrollView {
+            EditorContent()
+        }
+        .background(color_hex(0x1E1E1E))
+    }
+}
+
+// Line numbers column
+fn LineNumbers() -> View {
+    VStack(0) {
+        ForEach(1..100) { line in
+            Text("\(line)")
+                .font("monospace", size: 13)
+                .foreground(color_hex(0x858585))
+                .frame(height: 20)
+                .padding(right: 8)
+                .align(.trailing)
+        }
+    }
+    .padding(top: 4)
+}
+
+// Editor content with syntax highlighting
+fn EditorContent() -> View {
+    VStack(0) {
+        ForEach(buffer.lines) { line, index in
+            EditorLine(text: line, line_num: index)
+        }
+    }
+    .padding(4)
+}
+
+// Single line of code
+fn EditorLine(text: String, line_num: Int) -> View {
+    HStack(0) {
+        // Syntax highlighted text spans
+        ForEach(tokenize(text)) { token in
+            Text(token.text)
+                .font("monospace", size: 13)
+                .foreground(token_color(token.kind))
+        }
+    }
+    .frame(height: 20)
+}
+
+// Token colors for REOX syntax
+fn token_color(kind: TokenKind) -> Color {
+    match kind {
+        TokenKind::Keyword => color_hex(0xC586C0)      // Purple
+        TokenKind::Function => color_hex(0xDCDCAA)    // Yellow
+        TokenKind::String => color_hex(0xCE9178)      // Orange
+        TokenKind::Number => color_hex(0xB5CEA8)      // Green
+        TokenKind::Comment => color_hex(0x6A9955)     // Green (dimmer)
+        TokenKind::Type => color_hex(0x4EC9B0)        // Cyan
+        TokenKind::Operator => color_hex(0xD4D4D4)    // White
+        _ => color_hex(0xD4D4D4)                      // Default white
+    }
+}
+
+// Tab bar for open files
+fn TabBar() -> View {
+    HStack(0) {
+        ForEach(open_files) { file, index in
+            Tab(
+                title: file.name,
+                active: index == active_tab,
+                modified: file.modified
+            )
+            .on_click(|| set_active_tab(index))
+        }
+        Spacer()
+    }
+    .background(color_hex(0x252526))
+}
+
+// Single tab
+fn Tab(title: String, active: Bool, modified: Bool) -> View {
+    HStack(4) {
+        if modified {
+            Circle()
+                .frame(width: 8, height: 8)
+                .foreground(color_hex(0xCCCCCC))
+        }
+        
+        Text(title)
+            .font_size(13)
+            .foreground(active ? color_white() : color_hex(0x888888))
+        
+        Button("×")
+            .frame(width: 16, height: 16)
+            .foreground(color_hex(0x888888))
+            .on_click(|| close_tab(index))
+    }
+    .padding(horizontal: 12, vertical: 8)
+    .background(active ? color_hex(0x1E1E1E) : color_clear())
+}

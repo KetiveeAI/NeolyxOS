@@ -18,6 +18,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "core/nx_abi.h"
 
 /* ============ Constants ============ */
 
@@ -106,6 +107,9 @@ typedef struct process {
     
     /* Wait list (for blocked processes) */
     struct process *wait_next;
+    
+    /* Syscall dispatch control (for sandboxing) */
+    nx_syscall_dispatch_t syscall_dispatch;
 } process_t;
 
 /* ============ Process API ============ */

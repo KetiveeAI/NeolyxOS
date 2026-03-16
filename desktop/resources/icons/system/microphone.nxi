@@ -1,0 +1,30 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# microphone icon
+
+[nxi]
+version = 1.0
+name = microphone
+size = 24
+author = KetiveeAI
+category = system
+viewbox = 0 0 24 24
+
+[canvas]
+width = 24
+height = 24
+background = transparent
+
+[colors]
+primary = #FFFFFF
+accent = #00B4FF
+color_0 = white
+
+[paths]
+path_0 = M15 5C15 3.35228 13.6477 2 12 2C10.3523 2 9 3.35228 9 5V11C9 12.6477 10.3523 14 12 14C13.6477 14 15 12.6477 15 11V5ZM17 11C17 13.7523 14.7523 16 12 16C9.24772 16 7 13.7523 7 11V5C7 2.24772 9.24772 0 12 0C14.7523 0 17 2.24772 17 5V11Z
+path_1 = M3 11V9C3 8.44772 3.44772 8 4 8C4.55228 8 5 8.44772 5 9V11C5 14.4205 7.55877 17.1093 11.2422 18.0303L12 18.2188L12.7578 18.0303C16.4412 17.1093 19 14.4205 19 11V9C19 8.44772 19.4477 8 20 8C20.5523 8 21 8.44772 21 9V11C21 15.308 17.9545 18.493 14 19.7539V23H10V19.7539C6.0455 18.493 3 15.308 3 11Z
+rect_2 = M0.0,0.0 L24.0,0.0 L24.0,24.0 L0.0,24.0 Z
+
+[style]
+path_0.fill = color_0
+path_1.fill = color_0
+rect_2.fill = color_0

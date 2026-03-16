@@ -47,9 +47,13 @@ idt_load:
 # SYSCALL: RCX = user RIP, R11 = user RFLAGS, RAX = syscall number
 # Args: RDI=arg1, RSI=arg2, RDX=arg3, R10=arg4, R8=arg5, R9=arg6
 syscall_entry:
+    # CRITICAL: Disable interrupts immediately!
+    # FMASK should already clear IF, but this is defense-in-depth
+    cli
+    
     # Switch to kernel stack (SYSCALL doesn't switch stacks automatically)
     mov %rsp, %r15              # Save user RSP
-    mov $0x373D00, %rsp         # Kernel stack from TSS.rsp0
+    mov g_kernel_rsp0(%rip), %rsp  # Load kernel stack from global variable
     
     # Save user context for sysretq
     pushq %r15                  # User RSP
@@ -115,6 +119,9 @@ syscall_entry:
     popq %r11                   # User RFLAGS
     popq %rsp                   # User RSP
     
+    # DEBUG: Mark sysret about to happen (if this prints, stack is OK)
+    # Note: can't easily call C here since we switched to user stack already
+    
     sysretq
 
 
@@ -171,7 +178,7 @@ enter_user_mode:
     pushq $0x23             # SS - User data segment
     pushq %rdi              # RSP - User stack pointer
     pushq $0x202            # RFLAGS - IF enabled, reserved bit 1 set
-    pushq $0x1B             # CS - User code segment (0x18 | DPL3)
+    pushq $0x2B             # CS - User code 64-bit segment (0x28 | DPL3)
     pushq %rsi              # RIP - User entry point
     
     # Clear all general purpose registers for security

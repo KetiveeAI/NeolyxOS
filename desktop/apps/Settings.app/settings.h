@@ -47,6 +47,7 @@ typedef enum {
     PANEL_ICONS,
     PANEL_WINDOWS,
     PANEL_MOUSE,
+    PANEL_DATE_TIME,
     PANEL_COUNT
 } panel_id_t;
 
@@ -197,6 +198,7 @@ extern rx_view* device_panel_create(settings_ctx_t* ctx);
 extern rx_view* icons_panel_create(settings_ctx_t* ctx);
 extern rx_view* windows_panel_create(settings_ctx_t* ctx);
 extern rx_view* mouse_panel_create(settings_ctx_t* ctx);
+extern rx_view* date_time_panel_create(settings_ctx_t* ctx);
 
 /* ============================================================================
  * Page Navigation

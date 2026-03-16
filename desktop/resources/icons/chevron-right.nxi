@@ -1,0 +1,26 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# chevron-right icon
+
+[nxi]
+version = 1.0
+name = chevron-right
+size = 24
+author = KetiveeAI
+category = system
+viewbox = 0 0 24 24
+
+[canvas]
+width = 24
+height = 24
+background = transparent
+
+[colors]
+primary = #FFFFFF
+accent = #00B4FF
+color_0 = white
+
+[paths]
+path_0 = M8.29297 5.29302C8.68349 4.90249 9.31651 4.90249 9.70703 5.29302L15.707 11.293C16.0976 11.6835 16.0976 12.3166 15.707 12.7071L9.70703 18.7071C9.31651 19.0976 8.68349 19.0976 8.29297 18.7071C7.90245 18.3166 7.90245 17.6835 8.29297 17.293L13.5859 12L8.29297 6.70708C7.90245 6.31655 7.90245 5.68354 8.29297 5.29302Z
+
+[style]
+path_0.fill = color_0

@@ -1,0 +1,642 @@
+// ============================================================================
+// Archive.app - NeolyxOS Native Archive Manager
+// REOX UI Definition with NXRender integration
+// 
+// Default archive opener for .zip, .nxzip, .tar, .gz files
+// 
+// Copyright (c) 2025-2026 KetiveeAI
+// ============================================================================
+
+import nxrender;
+import system;
+
+// Colors (NeolyxOS dark theme)
+let COL_BG: int        = 0x1C1C1E;
+let COL_SIDEBAR: int   = 0x252528;
+let COL_SURFACE: int   = 0x2C2C2E;
+let COL_BORDER: int    = 0x48484A;
+let COL_PRIMARY: int   = 0x007AFF;
+let COL_TEXT: int      = 0xFFFFFF;
+let COL_TEXT_DIM: int  = 0xAEAEB2;
+let COL_SELECTED: int  = 0x3A3A3C;
+let COL_FOLDER: int    = 0xFFD60A;
+let COL_FILE: int      = 0x8E8E93;
+
+// File entry in archive
+struct ArchiveEntry {
+    name: string,
+    path: string,
+    size: int,
+    compressed_size: int,
+    is_directory: bool,
+    selected: bool
+}
+
+// Application state
+struct ArchiveState {
+    archive_path: string,
+    archive_name: string,
+    entries: [ArchiveEntry],
+    selected_count: int,
+    total_size: int,
+    compressed_size: int,
+    current_folder: string,
+    is_loading: bool,
+    extract_progress: int,
+    show_create_dialog: bool,
+    show_extract_dialog: bool
+}
+
+// Global state
+let mut state = ArchiveState {
+    archive_path: "",
+    archive_name: "No Archive Open",
+    entries: [],
+    selected_count: 0,
+    total_size: 0,
+    compressed_size: 0,
+    current_folder: "/",
+    is_loading: false,
+    extract_progress: 0,
+    show_create_dialog: false,
+    show_extract_dialog: false
+};
+
+// Main window
+window ArchiveWindow {
+    title: "Archive"
+    size: (900, 600)
+    min_size: (600, 400)
+    
+    view {
+        vstack(gap: 0) {
+            // Toolbar
+            container toolbar {
+                bounds: (0, 0, 900, 48)
+                background: COL_SURFACE
+                
+                hstack(gap: 12) {
+                    // Open button
+                    button open_btn {
+                        icon: "folder_open"
+                        label: "Open"
+                        position: (12, 8)
+                        size: (80, 32)
+                        on_click: open_archive()
+                    }
+                    
+                    // Create button
+                    button create_btn {
+                        icon: "add"
+                        label: "Create"
+                        position: (100, 8)
+                        size: (80, 32)
+                        on_click: show_create_dialog()
+                    }
+                    
+                    // Extract button
+                    button extract_btn {
+                        icon: "unarchive"
+                        label: "Extract"
+                        position: (188, 8)
+                        size: (90, 32)
+                        enabled: state.entries.len() > 0
+                        on_click: show_extract_dialog()
+                    }
+                    
+                    // Separator
+                    separator { position: (290, 8) height: 32 }
+                    
+                    // Add files
+                    button add_btn {
+                        icon: "add_file"
+                        label: "Add Files"
+                        position: (310, 8)
+                        size: (90, 32)
+                        enabled: state.archive_path != ""
+                        on_click: add_files()
+                    }
+                    
+                    // Delete selected
+                    button delete_btn {
+                        icon: "delete"
+                        label: "Delete"
+                        position: (408, 8)
+                        size: (80, 32)
+                        enabled: state.selected_count > 0
+                        on_click: delete_selected()
+                    }
+                    
+                    // Spacer
+                    spacer {}
+                    
+                    // Search
+                    text_field search {
+                        placeholder: "Search..."
+                        position: (700, 8)
+                        size: (180, 32)
+                        on_change: filter_entries(search.text)
+                    }
+                }
+            }
+            
+            // Main content
+            hstack(gap: 0) {
+                // Sidebar - Archive info
+                container sidebar {
+                    bounds: (0, 48, 220, 552)
+                    background: COL_SIDEBAR
+                    
+                    vstack(gap: 16) {
+                        // Archive icon
+                        container icon_area {
+                            bounds: (60, 20, 100, 100)
+                            
+                            // Archive icon placeholder
+                            label icon_placeholder {
+                                text: "📦"
+                                size: 48
+                                position: (75, 40)
+                            }
+                        }
+                        
+                        // Archive name
+                        label archive_name {
+                            text: state.archive_name
+                            position: (16, 130)
+                            size: 14
+                            color: COL_TEXT
+                            wrap: true
+                            max_width: 188
+                        }
+                        
+                        // Stats
+                        container stats {
+                            position: (16, 180)
+                            
+                            vstack(gap: 8) {
+                                label file_count {
+                                    text: state.entries.len() + " items"
+                                    color: COL_TEXT_DIM
+                                    size: 12
+                                }
+                                
+                                label total_size_label {
+                                    text: "Size: " + format_size(state.total_size)
+                                    color: COL_TEXT_DIM
+                                    size: 12
+                                }
+                                
+                                label compressed_label {
+                                    text: "Compressed: " + format_size(state.compressed_size)
+                                    color: COL_TEXT_DIM
+                                    size: 12
+                                }
+                                
+                                label ratio_label {
+                                    text: "Ratio: " + calc_ratio() + "%"
+                                    color: COL_TEXT_DIM
+                                    size: 12
+                                }
+                            }
+                        }
+                        
+                        // Current folder
+                        container path_display {
+                            position: (16, 300)
+                            
+                            label current_path {
+                                text: "📁 " + state.current_folder
+                                color: COL_TEXT
+                                size: 12
+                            }
+                        }
+                    }
+                }
+                
+                // File list
+                container file_list_area {
+                    bounds: (220, 48, 680, 552)
+                    background: COL_BG
+                    
+                    // Column headers
+                    container headers {
+                        bounds: (0, 0, 680, 32)
+                        background: COL_SURFACE
+                        
+                        hstack(gap: 0) {
+                            label name_header {
+                                text: "Name"
+                                position: (40, 8)
+                                size: 12
+                                color: COL_TEXT_DIM
+                            }
+                            
+                            label size_header {
+                                text: "Size"
+                                position: (400, 8)
+                                size: 12
+                                color: COL_TEXT_DIM
+                            }
+                            
+                            label compressed_header {
+                                text: "Compressed"
+                                position: (520, 8)
+                                size: 12
+                                color: COL_TEXT_DIM
+                            }
+                        }
+                    }
+                    
+                    // Scrollable file list
+                    scroll_view file_scroll {
+                        bounds: (0, 32, 680, 520)
+                        
+                        vstack(gap: 0) {
+                            for entry in state.entries {
+                                file_row(entry)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// File row component
+fn file_row(entry: ArchiveEntry) -> view {
+    container row {
+        bounds: (0, 0, 680, 36)
+        background: entry.selected ? COL_SELECTED : COL_BG
+        
+        hstack(gap: 8) {
+            // Selection checkbox
+            checkbox select_cb {
+                checked: entry.selected
+                position: (12, 10)
+                on_change: toggle_selection(entry)
+            }
+            
+            // Icon
+            label icon {
+                text: entry.is_directory ? "📁" : "📄"
+                position: (40, 8)
+            }
+            
+            // Name
+            label name {
+                text: entry.name
+                position: (65, 10)
+                color: COL_TEXT
+                size: 13
+            }
+            
+            // Size
+            label size {
+                text: entry.is_directory ? "--" : format_size(entry.size)
+                position: (400, 10)
+                color: COL_TEXT_DIM
+                size: 12
+            }
+            
+            // Compressed size
+            label comp_size {
+                text: entry.is_directory ? "--" : format_size(entry.compressed_size)
+                position: (520, 10)
+                color: COL_TEXT_DIM
+                size: 12
+            }
+        }
+        
+        on_click: toggle_selection(entry)
+        on_double_click: {
+            if entry.is_directory {
+                navigate_to(entry.path)
+            } else {
+                preview_file(entry)
+            }
+        }
+    }
+}
+
+// Extract dialog
+fn show_extract_dialog() {
+    state.show_extract_dialog = true;
+}
+
+window ExtractDialog {
+    title: "Extract Archive"
+    size: (450, 200)
+    modal: true
+    visible: state.show_extract_dialog
+    
+    view {
+        vstack(gap: 16) {
+            label title {
+                text: "Extract to:"
+                position: (24, 24)
+                size: 14
+                color: COL_TEXT
+            }
+            
+            hstack(gap: 8) {
+                text_field dest_path {
+                    placeholder: "/Users/user/Documents"
+                    position: (24, 56)
+                    size: (320, 36)
+                }
+                
+                button browse_btn {
+                    label: "Browse..."
+                    position: (352, 56)
+                    size: (80, 36)
+                    on_click: browse_destination()
+                }
+            }
+            
+            // Progress bar (visible during extraction)
+            container progress_area {
+                visible: state.extract_progress > 0
+                position: (24, 110)
+                
+                progress_bar extract_progress {
+                    value: state.extract_progress
+                    max: 100
+                    size: (400, 12)
+                }
+            }
+            
+            // Buttons
+            hstack(gap: 12) {
+                spacer {}
+                
+                button cancel_btn {
+                    label: "Cancel"
+                    position: (260, 150)
+                    size: (80, 36)
+                    on_click: {
+                        state.show_extract_dialog = false
+                    }
+                }
+                
+                button extract_btn {
+                    label: "Extract"
+                    primary: true
+                    position: (352, 150)
+                    size: (80, 36)
+                    on_click: do_extract(dest_path.text)
+                }
+            }
+        }
+    }
+}
+
+// Create archive dialog
+window CreateDialog {
+    title: "Create New Archive"
+    size: (500, 300)
+    modal: true
+    visible: state.show_create_dialog
+    
+    view {
+        vstack(gap: 16) {
+            label title {
+                text: "Archive Name:"
+                position: (24, 24)
+            }
+            
+            text_field archive_name_input {
+                placeholder: "MyArchive.zip"
+                position: (24, 50)
+                size: (450, 36)
+            }
+            
+            label format_label {
+                text: "Format:"
+                position: (24, 100)
+            }
+            
+            dropdown format_dropdown {
+                position: (24, 126)
+                size: (200, 36)
+                items: ["ZIP", "NXZIP", "TAR.GZ"]
+                selected: 0
+            }
+            
+            label compression_label {
+                text: "Compression Level:"
+                position: (250, 100)
+            }
+            
+            slider compression_slider {
+                position: (250, 126)
+                size: (200, 36)
+                min: 0
+                max: 9
+                value: 6
+            }
+            
+            // Buttons
+            hstack(gap: 12) {
+                spacer {}
+                
+                button cancel_btn {
+                    label: "Cancel"
+                    position: (310, 250)
+                    size: (80, 36)
+                    on_click: {
+                        state.show_create_dialog = false
+                    }
+                }
+                
+                button create_btn {
+                    label: "Create"
+                    primary: true
+                    position: (402, 250)
+                    size: (80, 36)
+                    on_click: create_archive(archive_name_input.text, format_dropdown.selected)
+                }
+            }
+        }
+    }
+}
+
+// Helper functions
+fn format_size(bytes: int) -> string {
+    if bytes < 1024 {
+        return bytes + " B";
+    } else if bytes < 1024 * 1024 {
+        return (bytes / 1024) + " KB";
+    } else if bytes < 1024 * 1024 * 1024 {
+        return (bytes / 1024 / 1024) + " MB";
+    } else {
+        return (bytes / 1024 / 1024 / 1024) + " GB";
+    }
+}
+
+fn calc_ratio() -> int {
+    if state.total_size == 0 {
+        return 0;
+    }
+    return (state.compressed_size * 100) / state.total_size;
+}
+
+fn toggle_selection(entry: ArchiveEntry) {
+    entry.selected = !entry.selected;
+    if entry.selected {
+        state.selected_count = state.selected_count + 1;
+    } else {
+        state.selected_count = state.selected_count - 1;
+    }
+}
+
+fn navigate_to(path: string) {
+    state.current_folder = path;
+    // Reload entries for this folder
+    reload_entries();
+}
+
+// C FFI bindings
+extern fn archive_open(path: string) -> bool;
+extern fn archive_get_entry_count() -> int;
+extern fn archive_get_entry(index: int, name: *string, size: *int, comp_size: *int, is_dir: *bool) -> bool;
+extern fn archive_extract_all(dest: string, progress_cb: fn(int)) -> bool;
+extern fn archive_extract_file(index: int, dest: string) -> bool;
+extern fn archive_create(path: string, format: int) -> bool;
+extern fn archive_add_file(path: string) -> bool;
+extern fn archive_close() -> void;
+
+// Open archive
+fn open_archive() {
+    // Open file dialog
+    let path = system::file_dialog_open("Open Archive", ["*.zip", "*.nxzip", "*.tar.gz"]);
+    if path == "" {
+        return;
+    }
+    
+    state.is_loading = true;
+    
+    if archive_open(path) {
+        state.archive_path = path;
+        state.archive_name = system::path_basename(path);
+        reload_entries();
+    }
+    
+    state.is_loading = false;
+}
+
+fn reload_entries() {
+    state.entries = [];
+    state.total_size = 0;
+    state.compressed_size = 0;
+    
+    let count = archive_get_entry_count();
+    
+    for i in 0..count {
+        let mut name: string = "";
+        let mut size: int = 0;
+        let mut comp_size: int = 0;
+        let mut is_dir: bool = false;
+        
+        if archive_get_entry(i, &name, &size, &comp_size, &is_dir) {
+            // Filter by current folder
+            if name.starts_with(state.current_folder) {
+                state.entries.push(ArchiveEntry {
+                    name: system::path_basename(name),
+                    path: name,
+                    size: size,
+                    compressed_size: comp_size,
+                    is_directory: is_dir,
+                    selected: false
+                });
+                
+                state.total_size = state.total_size + size;
+                state.compressed_size = state.compressed_size + comp_size;
+            }
+        }
+    }
+}
+
+fn do_extract(dest: string) {
+    state.extract_progress = 0;
+    
+    let success = archive_extract_all(dest, fn(percent: int) {
+        state.extract_progress = percent;
+    });
+    
+    if success {
+        state.show_extract_dialog = false;
+        // Show notification
+        system::notify("Extraction Complete", state.archive_name + " extracted to " + dest);
+    }
+}
+
+fn create_archive(name: string, format: int) {
+    if archive_create(name, format) {
+        state.archive_path = name;
+        state.archive_name = system::path_basename(name);
+        state.show_create_dialog = false;
+    }
+}
+
+fn add_files() {
+    let files = system::file_dialog_open_multiple("Add Files", ["*.*"]);
+    for file in files {
+        archive_add_file(file);
+    }
+    reload_entries();
+}
+
+fn delete_selected() {
+    // Confirm dialog
+    if system::confirm("Delete " + state.selected_count + " items?") {
+        for entry in state.entries {
+            if entry.selected {
+                // Delete from archive
+            }
+        }
+        reload_entries();
+    }
+}
+
+fn filter_entries(query: string) {
+    // Filter entries by name
+    for entry in state.entries {
+        entry.visible = entry.name.contains(query);
+    }
+}
+
+fn preview_file(entry: ArchiveEntry) {
+    // Extract to temp and open with default app
+    let temp_path = "/tmp/" + entry.name;
+    if archive_extract_file(entry.index, temp_path) {
+        system::open(temp_path);
+    }
+}
+
+// Entry point
+fn main() {
+    let args = system::args();
+    
+    // If file passed as argument, open it
+    if args.len() > 1 {
+        let path = args[1];
+        if archive_open(path) {
+            state.archive_path = path;
+            state.archive_name = system::path_basename(path);
+            reload_entries();
+        }
+    }
+    
+    // Create and show window
+    let win = nx_window_create("Archive", 100, 100, 900, 600);
+    nx_window_center(win);
+    nx_window_show(win);
+    
+    // Run event loop
+    nx_event_loop_run();
+    
+    // Cleanup
+    archive_close();
+}

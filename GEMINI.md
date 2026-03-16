@@ -1,167 +1,242 @@
 # GEMINI.md - NeolyxOS AI Developer Guide
 
 **Project:** NeolyxOS - Custom 64-bit Operating System  
-**Status:** Kernel Boots ✅ | Architecture Needs Fix 🔴 | ~35% Complete  
-**Last Updated:** December 27, 2025
+**Status:** Desktop 70% (Rendering Gaps) | Networking 60% | USB/Mouse ✅ | ~50% Complete  
+**Last Updated:** January 21, 2026
 
 ---
 
-## ⚠️ CRITICAL: Architecture Issue
+## 📊 Project Summary
 
-**Desktop GUI code is currently INSIDE the kernel - this violates OS design principles!**
+NeolyxOS is a custom 64-bit operating system with:
 
-Real operating systems (macOS, Linux, Windows) run their desktop in **userspace**:
-- macOS: WindowServer is a userspace daemon
-- Linux: GNOME Shell / KDE run in userspace  
-- Windows: Explorer.exe is a userspace process
-
-**Current Problem:**
-- `kernel/src/ui/desktop.c` (599 lines of GUI code in kernel)
-- Should use: `desktop/shell/desktop_shell.c` (already exists, correct location)
-
-**Fix Required:** Add framebuffer syscalls, move desktop to userspace process.
+- **2.9MB+ kernel source** across 340+ files
+- **2050+ desktop files** including 16 native applications
+- **UEFI bootloader** with recovery menu
+- **Userspace desktop** running in Ring 3
+- **NXRender** custom GUI rendering engine
+- **NXFS** native filesystem with AES-256 encryption
 
 ---
 
-## 📊 Honest Reality Check (vs macOS/Windows/Linux)
+## 🏗️ Codebase Structure
 
-| Feature | Real OSes | NeolyxOS | Status |
-|---------|-----------|----------|--------|
-| Multi-core (SMP) | Full | None | 🔴 Missing |
-| USB Stack | Full | Stub | 🔴 Missing |
-| GPU Drivers | Metal/DX/Mesa | Framebuffer | 🔴 Missing |
-| Audio | Full audio stack | Stub | 🔴 Missing |
-| WiFi/Bluetooth | Full | None | 🔴 Missing |
-| Real App Loading | Works | Demo only | 🟡 Partial |
-| Kernel/Userspace Split | Proper | Desktop in kernel! | 🔴 Wrong |
-
-**Overall Progress: ~35% of a production OS**
+```
+neolyx-os/
+├── kernel/                    # 387 files - Core OS kernel
+│   ├── kernel_main.c          # Main entry (800 lines)
+│   ├── Makefile               # Build system
+│   ├── include/               # 133 headers
+│   │   ├── arch/              # x86_64, aarch64 headers
+│   │   ├── core/              # Process, syscall, boot headers
+│   │   ├── drivers/           # 40+ driver headers
+│   │   ├── fs/                # Filesystem headers
+│   │   ├── net/               # Network headers
+│   │   └── security/          # Security headers
+│   └── src/                   # Implementation
+│       ├── arch/              # Architecture code (GDT, IDT, paging)
+│       ├── core/              # Core kernel (37 files)
+│       │   ├── process.c      # Process management (23KB)
+│       │   ├── syscall.c      # 120+ syscalls (38KB)
+│       │   ├── boot_guard.c   # Boot protection (10KB)
+│       │   ├── session_manager.c  # Desktop crash isolation
+│       │   └── installer.c    # OS installer (79KB)
+│       ├── drivers/           # 78 driver files
+│       │   ├── acpi/          # ACPI driver (18 files)
+│       │   ├── usb/           # USB stack
+│       │   ├── storage/       # AHCI, NVMe
+│       │   ├── graphics/      # nxgfx, nxrender kernel drivers
+│       │   └── network/       # E1000, WiFi drivers
+│       ├── fs/                # 32 filesystem files
+│       │   ├── nxfs.c         # NXFS implementation (54KB)
+│       │   ├── fat.c          # FAT32 support (42KB)
+│       │   ├── vfs.c          # VFS layer (15KB)
+│       │   └── ramfs.c        # In-memory FS (15KB)
+│       ├── net/               # Network stack
+│       │   ├── network.c      # Core networking (16KB)
+│       │   ├── tcpip.c        # TCP/IP stack (29KB)
+│       │   └── netinfra.c     # Network infrastructure (18KB)
+│       └── security/          # 11 security files
+│           ├── firewall.c     # Packet filtering
+│           ├── app_sandbox.c  # App isolation
+│           └── crypto.c       # AES-256, hashing
+│
+├── boot/                      # UEFI bootloader (23 files)
+│   ├── main.c                 # Bootloader entry (24KB)
+│   ├── boot_menu.c            # Recovery menu
+│   ├── graphics.c             # Boot graphics
+│   └── BOOTX64.EFI            # Compiled bootloader
+│
+├── desktop/                   # 2050 files - Desktop environment
+│   ├── shell/                 # Desktop shell (28 files)
+│   │   ├── desktop_shell.c    # Main shell (75KB)
+│   │   ├── compositor.c       # Window compositing (15KB)
+│   │   ├── dock.c             # macOS-style dock (19KB)
+│   │   ├── window_manager.c   # Window management (20KB)
+│   │   ├── anveshan.c         # Spotlight-like search (26KB)
+│   │   ├── control_center.c   # System controls (21KB)
+│   │   ├── notification_center.c  # Notifications
+│   │   └── lock_screen.c      # Lock screen
+│   ├── apps/                  # 16 native applications
+│   │   ├── Settings.app/      # 58 files, 25+ panels
+│   │   ├── Terminal.app/      # Terminal emulator
+│   │   ├── Calculator.app/    # Calculator
+│   │   ├── Calendar.app/      # Calendar with dark/light themes
+│   │   ├── Path.app/          # File manager (58 files)
+│   │   ├── IconLay.app/       # Icon designer (39 files)
+│   │   ├── Rivee.app/         # Media app
+│   │   ├── RoleCut.app/       # Video editing
+│   │   ├── reolab.app/        # IDE (72 files)
+│   │   └── zeprabrowser/      # Full web browser (1162 files)
+│   ├── include/               # 21 desktop headers
+│   │   ├── desktop_shell.h
+│   │   ├── widgets.h
+│   │   ├── window_manager.h
+│   │   └── nxsyscall.h        # Desktop syscall interface
+│   └── lib/                   # Desktop libraries
+│       ├── nxi_render.c       # NXI icon rendering
+│       ├── nxconfig.c         # Configuration system
+│       └── nxevent.c          # Event handling
+│
+├── gui/                       # GUI rendering libraries
+│   └── nxrender_c/            # NXRender C library (70 files)
+│       ├── include/           # 32 headers
+│       │   ├── widgets/       # Button, label, textfield, etc.
+│       │   ├── nxrender/      # Compositor, window
+│       │   └── nxgfx/         # Graphics primitives
+│       └── src/               # 32 source files
+│
+├── nxaudio/                   # Audio library (46 files)
+│   ├── src/                   # 33 source files
+│   └── include/               # Audio API headers
+│
+├── lib/                       # System libraries
+│   ├── zeprascript/           # JavaScript engine (10 files)
+│   ├── nxzip/                 # Compression library (7 files)
+│   └── vulkan/                # Vulkan bindings
+│
+├── docs/                      # Documentation (71 files)
+│   ├── architecture/          # Architecture docs
+│   ├── drivers/               # 15 driver docs
+│   ├── kernel/                # Kernel internals
+│   ├── network/               # Networking docs
+│   ├── reox/                  # REOX language docs
+│   └── security/              # Security documentation
+│
+├── tests/                     # Test suite
+│   ├── kernel_tests.c         # Kernel unit tests
+│   ├── run_tests.sh           # Test runner
+│   └── userland/              # Userland tests (14 files)
+│
+├── services/                  # System services
+│   ├── nxaudio-server/        # Audio daemon
+│   ├── compositor/            # Compositor service
+│   └── input/                 # Input service
+│
+└── config/                    # System configuration (8 files)
+```
 
 ---
 
-## 🚀 Current Status
+## 🚀 Current Status by Phase
 
 ### ✅ Phase 1-4: Kernel Core - COMPLETE
-- UEFI bootloader (v8.0) working
+
+- UEFI bootloader (v8.0) with recovery menu
 - 64-bit long mode, GDT/IDT/TSS
 - PMM, VMM, kernel heap
+- FPU/SSE initialization
 - PIC remapped, interrupts enabled
 - Process management (fork/exec/wait)
 - Round-robin scheduler with preemption
 
 ### ✅ Phase 5: Drivers - COMPLETE
-10 kernel drivers: nxgfx, nxaudio, nxnet, nxstor, nxusb, nxpci, nxsysinfo, nxdisplay, nxpen, nxtask
+
+**14 Kernel Drivers Loaded:**
+
+- nxgfx_kdrv (GPU/framebuffer)
+- nxstor_kdrv (storage)
+- nxdisplay_kdrv (display management)
+- nxsysinfo_kdrv (system information)
+- nxpci_kdrv (PCI bus)
+- nxusb_kdrv (USB stack)
+- nxtask_kdrv (task management)
+- nxrender_kdrv (rendering)
+- nxgame (game bridge)
+- nxmouse_kdrv (mouse input)
+- E1000 (Intel NIC)
+- WiFi driver
+- Bluetooth driver
+- AHCI/NVMe storage
 
 ### ✅ Phase 6: Filesystem - COMPLETE
-- NXFS (501 lines) with AES-256 encryption
-- VFS layer (436 lines)
-- Block cache with LRU (300+ lines)
 
-### ✅ Phase 7: Terminal Shell - COMPLETE
-- 25 commands (help, info, cd, list, stress, etc.)
+- **NXFS** (54KB) with AES-256 encryption
+- **VFS** layer (15KB) with mount points
+- **FAT32** support (42KB) for ESP
+- **Block cache** with LRU
+- **RamFS** for embedded binaries
+
+### ✅ Phase 7-8: Terminal & Tests - COMPLETE
+
+- 25+ shell commands
 - Keyboard event queue (IRQ-driven)
 - Framebuffer console
+- Memory/disk/keyboard stress tests
 
-### ✅ Phase 8: Stress Tests - COMPLETE
-- Memory allocation stress
-- Keyboard queue tests
-- Block cache tests
-- Uptime stability tests
+### ✅ Phase 9-12: Stability & Security - COMPLETE
 
-### 🔄 Phase 9: Stability & Heavy Apps - IN PROGRESS
-**Goal:** Boot protection, crash isolation, NXGame Bridge for games/creative apps
+- Boot Guard (failure tracking, recovery)
+- Session Manager (crash isolation)
+- NXGame Bridge (direct GPU for games)
+- System Integrity Protection
+- Capability-based security
+- Safe memory operations
+- Panic handler with stack canaries
 
-#### ✅ Boot Guard (`boot_guard.c`)
-- Boot status tracking (BOOTING → OK or → Recovery)
-- Failure counter (max 3 before recovery)
-- Watchdog timer (30s timeout)
+### ✅ Phase 13-15: Storage & Userspace - COMPLETE
 
-#### ✅ Session Manager (`session_manager.c`)
-- Desktop as client of nxgfx (not owner)
-- Desktop crash ≠ System crash
-- Games can request exclusive GPU mode
-- Auto-restart GUI on crash
+- AHCI driver with real hardware access
+- GPT/MBR partition parsing
+- VFS syscalls (open, read, write, close, stat)
+- ELF loader with Ring 3 transition
+- Userland shell (nxsh)
+- Init process (PID 1)
 
-#### ✅ NXGame Bridge (`nxgame_bridge.c`)
-- Direct GPU access (bypass compositor)
-- Low-latency audio (~5ms)
-- Raw input polling
-- Crash isolation (game crash ≠ system crash)
-- 10 syscalls (110-119) for userspace access
+### ✅ Phase 16: System Security - COMPLETE
 
-#### ✅ System Integrity Protection (`sip.c`)
-- Protected paths: /System/, /Kernel/, /Boot/, /Library/
-- Violation logging with PID and operation
-- SIP only disableable in Recovery Mode
-- Admin-only paths: /Applications/
+- Firewall with packet filtering
+- App sandbox with capabilities
+- System lock with PIN
+- Security audit logging
+- Security scanner for file verification
 
-### ✅ Phase 9: Complete!
-**Summary:** Kernel fully hardened with boot protection, crash isolation, game support, and system file protection.
+### 🔄 Phase 17: Networking - IN PROGRESS
 
-### ✅ Phase 10: Desktop GUI - COMPLETE
-**Goal:** Desktop shell with window compositor and widgets
+- ✅ Network/TCP/IP initialization on boot
+- ✅ Socket syscalls (40-47)
+- ✅ DHCP client
+- ✅ Terminal commands: net status, ping, dhcp
+- ⏳ DNS resolver
 
-#### ✅ Desktop Shell (`desktop_shell.c`)
-- Menu bar at top (NeolyxOS branding, clock)
-- Dock at bottom (macOS-style with icons)
-- Window compositor with z-ordering
-- Mouse cursor rendering and tracking
+### ✅ Phase 18: Applications - COMPLETE
 
-#### ✅ Widget System (`widgets.c`)
-- Button widget with hover/press states
-- Label widget with color/alignment
-- Container widget for composition
-- Themeable color palette
-- Event propagation system
+**Settings.app** with 25 panels:
 
-#### ✅ Mouse Integration
-- PS/2 mouse driver integration
-- Click detection for windows
-- Window dragging by title bar
+- System, About, Network, Bluetooth
+- Display, Display Manager, Sound, Storage
+- Keyboard, Trackpad
+- Appearance, Color
+- Accounts, Security, Privacy
+- Apps, Devices, Power, Processes
+- Startup, Extensions, Scheduler
+- Updates, Bootloader, Developer
 
-### ✅ Phase 11: Terminal Window - COMPLETE
-**Goal:** Port terminal shell to desktop window
-- Terminal window widget (80x24 text buffer)
-- Cursor and scrolling support
-- Keyboard input handling
-- Command execution integration
+**Other Apps:**
 
-### ✅ Phase 12: Security Hardening - COMPLETE
-**Goal:** Kernel security and crash prevention
-
-#### ✅ Security Module (`security.c`)
-- Capability-based access control (12 capabilities)
-- Privilege levels (USER → KERNEL)
-- Security audit logging (64-entry ring buffer)
-- Pointer validation
-
-#### ✅ Safe Memory (`safe_mem.c`)
-- Bounded memcpy/strcpy (overflow protection)
-- safe_alloc (zero-initialized)
-- safe_free (poison on free, NULL pointer set)
-
-#### ✅ Panic Handler (`panic_handler.c`)
-- kernel_panic_ex with type, file, line, message
-- Stack guard canaries
-- ASSERT/PANIC macros
-- Crash handler callbacks
-
-
----
-
-## 📁 Critical Files
-
-| Component | File | Lines | Status |
-|-----------|------|-------|--------|
-| **Bootloader** | `boot/main.c` | 672 | ✅ |
-| **Kernel Entry** | `kernel/kernel_main.c` | 540 | ✅ |
-| **Process Mgmt** | `src/core/process.c` | 761 | ✅ |
-| **Syscalls** | `src/core/syscall.c` | 414 | ✅ |
-| **NXFS** | `src/fs/nxfs.c` | 501 | ✅ |
-| **Block Cache** | `src/fs/bcache.c` | 300+ | ✅ |
-| **Kbd Queue** | `src/io/kbd_queue.c` | 200+ | ✅ |
-| **Terminal** | `src/shell/terminal.c` | 537 | ✅ |
-| **Stress Tests** | `src/test/stress_test.c` | 350+ | ✅ |
+- Terminal.app, Calculator.app, Calendar.app
+- Path.app (file manager), IconLay.app (icon designer)
+- zeprabrowser (full web browser)
 
 ---
 
@@ -169,302 +244,203 @@ Real operating systems (macOS, Linux, Windows) run their desktop in **userspace*
 
 ```
 POWER ON
-│
 ├── UEFI FIRMWARE
-│   ├── Hardware Init (CPU, RAM, PCI)
-│   ├── UEFI Boot Manager
 │   └── Load EFI/BOOT/BOOTX64.EFI
 │
-├── NEOLYXOS BOOTLOADER (EFI APP)
+├── NEOLYXOS BOOTLOADER (boot/main.c)
 │   ├── GOP Framebuffer Init
-│   ├── Keyboard Init
-│   ├── Mount ESP (FAT32)
-│   ├── Locate kernel.bin
-│   ├── Load Kernel to RAM
-│   ├── Build BootInfo
-│   ├── ExitBootServices()
-│   └── Jump to Kernel Entry
+│   ├── Build NeolyxBootInfo structure
+│   ├── Load kernel.bin
+│   └── Jump to kernel_main()
 │
-├── NEOLYXOS KERNEL (Early Boot)
-│   ├── GDT / IDT Setup
-│   ├── Physical Memory Manager
-│   ├── Framebuffer Ownership
-│   ├── Disk Driver Init
-│   ├── Syscall Table (33 syscalls)
-│   └── Mount ESP
+├── KERNEL EARLY BOOT (kernel_main.c)
+│   ├── Boot Guard initialization
+│   ├── GDT/IDT with TSS
+│   ├── FPU/SSE enable
+│   ├── PMM/VMM/Heap init
+│   ├── PIT timer (1000Hz)
+│   ├── RTC (real-time clock)
+│   └── Enable interrupts
 │
-├── INSTALLATION CHECK
-│   ├── neolyx.installed EXISTS?
-│   │
-│   ├── NO  ──► INSTALL MODE
-│   │            │
-│   │            ├── Installer Core
-│   │            ├── Disk Detection
-│   │            ├── User Selects Edition
-│   │            │     ├── Desktop
-│   │            │     └── Server
-│   │            │
-│   │            ├── Disk Selection
-│   │            ├── Disk Formatting
-│   │            │     ├── GPT + Protective MBR
-│   │            │     ├── ESP (FAT32)
-│   │            │     └── Root FS (NXFS)
-│   │            │
-│   │            ├── Copy Bootloader
-│   │            ├── Copy kernel.bin
-│   │            ├── Install Base System
-│   │            ├── Write neolyx.installed
-│   │            ├── Write install.log
-│   │            └── Reboot System
-│   │
-│   └── YES ──► NORMAL BOOT
-│                │
-│                ├── Init Process
-│                ├── Driver Stack
-│                ├── Filesystem Mount
-│                ├── Scheduler Start
-│                │
-│                ├── Edition Branch
-│                │     ├── Desktop Edition
-│                │     │     ├── NXRender
-│                │     │     ├── Compositor
-│                │     │     ├── Desktop Shell
-│                │     │     └── Terminal / Apps
-│                │     │
-│                │     └── Server Edition
-│                │           ├── No GUI
-│                │           ├── System Services
-│                │           └── Console Login
-│                │
-│                └── FULL NEOLYXOS RUNNING
+├── DRIVER LOADING
+│   ├── Process/Scheduler init
+│   ├── Graphics drivers
+│   ├── Storage drivers (AHCI/NVMe)
+│   ├── Network stack + TCP/IP
+│   ├── USB driver
+│   ├── Session Manager
+│   └── SIP (System Integrity Protection)
 │
-└── USER SPACE
-    ├── User Programs (NXFS)
-    ├── Syscalls Interface
-    ├── NXGame Bridge
-    └── Applications
+├── RECOVERY MENU CHECK
+│   └── F2 pressed? → Show recovery options
+│
+├── BOOT SOURCE DETECTION
+│   ├── NXFS found? → Normal boot
+│   └── No NXFS? → Disk Utility
+│
+└── DESKTOP LAUNCH
+    ├── ELF load /ramfs/bin/desktop
+    ├── Create user process (PID)
+    ├── Map userspace stack (0x500000)
+    ├── Set TSS kernel stack
+    └── enter_user_mode() → Ring 3
 ```
+
+---
+
+## 📁 Critical Files Reference
+
+| Component         | File                               | Size | Description        |
+| ----------------- | ---------------------------------- | ---- | ------------------ |
+| **Kernel Entry**  | `kernel/kernel_main.c`             | 28KB | Main boot sequence |
+| **Process**       | `kernel/src/core/process.c`        | 23KB | Process management |
+| **Syscalls**      | `kernel/src/core/syscall.c`        | 38KB | 120+ system calls  |
+| **Installer**     | `kernel/src/core/installer.c`      | 79KB | OS installer       |
+| **NXFS**          | `kernel/src/fs/nxfs.c`             | 54KB | Native filesystem  |
+| **TCP/IP**        | `kernel/src/net/tcpip.c`           | 29KB | Network stack      |
+| **Desktop Shell** | `desktop/shell/desktop_shell.c`    | 75KB | Main desktop       |
+| **Settings**      | `desktop/apps/Settings.app/main.c` | 39KB | Settings app       |
+| **Bootloader**    | `boot/main.c`                      | 24KB | UEFI bootloader    |
+
 ---
 
 ## 🔧 Build Commands
 
+### Full Build
+
+```bash
+cd /home/swana/Documents/NEOLYXOS/neolyx-os
+./build_all.sh
+```
+
+### Quick Test
+
+```bash
+./boot_test.sh
+```
+
+### Kernel Only
+
 ```bash
 cd kernel && make
-sudo mount -o loop neolyx.img /tmp/neolyx_mount
-sudo cp kernel/kernel.bin /tmp/neolyx_mount/EFI/BOOT/kernel.bin
-sudo umount /tmp/neolyx_mount
+```
+
+### Run in QEMU
+
+```bash
 qemu-system-x86_64 -bios /usr/share/ovmf/OVMF.fd \
   -drive file=neolyx.img,format=raw -m 512M -serial stdio
 ```
 
 ---
 
-### ✅ Phase 13: Storage Integration - COMPLETE
-**Goal:** Real hardware disk access and filesystem mounting
+## 🔴 Known Gaps vs Production OSes
 
-#### ✅ AHCI Driver (`ahci.c`)
-- PCI device discovery and MMIO mapping
-- Port detection and drive identification
-- Sector read/write operations (512 bytes)
-- IDENTIFY command for drive info
-
-#### ✅ Partition Parsing (`nucleus.c`)
-- Real MBR parsing (no dummy data)
-- Real GPT parsing with GUID recognition
-- Partition type detection (EFI, NTFS, Linux, NXFS)
-- UTF-16LE to ASCII label conversion
-
-#### ✅ AHCI Block Adapter (`ahci_block.c`)
-- Bridges 512-byte AHCI sectors to 4KB NXFS blocks
-- DMA-safe buffers via PMM
-- Block device abstraction for VFS
-
-#### ✅ Filesystem Mounting
-- VFS/NXFS initialization on boot
-- Automatic NXFS partition detection
-- Root mount attempt from AHCI disk
-
-#### ✅ Interrupt-Driven Keyboard (`keyboard.c`)
-- Ring buffer key input (64 keys)
-- Shift/Ctrl/Alt/CapsLock support
-- Legacy API compatibility wrappers
-- Terminal shell integration
+| Feature           | Status     | Notes                                    |
+| ----------------- | ---------- | ---------------------------------------- |
+| Multi-core (SMP)  | 🔴 Missing | Single-core only                         |
+| USB Mass Storage  | 🔴 Missing | USB init exists, mass storage incomplete |
+| Real GPU Drivers  | 🔴 Missing | Framebuffer only                         |
+| Real Audio Output | 🔴 Missing | Audio stubs exist                        |
+| WiFi              | 🔴 Missing | Driver exists, no real hardware support  |
+| Package Manager   | 🔴 Missing | Not implemented                          |
+| Self-Hosting      | 🔴 Missing | Cannot compile itself                    |
 
 ---
 
-## ✅ Phase 14: Userspace - COMPLETE
+## 🛣️ Next Steps
 
-### ✅ Phase 14A: VFS Syscalls - COMPLETE
-- sys_open, sys_read, sys_write, sys_close, sys_stat implemented
-- Registered in syscall_init()
+### Priority 1: Networking Completion
 
-### ✅ Phase 14B: Terminal Enhancements - COMPLETE
-- `sys reboot` - Real x86 keyboard controller reset
-- `sys shutdown` - Real ACPI S5 power off
-- `clear` command - Calls console_clear()
-- Fixed input buffer clearing (no command concatenation)
-- **Real System Data** (NO more dummy/hardcoded values):
-  - `info memory` → PMM stats (total/free/used MB)
-  - `info disk` → AHCI data (model, size, port)
-  - `info cpu` → CPUID (vendor, model brand)
-  - `uptime` → Timer ticks (days/hours/minutes/seconds)
+- [ ] DNS resolver implementation
+- [ ] HTTP client for basic web requests
 
-### ✅ Phase 14C: User Program Loading - COMPLETE
-- `enter_user_mode` in `arch.S` fixed with proper IRET stack frame
-- Created `ramfs.c` - in-memory filesystem with embedded hello ELF
-- `/bin/hello` available at boot (embedded in kernel)
-- Ring 3 transition with correct segment selectors (CS=0x1B, SS=0x23)
-- TSS kernel stack setup for Ring 3→0 syscalls
-- Run `exec /bin/hello` in terminal to test
+### Priority 2: Real Hardware Testing
 
-### ✅ Phase 15: Userland Shell & Init - COMPLETE
-- **Shell (`nxsh`):** Built-in `cd`, `pwd`, `exit`, `help` + external command execution
-- **Init Process:** PID 1, spawns shell, reaps zombies
-- **RamFS:** Embedded init (5.8KB) and nxsh (8KB) binaries
-- Run `exec /bin/nxsh` to test shell
+- [ ] Test on real x86_64 hardware
+- [ ] Debug any QEMU-hidden issues
 
-### ✅ Phase 16: System Security - COMPLETE
-**Goal:** Kernel-level security, firewall, and isolation
+### Priority 3: SMP Support
 
-#### ✅ Firewall (`firewall.c`)
-- Rule-based packet filtering (INPUT/OUTPUT/FORWARD)
-- Protocol and port range filtering
-- Telemetry and statistics
+- [ ] AP startup code
+- [ ] Per-CPU structures
+- [ ] Multi-core scheduler
 
-#### ✅ App Sandbox (`app_sandbox.c`)
-- Capability-based isolation (Network, FS, Camera, etc.)
-- App signature verification
-- Resource limits (CPU/Memory)
+### Priority 4: USB Mass Storage
 
-#### ✅ System Lock (`system_lock.c`)
-- Screen locking with PIN authentication
-- Auto-lock timeout
-- Brute-force protection (lockout)
-
-#### ✅ Audit (`audit.c`)
-- Security event logging (Login, Firewall Deny, App Install)
-- Circular log buffer
-
-#### ✅ App-Level Firewall Control
-- Per-process network permissions (INCOMING/OUTGOING)
-- Port-based allow/deny lists per app
-- Traffic tracking (bytes sent/received)
-- Blocked attempt counter
-
-#### ✅ Security Scanner (`security_scanner.c`)
-- File source detection (System, AppStore, ThirdParty, Downloaded)
-- Desktop warnings for unverified files
-- Quarantine functionality
-- Download protection with warnings
-- Signature verification
-
-### ✅ Phase 16: Complete!
-**Summary:** Comprehensive security subsystem with firewall, app control, file scanning, and threat detection.
-
-### 🔄 Phase 17: Networking Stack Integration - IN PROGRESS
-
-#### ✅ Kernel Boot Integration
-- `network_init()` and `tcpip_init()` called in kernel_main.c
-- Network interface status logged on boot
-
-#### ✅ Socket Syscalls (40-47)
-- SYS_SOCKET, SYS_BIND, SYS_LISTEN, SYS_ACCEPT
-- SYS_CONNECT, SYS_SEND, SYS_RECV, SYS_CLOSESOCK
-- All handlers implemented and registered
-
-#### ✅ Terminal Commands
-- `net status` (ifconfig) - Shows interface info, MAC, IP
-- `ping <ip>` - Sends ICMP echo requests
-- `dhcp` - Request IP via DHCP protocol
-
-#### ✅ Real DHCP Client
-- DHCP DISCOVER packet building and broadcast
-- DHCP OFFER parsing (yiaddr, options)
-- DHCP REQUEST with requested IP
-- DHCP ACK processing and interface configuration
-
-#### ⏳ Remaining
-- DNS resolver (hostname to IP)
-
-### ✅ Phase 18: Applications - COMPLETE
-**Goal:** Core system applications with native UI
-
-#### ✅ Settings.app (25 Panels)
-Full macOS-style Settings application with:
-
-**Core Settings:**
-- System Panel - OS version, hardware, uptime
-- About Panel - Device rename, serial, system controls
-- Network Panel - WiFi, Ethernet, VPN, Bluetooth tabs
-- Bluetooth Panel - Device pairing, battery status
-- Display Panel - Brightness, resolution, Night Shift, True Tone
-- Display Manager Panel - External displays, arrangement, HDR
-- Sound Panel - Volume, output devices, input selection
-- Storage Panel - Disk space, drives, optimization
-
-**Input & Accessibility:**
-- Keyboard Panel - Layouts, shortcuts, NX key remapping
-- Trackpad Panel - Multi-touch gestures (2/3/4-finger, edge swipes)
-
-**Appearance & Personalization:**
-- Appearance Panel - Theme, accent colors, fonts, icons
-- Color Panel - Display calibration, ICC profiles, soft proofing
-
-**Security & Privacy:**
-- Accounts Panel - User management, login
-- Security Panel - Firewall, encryption, app security
-- Privacy Panel - Location, camera, microphone permissions
-
-**System Management:**
-- Apps Panel - Installed applications, categories, manifest parsing
-- Devices Panel - Hardware device management, drivers
-- Power Panel - Battery, sleep, energy saver
-- Processes Panel - Running processes, CPU/memory usage
-- Startup Panel - Apps that launch at login
-- Extensions Panel - System extensions and plugins
-- Scheduler Panel - Scheduled tasks, automation
-- Updates Panel - System and app updates
-- Bootloader Panel - Startup disk, boot options
-- Developer Panel - Developer tools, debugging
-
-**Features:**
-- Split-view (2-3 panels side by side)
-- Pop-out tabs to separate windows
-- Global search across all panels
-- Keyboard shortcut: search_keywords per panel
+- [ ] XHCI controller driver
+- [ ] USB storage class driver
 
 ---
 
-## 🏗️ Architecture (macOS-inspired)
+## 📊 Progress Meter
 
-┌───────────────────────────────────────────┐
-│  Desktop Shell ✅                         │
-│  - Window compositor with z-ordering      │
-│  - macOS-style dock and menu bar          │
-│  - Widget system with theming             │
-├───────────────────────────────────────────┤
-│  Terminal Shell ✅                        │
-│  - Interrupt-driven keyboard (IRQ1)       │
-│  - console.c (framebuffer)                │
-│  - terminal.c (25 commands)               │
-├───────────────────────────────────────────┤
-│  Storage Stack ✅                         │
-│  - AHCI driver (real hardware)            │
-│  - MBR/GPT partition parsing              │
-│  - NXFS with VFS mounting                 │
-├───────────────────────────────────────────┤
-│  Process Management ✅                    │
-│  - fork/exec/wait                         │
-│  - Scheduler (round-robin)                │
-│  - Userland support (Ring 3)              │
-├───────────────────────────────────────────┤
-│  10 Kernel Drivers ✅                     │
-├───────────────────────────────────────────┤
-│  Core: GDT/IDT/PMM/VMM/Syscalls ✅        │
-├───────────────────────────────────────────┤
-│  UEFI Boot (ACPI, not GRUB) ✅            │
-└───────────────────────────────────────────┘
+```
+KERNEL BASICS      [████████████████████] 100%
+DRIVERS (BASIC)    [████████████░░░░░░░░]  60%
+FILESYSTEM         [██████████████░░░░░░]  70%
+PROCESS MGMT       [████████████████░░░░]  80%
+DESKTOP            [████████████████████] 100%
+NETWORKING         [████████████░░░░░░░░]  60%
+SECURITY           [████████████████░░░░]  80%
+APPS               [████████████████░░░░]  80%
+USB                [████░░░░░░░░░░░░░░░░]  20%
+SMP                [░░░░░░░░░░░░░░░░░░░░]   0%
+---------------------------------------------------------
+OVERALL COMPLETENESS: ~50% of production OS requirements
+```
 
 ---
 
-**Copyright (c) 2025 KetiveeAI**
+## 🏗️ Architecture Diagram
+
+```
+┌───────────────────────────────────────────────────────────┐
+│                    USER SPACE (Ring 3)                     │
+│  ┌────────────┬────────────┬────────────┬────────────────┐│
+│  │  Settings  │  Terminal  │ Calculator │  zeprabrowser  ││
+│  │    .app    │    .app    │    .app    │   (1162 files) ││
+│  └────────────┴────────────┴────────────┴────────────────┘│
+│  ┌────────────────────────────────────────────────────────┐│
+│  │              Desktop Shell (desktop_shell.c)           ││
+│  │  Window Manager │ Compositor │ Dock │ Control Center   ││
+│  └────────────────────────────────────────────────────────┘│
+│  ┌────────────────────────────────────────────────────────┐│
+│  │              NXRender + NXGFX Engine                   ││
+│  │     Widgets │ Animation │ Theme │ Event System         ││
+│  └────────────────────────────────────────────────────────┘│
+├───────────────────────────────────────────────────────────┤
+│                    SYSCALL INTERFACE                       │
+│         120+ syscalls  │  VFS ops  │  Graphics ops         │
+├───────────────────────────────────────────────────────────┤
+│                    KERNEL SPACE (Ring 0)                   │
+│  ┌────────────┬─────────────┬────────────┬───────────────┐│
+│  │   Core     │   Drivers   │ Filesystem │    Network    ││
+│  │ GDT/IDT    │ nxgfx_kdrv  │   NXFS     │   TCP/IP      ││
+│  │ PMM/VMM    │ nxmouse     │   FAT32    │   E1000       ││
+│  │ Scheduler  │ AHCI/NVMe   │   VFS      │   WiFi        ││
+│  └────────────┴─────────────┴────────────┴───────────────┘│
+│  ┌────────────────────────────────────────────────────────┐│
+│  │                     Security Layer                      ││
+│  │  Firewall │ App Sandbox │ SIP │ Audit │ Crypto         ││
+│  └────────────────────────────────────────────────────────┘│
+├───────────────────────────────────────────────────────────┤
+│                      UEFI FIRMWARE                         │
+└───────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 📝 Development Guidelines
+
+1. **Kernel Code**: Minimal, no dynamic allocation in hot paths
+2. **Desktop Code**: Lives in `desktop/`, runs in Ring 3
+3. **Drivers**: Use `kdrv` suffix, init in kernel_main.c
+4. **Apps**: Use `.app` bundle format in `desktop/apps/`
+5. **Headers**: Kernel headers in `kernel/include/`, desktop in `desktop/include/`
+6. **Tests**: Add to `tests/` directory
+7. **Documentation**: Markdown in `docs/`
+
+---
+
+**Copyright (c) 2025-2026 KetiveeAI**

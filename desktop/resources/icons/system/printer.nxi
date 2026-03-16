@@ -1,0 +1,26 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# printer icon
+
+[nxi]
+version = 1.0
+name = printer
+size = 24
+author = KetiveeAI
+category = system
+viewbox = 0 0 24 24
+
+[canvas]
+width = 24
+height = 24
+background = transparent
+
+[colors]
+primary = #FFFFFF
+accent = #00B4FF
+color_0 = white
+
+[paths]
+path_0 = M18 13C18.5523 13 19 13.4477 19 14V17H20C20.5477 17 21 16.5477 21 16V12C21 11.4523 20.5477 11 20 11H4C3.45228 11 3 11.4523 3 12V16C3 16.5477 3.45228 17 4 17H5V14C5 13.4477 5.44772 13 6 13H18ZM7 21H17V15H7V21ZM17 3H7V9H17V3ZM20 9C21.6523 9 23 10.3477 23 12V16C23 17.6523 21.6523 19 20 19H19V22C19 22.5523 18.5523 23 18 23H6C5.44772 23 5 22.5523 5 22V19H4C2.34772 19 1 17.6523 1 16V12C1 10.3477 2.34772 9 4 9H5V2C5 1.44772 5.44772 1 6 1H18C18.5523 1 19 1.44772 19 2V9H20Z
+
+[style]
+path_0.fill = color_0

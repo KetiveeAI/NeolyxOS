@@ -1,0 +1,92 @@
+/*
+ * NeolyxOS Syscall Table Definition
+ * 
+ * Master file for all system calls. Processed by NX_SYSCALL macro.
+ * Numbers MUST match syscall.h for backward compatibility.
+ * 
+ * Format: NX_SYSCALL(num, name, handler, argc, priv, flags)
+ * 
+ * Copyright (c) 2025 KetiveeAI. All rights reserved.
+ */
+
+/* ABI Bootstrap (0-1) - New syscalls for version negotiation */
+NX_SYSCALL(0,  "abi.query",     sys_abi_query_impl,     1, PRIV_USER, 0)
+
+/* Process Control (1-9) - Matching syscall.h */
+NX_SYSCALL(1,  "exit",    sys_exit_impl,    1, PRIV_USER, 0)
+NX_SYSCALL(2,  "sleep",   sys_sleep_impl,   1, PRIV_USER, 0)
+NX_SYSCALL(3,  "time",    sys_time_impl,    0, PRIV_USER, 0)
+NX_SYSCALL(4,  "yield",   sys_yield_impl,   0, PRIV_USER, 0)
+NX_SYSCALL(5,  "getpid",  sys_getpid_impl,  0, PRIV_USER, 0)
+NX_SYSCALL(6,  "getppid", sys_getppid_impl, 0, PRIV_USER, 0)
+NX_SYSCALL(7,  "fork",    sys_fork_impl,    0, PRIV_USER, 0)
+NX_SYSCALL(8,  "exec",    sys_exec_impl,    3, PRIV_USER, 0)
+NX_SYSCALL(9,  "wait",    sys_wait_impl,    2, PRIV_USER, 0)
+
+/* Memory Management (10-12) */
+NX_SYSCALL(10, "brk",     sys_brk_impl,     1, PRIV_USER, 0)
+
+/* File I/O (20-26) */
+NX_SYSCALL(20, "open",    sys_open_impl,    3, PRIV_USER, 0)
+NX_SYSCALL(21, "close",   sys_close_impl,   1, PRIV_USER, 0)
+NX_SYSCALL(22, "read",    sys_read_impl,    3, PRIV_USER, 0)
+NX_SYSCALL(23, "write",   sys_write_impl,   3, PRIV_USER, 0)
+NX_SYSCALL(24, "seek",    sys_seek_impl,    3, PRIV_USER, 0)
+NX_SYSCALL(25, "stat",    sys_stat_impl,    2, PRIV_USER, 0)
+
+/* Directory Operations (30-34) */
+NX_SYSCALL(30, "readdir", sys_readdir_impl, 4, PRIV_USER, 0)
+NX_SYSCALL(31, "mkdir",   sys_mkdir_impl,   2, PRIV_USER, 0)
+NX_SYSCALL(32, "rmdir",   sys_unlink_impl,  1, PRIV_USER, 0)
+NX_SYSCALL(33, "chdir",   sys_chdir_impl,   1, PRIV_USER, 0)
+NX_SYSCALL(34, "getcwd",  sys_getcwd_impl,  2, PRIV_USER, 0)
+
+/* Sockets (40-47) */
+NX_SYSCALL(40, "socket",   sys_socket_impl,   2, PRIV_USER, 0)
+NX_SYSCALL(41, "bind",     sys_bind_impl,     2, PRIV_USER, 0)
+NX_SYSCALL(42, "listen",   sys_listen_impl,   2, PRIV_USER, 0)
+NX_SYSCALL(43, "accept",   sys_accept_impl,   2, PRIV_USER, 0)
+NX_SYSCALL(44, "connect",  sys_connect_impl,  2, PRIV_USER, 0)
+NX_SYSCALL(45, "send",     sys_send_impl,     3, PRIV_USER, 0)
+NX_SYSCALL(46, "recv",     sys_recv_impl,     3, PRIV_USER, 0)
+NX_SYSCALL(47, "closesock", sys_closesock_impl, 1, PRIV_USER, 0)
+
+/* System Info (50) */
+NX_SYSCALL(50, "info",    sys_info_impl,    1, PRIV_USER, 0)
+
+/* System Control (100-101) - Privileged */
+NX_SYSCALL(100, "reboot",   sys_reboot_impl,   1, PRIV_SYSTEM, NX_FLAG_AUDIT)
+NX_SYSCALL(101, "shutdown", sys_shutdown_impl, 0, PRIV_SYSTEM, NX_FLAG_AUDIT)
+
+/* NXGame Bridge (110-119) */
+NX_SYSCALL(110, "nxgame.create",      sys_nxgame_create_impl,      3, PRIV_USER, 0)
+NX_SYSCALL(111, "nxgame.destroy",     sys_nxgame_destroy_impl,     1, PRIV_USER, 0)
+NX_SYSCALL(112, "nxgame.start",       sys_nxgame_start_impl,       1, PRIV_USER, 0)
+NX_SYSCALL(113, "nxgame.stop",        sys_nxgame_stop_impl,        1, PRIV_USER, 0)
+NX_SYSCALL(114, "nxgame.gpu_acquire", sys_nxgame_gpu_acquire_impl, 1, PRIV_USER, 0)
+NX_SYSCALL(115, "nxgame.gpu_release", sys_nxgame_gpu_release_impl, 1, PRIV_USER, 0)
+NX_SYSCALL(116, "nxgame.gpu_present", sys_nxgame_gpu_present_impl, 2, PRIV_USER, 0)
+NX_SYSCALL(117, "nxgame.audio",       sys_nxgame_audio_impl,       5, PRIV_USER, 0)
+NX_SYSCALL(118, "nxgame.input",       sys_nxgame_input_impl,       2, PRIV_USER, 0)
+NX_SYSCALL(119, "nxgame.get_buffer",  sys_nxgame_get_buffer_impl,  2, PRIV_USER, 0)
+
+/* Framebuffer (120-122) */
+NX_SYSCALL(120, "fb.map",  sys_fb_map_impl,  1, PRIV_USER, 0)
+NX_SYSCALL(121, "fb.info", sys_fb_info_impl, 1, PRIV_USER, 0)
+NX_SYSCALL(122, "fb.flip", sys_fb_flip_impl, 1, PRIV_USER, 0)
+
+/* Input (123-124) */
+NX_SYSCALL(123, "input.poll",     sys_input_poll_impl,     2, PRIV_USER, 0)
+NX_SYSCALL(124, "input.register", sys_input_register_impl, 1, PRIV_USER, 0)
+
+/* Debug (127) */
+NX_SYSCALL(127, "debug.print", sys_debug_print_impl, 1, PRIV_USER, 0)
+
+/* Cursor (128) */
+NX_SYSCALL(128, "cursor.set", sys_cursor_set_impl, 3, PRIV_USER, 0)
+
+/* RTC (130-132) */
+NX_SYSCALL(130, "rtc.get",  sys_rtc_get_impl,  1, PRIV_USER, 0)
+NX_SYSCALL(131, "rtc.set",  sys_rtc_set_impl,  1, PRIV_SYSTEM, NX_FLAG_AUDIT)
+NX_SYSCALL(132, "rtc.unix", sys_rtc_unix_impl, 0, PRIV_USER, 0)
+

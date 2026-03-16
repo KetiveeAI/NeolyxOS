@@ -1,0 +1,26 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# arrow-up icon
+
+[nxi]
+version = 1.0
+name = arrow-up
+size = 24
+author = KetiveeAI
+category = system
+viewbox = 0 0 24 24
+
+[canvas]
+width = 24
+height = 24
+background = transparent
+
+[colors]
+primary = #FFFFFF
+accent = #00B4FF
+color_0 = white
+
+[paths]
+path_0 = M11 19V7.41407L5.70702 12.707C5.31649 13.0976 4.68348 13.0976 4.29295 12.707C3.90243 12.3165 3.90243 11.6835 4.29295 11.293L11.293 4.29298L11.3691 4.22462C11.7619 3.90427 12.3409 3.92686 12.707 4.29298L19.707 11.293C20.0975 11.6835 20.0975 12.3165 19.707 12.707C19.3165 13.0976 18.6835 13.0976 18.293 12.707L13 7.41407V19C13 19.5523 12.5523 20 12 20C11.4477 20 11 19.5523 11 19Z
+
+[style]
+path_0.fill = color_0

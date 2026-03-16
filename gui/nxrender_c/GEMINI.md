@@ -16,6 +16,210 @@ NXRENDER is a **custom rendering engine** designed to replace third-party depend
 3. **Cross-platform**: Works on Linux, Windows, macOS, and later NeolyxOS
 4. **Reusability**: Extract for NeolyxOS desktop environment
 
+---
+
+## 🖥️ NeolyxOS C Implementation (Primary)
+
+The NeolyxOS desktop uses the **C version** of NXRender located at `gui/nxrender_c/`. This is the production implementation.
+
+### NeolyxOS Rendering Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    REOX Source (.reox)                       │
+│      window MainWindow {                                    │
+│          title: "App"                                       │
+│          view { button "Click" { ... } }                    │
+│      }                                                       │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼ reoxc compiler (Rust)
+┌─────────────────────────────────────────────────────────────┐
+│                    Generated C Code                          │
+│      reox_window_t win = reox_window_create("App", w, h);   │
+│      reox_button_t btn = reox_button_create("Click");       │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼ Links against
+┌─────────────────────────────────────────────────────────────┐
+│                    REOX FFI Bridge                           │
+│      gui/nxrender_c/include/reox_ffi.h                      │
+│      gui/nxrender_c/src/reox_ffi.c                          │
+│      • reox_window_* → nx_window_*                          │
+│      • reox_button_* → nx_button_*                          │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      NXRender C                              │
+│  ┌────────────┬────────────┬────────────┬────────────┐     │
+│  │  Widgets   │ Compositor │  Window    │   Layout   │     │
+│  │ button.h   │compositor.h│ window.h   │ (missing)  │     │
+│  │ label.h    │ layer.h    │ manager.c  │            │     │
+│  │ slider.h   │ surface.h  │            │            │     │
+│  └────────────┴────────────┴────────────┴────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                        NXGFX                                 │
+│      gui/nxrender_c/include/nxgfx/nxgfx.h                   │
+│      • nxgfx_fill_rect()      • nxgfx_draw_text()          │
+│      • nxgfx_fill_circle()    • nxgfx_draw_image()         │
+│      • nxgfx_fill_gradient()  • nxgfx_set_clip()           │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Framebuffer (Kernel)                       │
+│      desktop/shell/desktop_shell.c                          │
+│      • Double buffering (front + back)                      │
+│      • VSync via kernel flip_buffer()                       │
+│      • Static layer caching                                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### C Directory Structure
+
+```
+gui/nxrender_c/
+├── include/
+│   ├── nxgfx/                     # Graphics primitives
+│   │   └── nxgfx.h                # Core drawing API
+│   ├── nxrender/                  # Compositor/Window
+│   │   ├── compositor.h           # Surface/layer management
+│   │   ├── window.h               # Window manager API
+│   │   ├── device.h               # Device abstraction
+│   │   └── application.h          # App lifecycle
+│   ├── widgets/                   # UI Widgets
+│   │   ├── widget.h               # Base widget (IMPORTANT)
+│   │   ├── button.h
+│   │   ├── label.h
+│   │   ├── textfield.h
+│   │   ├── slider.h
+│   │   ├── checkbox.h
+│   │   ├── switch.h
+│   │   ├── dropdown.h
+│   │   ├── listview.h
+│   │   ├── tabview.h
+│   │   ├── container.h
+│   │   ├── icon.h                 # ⚠️ Has scaling issues
+│   │   ├── progressbar.h
+│   │   └── spinner.h
+│   ├── layout/                    # ⚠️ Missing implementation
+│   │   └── layout.h
+│   ├── animation/
+│   │   └── animation.h
+│   ├── input/
+│   │   └── events.h
+│   ├── theme/
+│   │   └── theme.h
+│   └── reox_ffi.h                 # REOX → NXRender bridge
+│
+├── src/                           # Implementation files
+│   ├── nxgfx*.c                   # Graphics implementation
+│   ├── compositor.c
+│   ├── window.c
+│   ├── widgets/*.c
+│   └── reox_ffi.c
+│
+├── Makefile
+└── libnxrender.a                  # Static library output
+```
+
+### Widget Implementation (C)
+
+All widgets follow the pattern defined in `widget.h`:
+
+```c
+/* Base widget structure - ALL widgets embed this */
+struct nx_widget {
+    const nx_widget_vtable_t* vtable;  /* Virtual table */
+    nx_widget_id_t id;                  /* Unique ID */
+    nx_rect_t bounds;                   /* Position and size */
+    nx_widget_state_t state;            /* Normal/Hovered/Pressed/Focused */
+    bool visible;
+    bool enabled;
+    nx_widget_t* parent;                /* Parent widget */
+    nx_widget_t** children;             /* Child widgets */
+    size_t child_count;
+    size_t child_capacity;
+    void* user_data;                    /* Application data */
+};
+
+/* Virtual table for widget methods */
+typedef struct {
+    void (*render)(nx_widget_t* self, nx_context_t* ctx);
+    void (*layout)(nx_widget_t* self, nx_rect_t bounds);
+    nx_size_t (*measure)(nx_widget_t* self, nx_size_t available);
+    nx_event_result_t (*handle_event)(nx_widget_t* self, nx_event_t* event);
+    void (*destroy)(nx_widget_t* self);
+} nx_widget_vtable_t;
+```
+
+### Memory Ownership Rules (CRITICAL)
+
+From `widget.h` header comments:
+
+```c
+/* MEMORY OWNERSHIP RULES:
+ * =======================
+ * 1. Whoever creates a widget OWNS it and MUST destroy it
+ * 2. Parent widgets own all child widgets added via nx_widget_add_child()
+ * 3. nx_widget_destroy() MUST recursively destroy all children
+ * 4. After nx_widget_add_child(), caller should NOT free the child
+ * 5. nx_widget_remove_child() transfers ownership BACK to caller
+ *
+ * Example:
+ *   nx_button_t* btn = nx_button_create("OK");  // Caller owns btn
+ *   nx_widget_add_child(parent, (nx_widget_t*)btn);  // Parent now owns btn
+ *   nx_widget_destroy(parent);  // Destroys parent AND btn
+ */
+```
+
+### REOX FFI Bridge
+
+Maps REOX language constructs to NXRender C widgets:
+
+| REOX Construct | FFI Function | NXRender Widget |
+|----------------|--------------|-----------------|
+| `window MainWindow { }` | `reox_window_create()` | `nx_window_t` |
+| `button "Text" { }` | `reox_button_create()` | `nx_button_t` |
+| `label { text: "..." }` | `reox_label_create()` | `nx_label_t` |
+| `text_field { }` | `reox_textfield_create()` | `nx_textfield_t` |
+| `slider { min: 0, max: 100 }` | `reox_slider_create()` | `nx_slider_t` |
+| `hstack { }` | `reox_hstack()` | Container + Layout |
+| `vstack { }` | `reox_vstack()` | Container + Layout |
+
+### Known Issues & Gaps
+
+| Issue | Location | Status |
+|-------|----------|--------|
+| Window management incomplete | `src/window.c` | Step 2.5 in TODO.md |
+| Layout engine missing | `include/layout/` | Phase 2 in TODO.md |
+| Icon staircase artifacts | `src/widgets/icon.c` | Needs bilinear scaling |
+| REOX hstack/vstack stubs | `src/reox_ffi.c` | Awaiting layout engine |
+
+### Build Commands
+
+```bash
+# Build NXRender C library
+cd /home/swana/Documents/NEOLYXOS/neolyx-os/gui/nxrender_c
+make clean && make
+
+# Output: libnxrender.a
+
+# Build desktop shell (uses NXRender)
+cd /home/swana/Documents/NEOLYXOS/neolyx-os/desktop
+make
+
+# Test in QEMU
+cd /home/swana/Documents/NEOLYXOS/neolyx-os
+./boot_test.sh
+```
+
+---
+
 ### Architecture Summary
 ```
 ┌─────────────────────────────────────────────────────────┐

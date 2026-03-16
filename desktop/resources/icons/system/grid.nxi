@@ -1,0 +1,32 @@
+# NeolyxOS NXI Vector Icon Format v1.0
+# grid icon
+
+[nxi]
+version = 1.0
+name = grid
+size = 24
+author = KetiveeAI
+category = system
+viewbox = 0 0 24 24
+
+[canvas]
+width = 24
+height = 24
+background = transparent
+
+[colors]
+primary = #FFFFFF
+accent = #00B4FF
+color_0 = white
+
+[paths]
+path_0 = M4 4V9H9V4H4ZM11 9C11 10.1046 10.1046 11 9 11H4C2.89543 11 2 10.1046 2 9V4C2 2.89543 2.89543 2 4 2H9C10.1046 2 11 2.89543 11 4V9Z
+path_1 = M15 4V9H20V4H15ZM22 9C22 10.1046 21.1046 11 20 11H15C13.8954 11 13 10.1046 13 9V4C13 2.89543 13.8954 2 15 2H20C21.1046 2 22 2.89543 22 4V9Z
+path_2 = M4 15V20H9V15H4ZM11 20C11 21.1046 10.1046 22 9 22H4C2.89543 22 2 21.1046 2 20V15C2 13.8954 2.89543 13 4 13H9C10.1046 13 11 13.8954 11 15V20Z
+path_3 = M15 15V20H20V15H15ZM22 20C22 21.1046 21.1046 22 20 22H15C13.8954 22 13 21.1046 13 20V15C13 13.8954 13.8954 13 15 13H20C21.1046 13 22 13.8954 22 15V20Z
+
+[style]
+path_0.fill = color_0
+path_1.fill = color_0
+path_2.fill = color_0
+path_3.fill = color_0
