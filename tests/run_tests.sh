@@ -6,7 +6,8 @@
 
 set -e
 
-cd /home/swana/Documents/NEOLYXOS/neolyx-os
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.."
 
 KERNEL_DIR="kernel"
 IMG_FILE="neolyx.img"

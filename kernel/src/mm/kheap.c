@@ -5,7 +5,7 @@
  * Production-quality, clean code.
  * 
  * Copyright (c) 2025 KetiveeAI
- * SPDX-License-Identifier: MIT
+ * ketivee
  */
 
 #include "mm/kheap.h"
@@ -255,15 +255,65 @@ void kfree(void *ptr) {
     heap_used -= block->size + HEADER_SIZE;
     free_count++;
     
-    /* Add back to free list (front) */
+    /* ========== Coalesce adjacent free blocks ========== */
+    
+    /* Forward coalesce: merge with physically next block if free */
+    heap_block_t *next_phys = (heap_block_t *)((uint8_t *)block + HEADER_SIZE + block->size);
+    uint64_t next_offset = (uint64_t)((uint8_t *)next_phys - (uint8_t *)heap_start);
+    
+    if (next_offset < heap_size && next_phys->magic == HEAP_MAGIC 
+        && !(next_phys->flags & BLOCK_USED)) {
+        /* Remove next_phys from free list before merging */
+        if (next_phys == heap_free_list) {
+            heap_free_list = next_phys->next;
+        }
+        if (next_phys->prev) {
+            next_phys->prev->next = next_phys->next;
+        }
+        if (next_phys->next) {
+            next_phys->next->prev = next_phys->prev;
+        }
+        /* Absorb next block's space (its header + data become our data) */
+        block->size += HEADER_SIZE + next_phys->size;
+        /* Invalidate absorbed header to catch stale pointer bugs */
+        next_phys->magic = 0;
+    }
+    
+    /* Backward coalesce: find physically previous block by walking from heap_start.
+     * This is O(n) but correct. A footer-based approach would be O(1) but requires
+     * a format change — defer to a later optimization pass. */
+    heap_block_t *prev_phys = NULL;
+    heap_block_t *scan = heap_start;
+    uint64_t scanned = 0;
+    
+    while (scanned < heap_size) {
+        heap_block_t *scan_next = (heap_block_t *)((uint8_t *)scan + HEADER_SIZE + scan->size);
+        if (scan_next == block) {
+            prev_phys = scan;
+            break;
+        }
+        if (scan->magic != HEAP_MAGIC) break;  /* Corruption guard */
+        scanned += HEADER_SIZE + scan->size;
+        scan = scan_next;
+    }
+    
+    if (prev_phys && prev_phys->magic == HEAP_MAGIC 
+        && !(prev_phys->flags & BLOCK_USED)) {
+        /* prev_phys is already in the free list — just grow it */
+        prev_phys->size += HEADER_SIZE + block->size;
+        /* Invalidate absorbed header */
+        block->magic = 0;
+        /* Don't add 'block' to free list — prev_phys already covers the range */
+        return;
+    }
+    
+    /* Add block to free list (front) */
     block->next = heap_free_list;
     block->prev = NULL;
     if (heap_free_list) {
         heap_free_list->prev = block;
     }
     heap_free_list = block;
-    
-    /* TODO: Coalesce adjacent free blocks */
 }
 
 void heap_get_stats(heap_stats_t *stats) {

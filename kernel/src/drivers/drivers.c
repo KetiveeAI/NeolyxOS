@@ -245,13 +245,24 @@ int input_drivers_init(void) {
     return 0;
 }
 
+/* Real PCI/USB init functions from driver modules */
+extern int pci_init(void);
+extern int usb_init(void);
+
 int usb_drivers_init(void) {
-    klog("USB drivers: Not implemented yet");
+    klog("Initializing USB subsystem...");
+    if (usb_init() != 0) {
+        klog("USB: No controllers found (non-critical)");
+    }
     return 0;
 }
 
 int pci_drivers_init(void) {
-    klog("PCI drivers: Not implemented yet");
+    klog("Initializing PCI bus...");
+    if (pci_init() != 0) {
+        klog("PCI: Bus enumeration failed");
+        return -1;
+    }
     return 0;
 }
 

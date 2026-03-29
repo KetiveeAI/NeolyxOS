@@ -37,6 +37,9 @@ static volatile int kbd_ctrl = 0;
 static volatile int kbd_alt = 0;
 static volatile int kbd_caps = 0;
 
+/* Extended scancode prefix (0xE0) tracking */
+static volatile int kbd_e0_prefix = 0;
+
 /* Key buffer (ring buffer) */
 #define KEY_BUFFER_SIZE     64
 static volatile uint16_t key_buffer[KEY_BUFFER_SIZE];
@@ -95,41 +98,92 @@ static uint16_t buffer_pop(void) {
 /* ============ Keyboard Implementation ============ */
 
 void keyboard_init(void) {
-    serial_puts("[KBD] Keyboard driver initialized\n");
+    serial_puts("[KBD] Keyboard driver initialized (extended scancode support)\n");
     key_buffer_head = 0;
     key_buffer_tail = 0;
     kbd_shift = 0;
     kbd_ctrl = 0;
     kbd_alt = 0;
     kbd_caps = 0;
+    kbd_e0_prefix = 0;
 }
 
 void keyboard_irq(void) {
     uint8_t scancode = inb(KBD_DATA_PORT);
     last_scancode = scancode;
     
+    /* Extended scancode prefix: 0xE0 precedes arrow/nav/meta keys.
+     * Set flag and wait for the actual scancode on next IRQ. */
+    if (scancode == 0xE0) {
+        kbd_e0_prefix = 1;
+        return;
+    }
+    
     int released = scancode & 0x80;
     uint8_t key = scancode & 0x7F;
+    int is_extended = kbd_e0_prefix;
+    kbd_e0_prefix = 0;
     
-    /* Handle modifier keys */
+    /* Handle extended modifier keys (right-Ctrl, right-Alt, Meta) */
+    if (is_extended) {
+        switch (key) {
+            case 0x1D:  /* Right Ctrl (E0 1D) */
+                kbd_ctrl = !released;
+                return;
+            case 0x38:  /* Right Alt (E0 38) */
+                kbd_alt = !released;
+                return;
+            case 0x5B:  /* Left Meta/Super (E0 5B) */
+            case 0x5C:  /* Right Meta/Super (E0 5C) */
+                return;
+        }
+        
+        /* Extended keys: only process press, not release */
+        if (released) return;
+        
+        /* Map extended scancodes to special key codes.
+         * These share raw scancodes with numpad but the 0xE0 prefix
+         * distinguishes them. Mark with 0x100 (special key flag). */
+        uint16_t keycode = 0;
+        switch (key) {
+            case 0x48: keycode = KEY_UP     | 0x100; break;
+            case 0x50: keycode = KEY_DOWN   | 0x100; break;
+            case 0x4B: keycode = KEY_LEFT   | 0x100; break;
+            case 0x4D: keycode = KEY_RIGHT  | 0x100; break;
+            case 0x47: keycode = KEY_HOME   | 0x100; break;
+            case 0x4F: keycode = KEY_END    | 0x100; break;
+            case 0x49: keycode = KEY_PAGEUP | 0x100; break;
+            case 0x51: keycode = KEY_PAGEDOWN | 0x100; break;
+            case 0x52: keycode = KEY_INSERT | 0x100; break;
+            case 0x53: keycode = KEY_DELETE | 0x100; break;
+            default: return;
+        }
+        if (kbd_shift) keycode |= KEY_FLAG_SHIFT;
+        if (kbd_ctrl)  keycode |= KEY_FLAG_CTRL;
+        if (kbd_alt)   keycode |= KEY_FLAG_ALT;
+        buffer_push(keycode);
+        return;
+    }
+    
+    /* Standard (non-extended) modifier keys */
     switch (key) {
         case KEY_LSHIFT:
         case KEY_RSHIFT:
             kbd_shift = !released;
-            goto done;
+            return;
         case KEY_LCTRL:
             kbd_ctrl = !released;
-            goto done;
+            return;
         case KEY_LALT:
             kbd_alt = !released;
-            goto done;
+            return;
         case KEY_CAPSLOCK:
             if (!released) kbd_caps = !kbd_caps;
-            goto done;
+            return;
     }
     
     /* Only process key press, not release */
-    if (released) goto done;
+    if (released) return;
     
     /* Convert scancode to ASCII */
     char c;
@@ -155,37 +209,22 @@ void keyboard_irq(void) {
     if (kbd_alt) keycode |= KEY_FLAG_ALT;
     if (kbd_caps) keycode |= KEY_FLAG_CAPSLOCK;
     
-    /* Special keys without ASCII representation */
+    /* Function keys (non-ASCII, non-extended) */
     if (c == 0) {
         switch (key) {
-            case KEY_UP:
-            case KEY_DOWN:
-            case KEY_LEFT:
-            case KEY_RIGHT:
-            case KEY_HOME:
-            case KEY_END:
-            case KEY_PAGEUP:
-            case KEY_PAGEDOWN:
-            case KEY_INSERT:
-            case KEY_DELETE:
             case KEY_F1: case KEY_F2: case KEY_F3: case KEY_F4:
             case KEY_F5: case KEY_F6: case KEY_F7: case KEY_F8:
             case KEY_F9: case KEY_F10: case KEY_F11: case KEY_F12:
-                keycode = key | 0x100;  /* Mark as special key */
+                keycode = key | 0x100;
                 break;
             default:
-                goto done;  /* Ignore unknown keys */
+                return;
         }
     }
     
-    /* Push to buffer */
     if (keycode) {
         buffer_push(keycode);
     }
-    
-done:
-    /* EOI handled by ISR dispatcher - do not send here */
-    return;
 }
 
 int keyboard_has_key(void) {

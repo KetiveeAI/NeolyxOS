@@ -96,6 +96,8 @@ static void serial_dec(uint64_t val) {
 /* Forward declaration */
 extern void fault_route(uint64_t vector, uint64_t error_code, uint64_t rip, uint64_t cs);
 
+extern void e1000_irq_handler(void);
+
 void isr_handler(registers_t *regs) {
     uint64_t int_no = regs->int_no;
     
@@ -190,12 +192,12 @@ void isr_handler(registers_t *regs) {
         if (from_userspace) {
             serial_puts("\n[FAULT_ROUTER] Routing userspace exception...\n");
             fault_route(int_no, regs->err_code, regs->rip, regs->cs);
-            /* If fault_route returns, continue (process killed) */
             serial_puts("[FAULT_ROUTER] Userspace process terminated.\n");
-            /* TODO: Schedule next process or halt for now */
+            return;
         }
         
-        serial_puts("\n*** SYSTEM HALTED ***\n");
+        /* Kernel-space exception — unrecoverable, halt. */
+        serial_puts("\n*** KERNEL EXCEPTION — SYSTEM HALTED ***\n");
         serial_puts("Press RESET to restart.\n");
         while (1) {
             __asm__ volatile("cli; hlt");
@@ -206,8 +208,6 @@ void isr_handler(registers_t *regs) {
     if (int_no >= 32 && int_no < 48) {
         uint8_t irq = int_no - 32;
         
-        /* NOTE: Debug logging removed - corrupted stack in hot path */
-        
         switch (irq) {
             case 0:  /* Timer */
                 pit_tick();
@@ -217,12 +217,15 @@ void isr_handler(registers_t *regs) {
                 keyboard_irq();
                 break;
                 
+            case 11: /* Network (e1000 on QEMU) */
+                e1000_irq_handler();
+                break;
+                
             case 12: /* Mouse */
                 nxmouse_irq_handler((void*)regs);
                 break;
                 
             default:
-                /* Unhandled IRQ */
                 break;
         }
         

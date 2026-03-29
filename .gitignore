@@ -42,3 +42,18 @@ hdd_50g.img
 
 # User/Config specifics (if any)
 neolyx.img.d/
+
+# Kernel build artifacts
+kernel/*.o
+*.o
+*.img.d
+neolyx.img.d
+
+# Build outputs
+bin/neolyx-desktop
+build/
+*.elf
+*.bin
+*.iso
+kernel/boot_guard.o
+desktop/shell/main.o

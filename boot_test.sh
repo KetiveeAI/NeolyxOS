@@ -4,7 +4,8 @@
 
 set -e
 
-cd /home/swana/Documents/NEOLYXOS/neolyx-os
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 echo "========================================"
 echo "     NeolyxOS Boot Test"

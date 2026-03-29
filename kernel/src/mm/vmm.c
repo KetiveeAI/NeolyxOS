@@ -70,7 +70,9 @@ static uint64_t vmm_alloc_table(void) {
         serial_puts("[VMM] ERROR: Cannot allocate page table!\n");
         return 0;
     }
-    /* PMM already zeros pages */
+    /* PMM does NOT zero pages — caller must zero.
+     * Page tables with garbage entries cause random GPFs. */
+    vmm_memset((void *)phys, 0, 4096);
     return phys;
 }
 

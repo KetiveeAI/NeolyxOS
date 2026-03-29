@@ -1,5 +1,5 @@
-Makefile:442: warning: overriding recipe for target 'pmm.o'
-Makefile:259: warning: ignoring old recipe for target 'pmm.o'
-Makefile:463: warning: overriding recipe for target 'nxaudio.o'
-Makefile:350: warning: ignoring old recipe for target 'nxaudio.o'
+Makefile:446: warning: overriding recipe for target 'pmm.o'
+Makefile:263: warning: ignoring old recipe for target 'pmm.o'
+Makefile:467: warning: overriding recipe for target 'nxaudio.o'
+Makefile:354: warning: ignoring old recipe for target 'nxaudio.o'
 make: Nothing to be done for 'all'.

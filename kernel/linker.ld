@@ -30,6 +30,8 @@ SECTIONS
         __bss_end = .;
     }
     
+    _kernel_end = .;
+    
     /DISCARD/ : {
         *(.comment)
         *(.note*)

@@ -37,8 +37,25 @@ static pmm_stats_t pmm_stats;
 /* Highest usable physical address */
 static uint64_t pmm_max_address = 0;
 
-/* TODO: SMP - protect bitmap with spinlock when SMP is enabled */
+/* Spinlock for bitmap operations.
+ * Current implementation: CLI/STI (single-core safe).
+ * Upgrade to ticket spinlock when SMP is enabled. */
 static volatile int pmm_lock = 0;
+
+static inline void pmm_spin_lock(void) {
+    __asm__ volatile("cli");
+    while (__sync_lock_test_and_set(&pmm_lock, 1)) {
+        __asm__ volatile("pause");
+    }
+}
+
+static inline void pmm_spin_unlock(void) {
+    __sync_lock_release(&pmm_lock);
+    __asm__ volatile("sti");
+}
+
+/* Kernel end symbol from linker script */
+extern uint8_t _kernel_end[];
 
 /* ============ Helper Functions ============ */
 
@@ -203,6 +220,18 @@ void pmm_init(void *memory_map, uint64_t map_size, uint64_t descriptor_size) {
     /* Reserve first 1 MB (legacy BIOS area, VGA, etc.) */
     pmm_reserve_region(0, 1024 * 1024);
     
+    /* Reserve kernel binary region (0x100000 to _kernel_end)
+     * Without this, pmm_alloc_page could hand out pages
+     * that overlap kernel code/data — instant corruption. */
+    uint64_t kernel_start = 0x100000;  /* Must match linker.ld */
+    uint64_t kernel_end_addr = (uint64_t)_kernel_end;
+    if (kernel_end_addr > kernel_start) {
+        pmm_reserve_region(kernel_start, kernel_end_addr - kernel_start);
+        serial_puts("[PMM] Reserved kernel region: 0x100000 - ");
+        serial_hex64(kernel_end_addr);
+        serial_puts("\n");
+    }
+    
     /* Calculate final stats */
     pmm_stats.total_memory = pmm_stats.total_pages * PAGE_SIZE;
     pmm_stats.free_memory = pmm_stats.free_pages * PAGE_SIZE;
@@ -219,33 +248,26 @@ void pmm_init(void *memory_map, uint64_t map_size, uint64_t descriptor_size) {
 }
 
 uint64_t pmm_alloc_page(void) {
+    pmm_spin_lock();
+    
     /* Find first free page */
     for (uint64_t byte = 0; byte < BITMAP_SIZE; byte++) {
         if (pmm_bitmap[byte] != 0xFF) {
-            /* This byte has a free bit */
             for (int bit = 0; bit < 8; bit++) {
                 uint64_t page = byte * 8 + bit;
                 if (!bitmap_test(page)) {
-                    /* Found free page */
                     bitmap_set(page);
                     pmm_stats.free_pages--;
                     pmm_stats.used_pages++;
-                    
                     uint64_t addr = page_to_addr(page);
-                    
-                    /* Note: Page zeroing removed - caller must zero after mapping
-                     * Physical addresses cannot be accessed directly without 
-                     * proper virtual memory mapping. The UEFI bootloader may
-                     * or may not have identity mapping for all physical memory.
-                     */
-                    
+                    pmm_spin_unlock();
                     return addr;
                 }
             }
         }
     }
     
-    /* Out of memory */
+    pmm_spin_unlock();
     serial_puts("[PMM] ERROR: Out of physical memory!\n");
     return 0;
 }
@@ -303,8 +325,11 @@ void pmm_free_page(uint64_t page_addr) {
         return;
     }
     
+    pmm_spin_lock();
+    
     /* Check for double-free (security) */
     if (!bitmap_test(page)) {
+        pmm_spin_unlock();
         serial_puts("[PMM] WARNING: Double-free detected at ");
         serial_hex64(page_addr);
         serial_puts("!\n");
@@ -314,6 +339,7 @@ void pmm_free_page(uint64_t page_addr) {
     bitmap_clear(page);
     pmm_stats.free_pages++;
     pmm_stats.used_pages--;
+    pmm_spin_unlock();
 }
 
 void pmm_free_pages(uint64_t page_addr, size_t count) {
