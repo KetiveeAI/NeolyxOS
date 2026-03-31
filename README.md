@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Neolyx OS](Os%20.png)
+![Neolyx OS](Os.png)
 
 **A modern, fully functional 64-bit desktop operating system built from scratch**
 
