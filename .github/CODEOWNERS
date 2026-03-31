@@ -1,0 +1,22 @@
+# Code Owners for Neolyx OS
+# These owners will be automatically requested for review when PRs modify these files
+
+# Default owners for everything in the repo
+* @KetiveeAI
+
+# Kernel code
+/kernel/ @KetiveeAI
+
+# Bootloader
+/boot/ @KetiveeAI
+
+# Desktop environment
+/desktop/ @KetiveeAI
+/gui/ @KetiveeAI
+
+# File system
+/nxfs/ @KetiveeAI
+
+# Documentation
+*.md @KetiveeAI
+/docs/ @KetiveeAI

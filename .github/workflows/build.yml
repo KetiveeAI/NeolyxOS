@@ -1,0 +1,38 @@
+name: Build Neolyx OS
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y nasm gcc make qemu-system-x86
+        # Add cross-compiler installation steps here
+    
+    - name: Build Neolyx OS
+      run: |
+        make clean
+        make all
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: neolyx-os-build
+        path: |
+          neolyx.iso
+          neolyx.img
+        retention-days: 7
+    
+    # Uncomment when tests are available
+    # - name: Run tests
+    #   run: make test
