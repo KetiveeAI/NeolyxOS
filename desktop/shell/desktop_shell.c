@@ -122,7 +122,6 @@ static int init_framebuffer(void) {
     } else {
         nx_debug_print("[DESKTOP] NXRender initialized successfully\n");
     }
-    }
     
     g_fb_initialized = 1;
     return 0;
@@ -1837,7 +1836,8 @@ int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pit
     /* If parameters are 0, use syscall to get FB info */
     if (fb_addr == 0 || width == 0) {
         /* Initialize config system first */
-        nx_config_init();
+        /* TEMPORARY: Disabled to debug crash - config not critical for boot */
+        /* nx_config_init(); */
         
         if (init_framebuffer() != 0) {
             serial_puts("[DESKTOP] Failed to init framebuffer via syscall\n");
