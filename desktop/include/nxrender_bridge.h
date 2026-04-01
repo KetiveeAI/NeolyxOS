@@ -1,8 +1,8 @@
 /*
  * NeolyxOS - NXRender Bridge Layer
  * 
- * Connects NXRender graphics library to the desktop shell.
- * Provides initialization and API wrappers for smooth migration.
+ * Stub implementation for desktop shell compatibility.
+ * Desktop uses direct pixel rendering instead of NXRender.
  * 
  * Copyright (c) 2025 KetiveeAI
  */
@@ -11,8 +11,10 @@
 #define NXRENDER_BRIDGE_H
 
 #include <stdint.h>
-/* Only include nxgfx to avoid nx_event_t conflict with desktop's nxevent.h */
-#include <nxgfx/nxgfx.h>
+
+/* Forward declarations for stub types */
+typedef struct nx_context nx_context_t;
+typedef struct nx_font nx_font_t;
 
 /* Initialize NXRender with kernel framebuffer */
 int nxr_bridge_init(void *framebuffer, uint32_t width, uint32_t height, uint32_t pitch);
@@ -28,7 +30,7 @@ nx_font_t* nxr_get_font_default(void);
 nx_font_t* nxr_get_font_small(void);
 nx_font_t* nxr_get_font_large(void);
 
-/* Convenience drawing functions (replaces desktop_draw_*) */
+/* Convenience drawing functions (stubs - desktop uses direct pixel rendering) */
 void nxr_draw_text(int32_t x, int32_t y, const char *text, uint32_t color);
 void nxr_draw_text_large(int32_t x, int32_t y, const char *text, uint32_t color);
 void nxr_fill_rect(int32_t x, int32_t y, uint32_t w, uint32_t h, uint32_t color);
@@ -45,17 +47,7 @@ void nxr_draw_image(const void *rgba_data, int32_t x, int32_t y, uint32_t w, uin
 
 /* Frame control */
 void nxr_begin_frame(void);
-void nxr_end_frame(void);      /* Presents to screen with double-buffer */
+void nxr_end_frame(void);
 void nxr_clear(uint32_t color);
-
-/* Convert ARGB to nx_color_t */
-static inline nx_color_t nxr_argb_to_color(uint32_t argb) {
-    return (nx_color_t){
-        .r = (argb >> 16) & 0xFF,
-        .g = (argb >> 8) & 0xFF,
-        .b = argb & 0xFF,
-        .a = (argb >> 24) & 0xFF
-    };
-}
 
 #endif /* NXRENDER_BRIDGE_H */

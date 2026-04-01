@@ -117,7 +117,11 @@ static int init_framebuffer(void) {
     
     /* Initialize NXRender graphics library */
     if (nxr_bridge_init(g_backbuffer, g_fb_info.width, g_fb_info.height, g_fb_info.pitch) < 0) {
-        nx_debug_print("[DESKTOP] NXRender init failed - using fallback\n");
+        nx_debug_print("[DESKTOP] NXRender init failed - using fallback rendering\n");
+        /* Continue without NXRender - use direct pixel rendering */
+    } else {
+        nx_debug_print("[DESKTOP] NXRender initialized successfully\n");
+    }
     }
     
     g_fb_initialized = 1;

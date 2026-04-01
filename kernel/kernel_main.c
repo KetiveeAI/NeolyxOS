@@ -712,6 +712,28 @@ void kernel_main(NeolyxBootInfo *boot_info) {
                 }
                 serial_puts("\n");
                 
+                /* ============ CRITICAL: Set up desktop heap (64MB reserve) ============
+                 * The desktop needs dynamic memory allocation via brk() syscall.
+                 * This enables Windows/macOS-style dynamic heap growth.
+                 * The heap starts after the ELF's .bss section (elf_info.brk). */
+                serial_puts("[KERNEL] Setting up desktop heap (64MB reserve)...\n");
+                extern void syscall_set_desktop_heap(uint64_t start, uint64_t max_size);
+                uint64_t heap_start = (elf_info.brk + 0xFFF) & ~0xFFFULL;  /* Page-aligned after ELF */
+                uint64_t heap_size = 64 * 1024 * 1024;  /* 64MB reserve */
+                syscall_set_desktop_heap(heap_start, heap_size);
+                
+                /* Map heap region with PAGE_USER flag so userspace can access it */
+                serial_puts("[KERNEL] Mapping heap region with USER flag...\n");
+                extern void paging_add_user_flag(uint64_t start, uint64_t size);
+                paging_add_user_flag(heap_start, heap_size);
+                serial_puts("[KERNEL] Desktop heap ready: start=0x");
+                for (int i = 60; i >= 0; i -= 4) {
+                    char c = hex[(heap_start >> i) & 0xF];
+                    extern void serial_putc(char c);
+                    serial_putc(c);
+                }
+                serial_puts(" size=64MB\n");
+                
                 /* Use fixed userspace stack address within mapped 8MB region
                  * Stack: 0x500000 - 0x510000 (64KB)
                  * This is identity-mapped with USER flag by paging_init() */
