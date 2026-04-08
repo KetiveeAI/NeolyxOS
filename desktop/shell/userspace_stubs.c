@@ -108,10 +108,5 @@ void *memcpy(void *dest, const void *src, uint64_t n) {
     return dest;
 }
 
-/* ============ Cursor Syscall (kernel cursor compositor) ============ */
-
-#define SYS_CURSOR_SET 128
-
-void nx_cursor_set(int32_t x, int32_t y, int visible) {
-    syscall3(SYS_CURSOR_SET, (int64_t)x, (int64_t)y, (int64_t)visible);
-}
+/* ============ Cursor Syscall - MOVED TO nxsyscall.h ============ */
+/* nx_cursor_set() is now defined as inline in nxsyscall.h */

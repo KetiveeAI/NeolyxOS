@@ -185,6 +185,12 @@ static inline int nx_fb_flip(void *backbuffer) {
     return (int)syscall1(SYS_FB_FLIP, (int64_t)backbuffer);
 }
 
+/* Set cursor position (kernel cursor compositor) */
+#define SYS_CURSOR_SET 128
+static inline int nx_cursor_set(int x, int y, int visible) {
+    return (int)syscall3(SYS_CURSOR_SET, (int64_t)x, (int64_t)y, (int64_t)visible);
+}
+
 /* Poll for input events */
 static inline int nx_input_poll(input_event_t *event) {
     /* SYS_INPUT_POLL takes (ptr, max_events) */
