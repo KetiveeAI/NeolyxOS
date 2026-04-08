@@ -108,7 +108,7 @@ static nxmouse_state_t g_mouse = {0};
 /* ============ PS/2 Low-Level ============ */
 
 static int ps2_wait_input(void) {
-    for (int i = 0; i < 10000; i++) {
+    for (int i = 0; i < 100000; i++) {
         if (!(inb(PS2_STATUS_PORT) & 0x02))
             return 0;
         for (int j = 0; j < 100; j++) __asm__ volatile("nop");
@@ -117,12 +117,20 @@ static int ps2_wait_input(void) {
 }
 
 static int ps2_wait_output(void) {
-    for (int i = 0; i < 10000; i++) {
+    for (int i = 0; i < 100000; i++) {
         if (inb(PS2_STATUS_PORT) & 0x01)
             return 0;
         for (int j = 0; j < 100; j++) __asm__ volatile("nop");
     }
     return -1;
+}
+
+static void ps2_flush(void) {
+    /* Clear residual data from output buffer */
+    while (inb(PS2_STATUS_PORT) & 0x01) {
+        inb(PS2_DATA_PORT);
+        for (int j = 0; j < 100; j++) __asm__ volatile("nop");
+    }
 }
 
 static int ps2_send_mouse_cmd(uint8_t cmd) {
@@ -323,6 +331,9 @@ int nxmouse_kdrv_init(void) {
     /* This enables the second PS/2 port (mouse) and enables IRQ12 */
     
     serial_puts("[NXMouse] Configuring PS/2 controller...\n");
+    
+    /* 0. Flush the PS/2 controller to remove residual data from bootloader */
+    ps2_flush();
     
     /* 1. Enable second PS/2 port (for mouse) */
     if (ps2_wait_input() != 0) {
