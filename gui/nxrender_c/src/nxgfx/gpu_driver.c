@@ -5,6 +5,7 @@
 
 #define _POSIX_C_SOURCE 199309L
 #include "nxgfx/gpu_driver.h"
+#include "nxgfx/nxgame_api.h"
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -26,12 +27,27 @@ nx_gpu_driver_t* nx_gpu_driver_init(void) {
     gpu->info.device_id = 0x5678;
     gpu->info.vram_size = 256 * 1024 * 1024;  /* 256 MB */
     gpu->info.max_texture_size = 8192;
-    gpu->info.framebuffer_width = 1920;
-    gpu->info.framebuffer_height = 1080;
+    nxgame_res_t res = {0};
+    if (nxgame_init() == 0 && nxgame_get_resolution(&res) == 0) {
+        gpu->info.framebuffer_width = res.width;
+        gpu->info.framebuffer_height = res.height;
+    } else {
+        gpu->info.framebuffer_width = 1920;
+        gpu->info.framebuffer_height = 1080;
+    }
     gpu->info.refresh_rate = 60;
     gpu->info.supports_compute = false;
     gpu->info.supports_raytracing = false;
     gpu->info.supports_hdr = false;
+    
+    /* Request direct framebuffer mapper through NXGame API */
+    void* fb_ptr = nxgame_request_fb();
+    if (fb_ptr) {
+        /* Real driver context */
+        gpu->driver_fd = 1;
+    } else {
+        gpu->driver_fd = -1;
+    }
     
     /* Allocate command buffer */
     gpu->cmd_buffer = calloc(1, sizeof(nx_gpu_cmd_buffer_t));
@@ -42,9 +58,6 @@ nx_gpu_driver_t* nx_gpu_driver_init(void) {
     gpu->next_texture_id = 1;
     gpu->vsync_enabled = true;
     gpu->last_frame_time = get_time_us();
-    
-    /* In real implementation, would open /dev/nxgpu and mmap VRAM */
-    gpu->driver_fd = -1;
     
     return gpu;
 }
@@ -225,18 +238,15 @@ void nx_gpu_present(nx_gpu_driver_t* gpu) {
     nx_gpu_cmd_t* cmd = alloc_cmd(gpu);
     if (cmd) cmd->type = NX_GPU_CMD_PRESENT;
     
-    /* VSync wait */
+    /* VSync wait through kernel IPC */
     if (gpu->vsync_enabled) {
-        uint64_t now = get_time_us();
-        uint64_t frame_time = 1000000 / gpu->info.refresh_rate;  /* 16666 us for 60 Hz */
-        uint64_t elapsed = now - gpu->last_frame_time;
-        if (elapsed < frame_time) {
-            /* Sleep for remaining time */
-            struct timespec ts = { 0, (frame_time - elapsed) * 1000 };
-            nanosleep(&ts, NULL);
-        }
+        nxgame_wait_vsync();
         gpu->last_frame_time = get_time_us();
     }
+    
+    /* Submit to compositor by swapping NXGame ring buffers */
+    nxgame_swap_buffers();
+    nxgame_present();
     
     gpu->frame_count++;
 }

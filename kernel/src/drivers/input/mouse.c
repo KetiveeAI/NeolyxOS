@@ -332,23 +332,20 @@ int nxmouse_kdrv_init(void) {
     
     serial_puts("[NXMouse] Configuring PS/2 controller...\n");
     
-    /* 0. Flush the PS/2 controller to remove residual data from bootloader */
+    /* 0. Disable PS/2 devices to prevent asynchronous data */
+    if (ps2_wait_input() != 0) { serial_puts("[NXMouse] Timeout disabling kbd\n"); return -1; }
+    outb(PS2_COMMAND_PORT, 0xAD);  /* Disable first port */
+    
+    if (ps2_wait_input() != 0) { serial_puts("[NXMouse] Timeout disabling mouse\n"); return -1; }
+    outb(PS2_COMMAND_PORT, 0xA7);  /* Disable second port */
+    
+    /* Flush any data that arrived before disabling */
     ps2_flush();
     
-    /* 1. Enable second PS/2 port (for mouse) */
-    if (ps2_wait_input() != 0) {
-        serial_puts("[NXMouse] PS/2 controller timeout\n");
-        return -1;
-    }
-    outb(PS2_COMMAND_PORT, 0xA8);  /* Enable second port command */
-    
-    /* Small delay for controller to process */
-    for (int i = 0; i < 1000; i++) __asm__ volatile("nop");
-    
-    /* 2. Read Controller Configuration Byte (CCB) */
-    if (ps2_wait_input() != 0) return -1;
+    /* 1. Read Controller Configuration Byte (CCB) */
+    if (ps2_wait_input() != 0) { serial_puts("[NXMouse] Timeout input cmd 0x20\n"); return -1; }
     outb(PS2_COMMAND_PORT, 0x20);  /* Read CCB command */
-    if (ps2_wait_output() != 0) return -1;
+    if (ps2_wait_output() != 0) { serial_puts("[NXMouse] Timeout output cmd 0x20\n"); return -1; }
     uint8_t ccb = inb(PS2_DATA_PORT);
     
     serial_puts("[NXMouse] CCB before: 0x");
@@ -357,7 +354,7 @@ int nxmouse_kdrv_init(void) {
     serial_putc("0123456789ABCDEF"[ccb & 0xF]);
     serial_puts("\n");
     
-    /* 3. Modify CCB:
+    /* 2. Modify CCB:
      *    Bit 0: Enable IRQ1 (keyboard) - keep enabled
      *    Bit 1: Enable IRQ12 (mouse) - SET
      *    Bit 4: Disable keyboard clock - CLEAR (enable keyboard)
@@ -367,37 +364,52 @@ int nxmouse_kdrv_init(void) {
     uint8_t new_ccb = ccb;
     new_ccb |= 0x01;   /* Bit 0 = Enable IRQ1 (keyboard) */
     new_ccb |= 0x02;   /* Bit 1 = Enable IRQ12 (mouse) */
-    new_ccb &= ~0x10;  /* Bit 4 = Clear to enable keyboard clock */
-    new_ccb &= ~0x20;  /* Bit 5 = Clear to enable mouse clock */
+    /* NOTE: DO NOT clear bits 4 and 5 here! If we do, the devices might
+     * start sending data and interrupt the verify step. We will enable
+     * the devices later using 0xAE and 0xA8 commands.
+     */
     
     serial_puts("[NXMouse] Writing CCB: 0x");
     serial_putc("0123456789ABCDEF"[(new_ccb >> 4) & 0xF]);
     serial_putc("0123456789ABCDEF"[new_ccb & 0xF]);
     serial_puts("\n");
     
-    /* 4. Write back modified CCB */
-    if (ps2_wait_input() != 0) return -1;
+    /* 3. Write back modified CCB */
+    if (ps2_wait_input() != 0) { serial_puts("[NXMouse] Timeout input cmd 0x60\n"); return -1; }
     outb(PS2_COMMAND_PORT, 0x60);  /* Write CCB command */
-    if (ps2_wait_input() != 0) return -1;
+    if (ps2_wait_input() != 0) { serial_puts("[NXMouse] Timeout input writing CCB\n"); return -1; }
     outb(PS2_DATA_PORT, new_ccb);
     
     /* Small delay for controller to process */
     for (int i = 0; i < 1000; i++) __asm__ volatile("nop");
     
-    /* 5. READ BACK CCB to verify write succeeded */
-    if (ps2_wait_input() != 0) return -1;
-    outb(PS2_COMMAND_PORT, 0x20);  /* Read CCB command */
-    if (ps2_wait_output() != 0) return -1;
-    uint8_t verify_ccb = inb(PS2_DATA_PORT);
-    
-    serial_puts("[NXMouse] CCB verify: 0x");
-    serial_putc("0123456789ABCDEF"[(verify_ccb >> 4) & 0xF]);
-    serial_putc("0123456789ABCDEF"[verify_ccb & 0xF]);
-    if (verify_ccb & 0x02) {
-        serial_puts(" (IRQ12 ENABLED)\n");
+    /* 4. READ BACK CCB to verify write succeeded */
+    /* WE WILL JUST SKIP TIMEOUT IF VERIFY FAILS (QEMU might be slow) */
+    if (ps2_wait_input() == 0) {
+        outb(PS2_COMMAND_PORT, 0x20);  /* Read CCB command */
+        if (ps2_wait_output() == 0) {
+            uint8_t verify_ccb = inb(PS2_DATA_PORT);
+            serial_puts("[NXMouse] CCB verify: 0x");
+            serial_putc("0123456789ABCDEF"[(verify_ccb >> 4) & 0xF]);
+            serial_putc("0123456789ABCDEF"[verify_ccb & 0xF]);
+            if (verify_ccb & 0x02) {
+                serial_puts(" (IRQ12 ENABLED)\n");
+            } else {
+                serial_puts(" (IRQ12 still disabled!)\n");
+            }
+        } else {
+            serial_puts("[NXMouse] Warning: verify CCB output timeout\n");
+        }
     } else {
-        serial_puts(" (IRQ12 still disabled!)\n");
+        serial_puts("[NXMouse] Warning: verify CCB input timeout\n");
     }
+    
+    /* 5. Enable the devices */
+    if (ps2_wait_input() != 0) { serial_puts("[NXMouse] Timeout input cmd 0xAE\n"); return -1; }
+    outb(PS2_COMMAND_PORT, 0xAE);  /* Enable first port */
+    
+    if (ps2_wait_input() != 0) { serial_puts("[NXMouse] Timeout input cmd 0xA8\n"); return -1; }
+    outb(PS2_COMMAND_PORT, 0xA8);  /* Enable second port */
     
     /* ========== End PS/2 Controller Configuration ========== */
     

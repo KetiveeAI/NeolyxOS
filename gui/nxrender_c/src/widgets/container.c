@@ -165,6 +165,28 @@ void nx_scrollview_scroll_by(nx_scrollview_t* sv, int32_t dx, int32_t dy) {
     if (sv->scroll_y > max_y) sv->scroll_y = max_y > 0 ? max_y : 0;
 }
 
+void nx_scrollview_tick_physics(nx_scrollview_t* sv) {
+    if (!sv || sv->is_dragging) return;
+    
+    int32_t max_y = sv->content_height - (int32_t)sv->base.bounds.height;
+    if (max_y < 0) max_y = 0;
+    
+    /* Apply momentum */
+    sv->scroll_y += (int32_t)sv->velocity_y;
+    sv->velocity_y *= NX_SCROLL_FRICTION;
+    
+    if (sv->velocity_y > -0.5f && sv->velocity_y < 0.5f) {
+        sv->velocity_y = 0.0f;
+    }
+    
+    /* Spring bounce constraints */
+    if (sv->scroll_y < 0) {
+        sv->velocity_y += (0 - sv->scroll_y) * NX_SCROLL_SPRING_TENSION;
+    } else if (sv->scroll_y > max_y) {
+        sv->velocity_y += (max_y - sv->scroll_y) * NX_SCROLL_SPRING_TENSION;
+    }
+}
+
 static void scrollview_render(nx_widget_t* self, nx_context_t* ctx) {
     nx_scrollview_t* sv = (nx_scrollview_t*)self;
     nxgfx_set_clip(ctx, self->bounds);
@@ -197,9 +219,21 @@ static void scrollview_layout(nx_widget_t* self, nx_rect_t bounds) {
 
 static nx_event_result_t scrollview_handle_event(nx_widget_t* self, nx_event_t* event) {
     nx_scrollview_t* sv = (nx_scrollview_t*)self;
-    if (event->type == NX_EVENT_MOUSE_MOVE && event->modifiers.shift) {
-        /* Simulate scroll wheel with shift+drag (placeholder) */
+    
+    if (event->type == NX_EVENT_MOUSE_DOWN) {
+        sv->is_dragging = true;
+        sv->last_mouse_y = event->pos.y;
+        sv->velocity_y = 0;
+    } else if (event->type == NX_EVENT_MOUSE_UP || event->type == NX_EVENT_MOUSE_LEAVE) {
+        sv->is_dragging = false;
+    } else if (event->type == NX_EVENT_MOUSE_MOVE && sv->is_dragging) {
+        int32_t dy = event->pos.y - sv->last_mouse_y;
+        sv->scroll_y -= dy; /* Pan inverted relative to mouse */
+        sv->velocity_y = (float)-dy; /* Inject momentum */
+        sv->last_mouse_y = event->pos.y;
+        return NX_EVENT_NEEDS_REDRAW;
     }
+    
     if (sv->content) return nx_widget_handle_event(sv->content, event);
     return NX_EVENT_IGNORED;
 }

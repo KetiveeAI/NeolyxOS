@@ -143,3 +143,34 @@ void nx_layout_stack(nx_widget_t* container, nx_stack_layout_t layout, nx_rect_t
         nx_widget_layout(child, (nx_rect_t){x, y, sz.width, sz.height});
     }
 }
+
+void nx_layout_grid(nx_widget_t* container, nx_grid_layout_t layout, nx_rect_t bounds) {
+    if (!container || container->child_count == 0 || layout.cols == 0) return;
+    
+    uint32_t rows = layout.rows;
+    if (rows == 0) {
+        rows = (container->child_count + layout.cols - 1) / layout.cols;
+    }
+    
+    uint32_t total_col_gap = (layout.cols - 1) * layout.col_gap;
+    uint32_t total_row_gap = (rows - 1) * layout.row_gap;
+    
+    uint32_t cell_width = (bounds.width > total_col_gap) ? (bounds.width - total_col_gap) / layout.cols : 0;
+    uint32_t cell_height = (bounds.height > total_row_gap) ? (bounds.height - total_row_gap) / rows : 0;
+    
+    for (size_t i = 0; i < container->child_count; i++) {
+        uint32_t col = i % layout.cols;
+        uint32_t row = i / layout.cols;
+        
+        if (row >= rows) break; /* Avoid overflowing constrained height */
+        
+        nx_rect_t cell_bounds = {
+            bounds.x + col * (cell_width + layout.col_gap),
+            bounds.y + row * (cell_height + layout.row_gap),
+            cell_width,
+            cell_height
+        };
+        
+        nx_widget_layout(container->children[i], cell_bounds);
+    }
+}

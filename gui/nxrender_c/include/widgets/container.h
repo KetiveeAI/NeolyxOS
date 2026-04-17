@@ -59,12 +59,23 @@ typedef struct {
     nx_color_t scrollbar_color;
     nx_color_t scrollbar_track;
     uint32_t scrollbar_width;
+    
+    /* Scroll Physics */
+    float velocity_x;
+    float velocity_y;
+    bool is_dragging;
+    int32_t last_mouse_y;
 } nx_scrollview_t;
+
+/* Physics constants */
+#define NX_SCROLL_FRICTION 0.92f
+#define NX_SCROLL_SPRING_TENSION 0.1f
 
 nx_scrollview_t* nx_scrollview_create(void);
 void nx_scrollview_set_content(nx_scrollview_t* sv, nx_widget_t* content);
 void nx_scrollview_scroll_to(nx_scrollview_t* sv, int32_t x, int32_t y);
 void nx_scrollview_scroll_by(nx_scrollview_t* sv, int32_t dx, int32_t dy);
+void nx_scrollview_tick_physics(nx_scrollview_t* sv);
 
 #ifdef __cplusplus
 }

@@ -62,6 +62,14 @@ typedef struct {
     nx_align_t vertical;
 } nx_stack_layout_t;
 
+/* Grid layout */
+typedef struct {
+    uint32_t cols;
+    uint32_t rows; /* If 0, auto-computed from children count */
+    uint32_t col_gap;
+    uint32_t row_gap;
+} nx_grid_layout_t;
+
 /* Default layouts */
 nx_flex_layout_t nx_flex_row(void);
 nx_flex_layout_t nx_flex_column(void);
@@ -72,6 +80,9 @@ void nx_layout_flex(nx_widget_t* container, nx_flex_layout_t layout, nx_rect_t b
 
 /* Apply stack layout to children */
 void nx_layout_stack(nx_widget_t* container, nx_stack_layout_t layout, nx_rect_t bounds);
+
+/* Apply grid layout to children */
+void nx_layout_grid(nx_widget_t* container, nx_grid_layout_t layout, nx_rect_t bounds);
 
 /* Constraint helpers */
 nx_constraints_t nx_constraints_tight(uint32_t w, uint32_t h);
