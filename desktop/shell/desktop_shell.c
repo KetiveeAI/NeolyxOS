@@ -736,11 +736,18 @@ static void render_navigation_bar(void) {
         int clock_x = (g_desktop.width - 40) / 2;
         desktop_draw_text(clock_x, 8, time_str, COLOR_TEXT_WHITE);
     } else {
-        /* Fallback to boot ticks if RTC fails */
+        /* Fallback: Calculate time from boot ticks + cached RTC boot time */
         uint64_t ticks = pit_get_ticks();
-        uint32_t secs = (uint32_t)(ticks / 1000);
-        uint32_t hours = ((secs / 3600) + 11) % 24;
-        uint32_t mins = (secs / 60) % 60;
+        uint32_t elapsed_secs = (uint32_t)(ticks / 1000);
+        
+        /* Use cached RTC time as base (includes timezone offset) */
+        uint32_t base_secs = g_cached_rtc_time.hour * 3600 + 
+                             g_cached_rtc_time.minute * 60 + 
+                             g_cached_rtc_time.second;
+        uint32_t total_secs = base_secs + elapsed_secs;
+        
+        uint32_t hours = (total_secs / 3600) % 24;
+        uint32_t mins = (total_secs / 60) % 60;
         
         char time_str[16];
         time_str[0] = '0' + (hours / 10);
@@ -1836,8 +1843,7 @@ int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pit
     /* If parameters are 0, use syscall to get FB info */
     if (fb_addr == 0 || width == 0) {
         /* Initialize config system first */
-        /* TEMPORARY: Disabled to debug crash - config not critical for boot */
-        /* nx_config_init(); */
+        nx_config_init();
         
         if (init_framebuffer() != 0) {
             serial_puts("[DESKTOP] Failed to init framebuffer via syscall\n");
