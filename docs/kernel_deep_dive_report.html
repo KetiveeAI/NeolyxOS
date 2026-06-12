@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeolyxOS Core Analysis Report</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #3b82f6;
+            --accent-glow: rgba(59, 130, 246, 0.5);
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --card-border: rgba(255, 255, 255, 0.1);
+            --glass-bg: rgba(15, 23, 42, 0.6);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            line-height: 1.6;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.15), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.15), transparent 25%);
+            background-attachment: fixed;
+            overflow-x: hidden;
+        }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-color); }
+        ::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 4px; }
+
+        header {
+            padding: 4rem 2rem;
+            text-align: center;
+            background: linear-gradient(180deg, var(--glass-bg) 0%, transparent 100%);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--card-border);
+            animation: fadeInDown 1s ease-out;
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            background: linear-gradient(to right, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+            letter-spacing: -1px;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 2rem;
+            backdrop-filter: blur(10px);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
+            animation: fadeInUp 0.8s ease-out forwards;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 15px var(--accent-glow);
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        /* Staggered animation delays */
+        .card:nth-child(1) { animation-delay: 0.1s; }
+        .card:nth-child(2) { animation-delay: 0.2s; }
+        .card:nth-child(3) { animation-delay: 0.3s; }
+        .card:nth-child(4) { animation-delay: 0.4s; }
+        .card:nth-child(5) { animation-delay: 0.5s; }
+        .card:nth-child(6) { animation-delay: 0.6s; }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 1rem;
+        }
+
+        .card-icon {
+            font-size: 2rem;
+            margin-right: 1rem;
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .status-complete { background: rgba(16, 185, 129, 0.2); color: var(--success); border: 1px solid var(--success); }
+        .status-progress { background: rgba(245, 158, 11, 0.2); color: var(--warning); border: 1px solid var(--warning); }
+        .status-broken { background: rgba(239, 68, 68, 0.2); color: var(--danger); border: 1px solid var(--danger); }
+
+        ul {
+            list-style: none;
+        }
+
+        li {
+            margin-bottom: 0.75rem;
+            position: relative;
+            padding-left: 1.5rem;
+        }
+
+        li::before {
+            content: '→';
+            position: absolute;
+            left: 0;
+            color: var(--accent);
+        }
+
+        .code-snippet {
+            background: #000;
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.875rem;
+            color: #a5b4fc;
+            overflow-x: auto;
+            margin-top: 1rem;
+            border: 1px solid #333;
+        }
+
+        .highlight { color: #f472b6; }
+        .keyword { color: #60a5fa; }
+
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .stats-row {
+            display: flex;
+            justify-content: space-around;
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 3rem;
+            border: 1px solid var(--card-border);
+            backdrop-filter: blur(10px);
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(to right, #34d399, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+    </style>
+    <!-- Modern Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<header>
+    <h1>NeolyxOS Architecture Report</h1>
+    <p class="subtitle">Deep dive analysis of kernel maturity, syscall dispatching, filesystem implementation, and scattered subsystems.</p>
+</header>
+
+<div class="container">
+    <div class="stats-row">
+        <div class="stat-item">
+            <div class="stat-value">64-bit</div>
+            <div class="stat-label">Architecture</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">VFS</div>
+            <div class="stat-label">Filesystem Layer</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">Custom</div>
+            <div class="stat-label">Bootloader</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">ELF64</div>
+            <div class="stat-label">Binary Support</div>
+        </div>
+    </div>
+
+    <div class="grid">
+        <!-- Kernel Core -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-icon">🧠</span>
+                <h2 class="card-title">Kernel Capability</h2>
+            </div>
+            <span class="status-badge status-complete">Highly Capable</span>
+            <p>The NeolyxOS kernel demonstrates extreme maturity for a custom monolithic architecture:</p>
+            <ul>
+                <li><strong>Memory:</strong> Full Physical (PMM) and Virtual (VMM) memory managers.</li>
+                <li><strong>Interrupts:</strong> IDT configured with IST1 for exceptions. PIC remapping complete.</li>
+                <li><strong>Execution:</strong> Rings 0 & 3 fully utilized. Transitioning to userspace works perfectly.</li>
+                <li><strong>Booting:</strong> Custom <code>NeolyxBootInfo</code> handoff with framebuffers, memory maps, and ACPI tables smoothly handled.</li>
+            </ul>
+        </div>
+
+        <!-- Syscall Subsystem -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-icon">⚡</span>
+                <h2 class="card-title">Syscall Dispatching</h2>
+            </div>
+            <span class="status-badge status-complete">Advanced</span>
+            <p>The syscall mechanism is modern, secure, and performant:</p>
+            <ul>
+                <li><strong>Dynamic Macro Generation:</strong> Driven by <code>syscall_table.def</code> for a single source of truth.</li>
+                <li><strong>ABI Negotiation:</strong> Custom <code>sys_abi_negotiate</code> guarantees compatibility between userspace and kernel.</li>
+                <li><strong>Filtering & Auditing:</strong> Uniquely implements per-process filtering (<code>nx_set_syscall_filter</code>) and blocked-call auditing (<code>nx_audit_log</code>).</li>
+            </ul>
+            <div class="code-snippet">
+                <span class="keyword">int64_t</span> <span class="highlight">nx_syscall_dispatch</span>(num, a1, a2...);<br>
+                // O(1) jump table lookup with hot-path branch prediction.
+            </div>
+        </div>
+
+        <!-- File Systems -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-icon">📁</span>
+                <h2 class="card-title">Filesystem & VFS</h2>
+            </div>
+            <span class="status-badge status-progress">In Progress</span>
+            <p>The VFS is solid, but native disk FS is lacking:</p>
+            <ul>
+                <li><strong>RAMFS:</strong> Fully operational. Embeds raw payloads (<code>hello</code>, <code>desktop</code>, <code>nxsh</code>) at boot for immediate execution.</li>
+                <li><strong>Mounts:</strong> Capable of resolving nested mounts (e.g. <code>/ramfs/bin</code>).</li>
+                <li><strong>NXFS:</strong> Still highly mocked. The kernel depends on a boot marker (<code>boot_info->reserved[0]</code>) rather than a true disk superblock probe to determine "install status".</li>
+            </ul>
+        </div>
+
+        <!-- Scattered Subsystems -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-icon">🧩</span>
+                <h2 class="card-title">Scattered Elements</h2>
+            </div>
+            <span class="status-badge status-progress">Architecture Drift</span>
+            <p>Drivers and UI components are spreading rapidly:</p>
+            <ul>
+                <li><strong>NXRender:</strong> Currently being split into `Device`, `Layout`, and `Shadow Tree` to achieve zero-dependency UI.</li>
+                <li><strong>Zepra / NXGame Bridge:</strong> Massive GPU, Audio, and Input session managers baked directly into the kernel ABI (e.g., <code>sys_nxgame_gpu_acquire</code>).</li>
+                <li><strong>Network:</strong> <code>tcpip_init</code> and Socket API exist but NIC drivers are highly segmented.</li>
+            </ul>
+        </div>
+
+        <!-- What needs work -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-icon">🔧</span>
+                <h2 class="card-title">Broken / Incomplete</h2>
+            </div>
+            <span class="status-badge status-broken">Needs Attention</span>
+            <p>Critical paths needing engineering focus:</p>
+            <ul>
+                <li><strong>Scheduling:</strong> <code>sys_yield_impl</code> is currently a no-op because the desktop operates without a strict process context switch environment.</li>
+                <li><strong>Heap Fallback:</strong> The kernel uses a hardcoded 64MB global reserve (<code>g_desktop_heap</code>) for the desktop instead of isolated page allocations.</li>
+                <li><strong>Directory Lookups:</strong> <code>ramfs_finddir</code> relies on workaround static pointers due to <code>.data</code> segment linking issues.</li>
+            </ul>
+        </div>
+
+        <!-- Security & Integrity -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-icon">🛡️</span>
+                <h2 class="card-title">Security & Safety</h2>
+            </div>
+            <span class="status-badge status-complete">Production-Grade</span>
+            <p>Following strict operational manuals:</p>
+            <ul>
+                <li><strong>Boot Guard:</strong> Deeply embedded watchdog tracking boot success/fail metrics. Triggers recovery on looping panics.</li>
+                <li><strong>SIP (System Integrity Protection):</strong> Blocks dynamic module loads and tracks ELF validations.</li>
+                <li><strong>User Pointer Validation:</strong> Syscalls explicitly bounds-check and validate user address spaces before <code>copy_to_user</code>.</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Simple micro-animations for interactivity
+    document.querySelectorAll('.card').forEach(card => {
+        card.addEventListener('mousemove', e => {
+            const rect = card.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            card.style.setProperty('--mouse-x', `${x}px`);
+            card.style.setProperty('--mouse-y', `${y}px`);
+        });
+    });
+</script>
+</body>
+</html>
