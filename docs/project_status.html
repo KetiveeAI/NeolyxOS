@@ -156,11 +156,11 @@
 <body>
     <div class="container">
         <h1>📊 NeolyxOS Project Status</h1>
-        <p><strong>Last Updated:</strong> January 21, 2026</p>
+        <p><strong>Last Updated:</strong> June 12, 2026</p>
 
         <div class="grid">
             <div class="stat-card">
-                <h3 style="color: var(--success);">43</h3>
+                <h3 style="color: var(--success);">47</h3>
                 <p>Complete Modules</p>
             </div>
             <div class="stat-card">
@@ -172,7 +172,7 @@
                 <p>Stubs Only</p>
             </div>
             <div class="stat-card">
-                <h3 style="color: var(--error);">5</h3>
+                <h3 style="color: var(--error);">1</h3>
                 <p>Missing</p>
             </div>
         </div>
@@ -323,7 +323,7 @@
                 <td>kheap.c</td>
                 <td>9KB</td>
                 <td class="status-complete">✓ Complete</td>
-                <td>Kernel heap (kmalloc/kfree)</td>
+                <td>Kernel heap (with block coalescing)</td>
             </tr>
         </table>
 
@@ -667,6 +667,21 @@
                 <td>terminal.c (17KB)</td>
                 <td class="status-complete">✓ Complete</td>
             </tr>
+            <tr>
+                <td>shell/</td>
+                <td>desktop_shell.c (Neo-Aura, Kawase Blur, Night Mode, Tiling)</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>shell/</td>
+                <td>volume_osd.c, keyboard_osd.c, theme_osd.c, battery_warning.c</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>gui/nxrender_c/src/layout/</td>
+                <td>NXToolkit Engine (Grid/Flex/SVG layout)</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
         </table>
 
         <h2>⚙️ Services & Userspace</h2>
@@ -693,6 +708,12 @@
                 <td>nxsh (Shell)</td>
                 <td>userland/nxsh/nxsh.c</td>
                 <td>8KB</td>
+                <td class="status-complete">✓ Complete</td>
+            </tr>
+            <tr>
+                <td>Health Monitor</td>
+                <td>services/health_monitor.c</td>
+                <td>240 Lines</td>
                 <td class="status-complete">✓ Complete</td>
             </tr>
         </table>
@@ -762,16 +783,6 @@
                 <td><code>System Updater Backend</code></td>
                 <td class="status-missing">✗ Critical</td>
                 <td>Settings.app UI exists, no backend service for updates</td>
-            </tr>
-            <tr>
-                <td><code>Health Monitor Daemon</code></td>
-                <td class="status-missing">✗ High</td>
-                <td>Kernel watchdog exists, no userspace health daemon</td>
-            </tr>
-            <tr>
-                <td><code>Volume/Keyboard OSD</code></td>
-                <td class="status-missing">✗ Medium</td>
-                <td>No on-screen display for volume changes or keyboard shortcuts</td>
             </tr>
             <tr>
                 <td><code>AMD Zen CPU optimizations</code></td>

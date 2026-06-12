@@ -1,7 +1,7 @@
 # NeolyxOS Development TODO - Deep Architecture Analysis
 
-**Last Updated:** January 21, 2026  
-**Project Status:** Desktop 70% | Networking 60% | Overall ~50%
+**Last Updated:** June 12, 2026  
+**Project Status:** Desktop 75% | Networking 60% | Overall ~55%
 
 ---
 
@@ -14,10 +14,10 @@ Based on deep codebase analysis:
 | USB            | 🔴 Missing      | ✅ Working          | `nxusb_kdrv` initialized in kernel_main.c |
 | Mouse          | ✅ Working      | ✅ Working          | IRQ12, PS/2 driver functional             |
 | Keyboard       | ✅ Working      | ✅ Working          | IRQ1, input events dispatched             |
-| Desktop Shell  | ✅ Complete     | 🟡 Incomplete       | Renders but lacks OSD feedback components |
-| Volume OSD     | Not listed      | 🔴 Missing          | No popup when changing volume             |
-| Keyboard OSD   | Not listed      | 🔴 Missing          | No on-screen keyboard indicator           |
-| Control Center | ✅ Complete     | 🟡 Rendering issues | Code exists but may not display properly  |
+| Desktop Shell  | 🟡 Incomplete   | ✅ Complete         | Render issues resolved, Neo-Aura running  |
+| Volume OSD     | 🔴 Missing      | ✅ Complete         | Implemented with floating bar & fade      |
+| Keyboard OSD   | 🔴 Missing      | ✅ Complete         | Implemented Caps Lock / shortcut display  |
+| Control Center | 🟡 Rendering    | ✅ Complete         | Alpha blending fixed, sliders working     |
 
 ---
 
@@ -237,14 +237,14 @@ USB DRIVER         [████████████████████
 MOUSE DRIVER       [████████████████████] 100% ✅
 KEYBOARD DRIVER    [████████████████████] 100% ✅
 FRAMEBUFFER        [████████████████████] 100% ✅
-DESKTOP SHELL      [██████████████░░░░░░]  70% 🟡 (rendering gaps)
-CONTROL CENTER     [████████░░░░░░░░░░░░]  40% 🔴 (may not display)
-VOLUME OSD         [░░░░░░░░░░░░░░░░░░░░]   0% 🔴 (not implemented)
-KEYBOARD OSD       [░░░░░░░░░░░░░░░░░░░░]   0% 🔴 (not implemented)
+DESKTOP SHELL      [███████████████░░░░░]  75% 🟡 (Neo-Aura baseline)
+CONTROL CENTER     [████████████████████] 100% ✅ (rendering fixed)
+VOLUME OSD         [████████████████████] 100% ✅ (implemented)
+KEYBOARD OSD       [████████████████████] 100% ✅ (implemented)
 NETWORKING         [████████████░░░░░░░░]  60% 🔄
 SMP                [░░░░░░░░░░░░░░░░░░░░]   0% ⏳
 ---------------------------------------------------------
-OVERALL COMPLETENESS: ~50%
+OVERALL COMPLETENESS: ~55%
 ```
 
 ---

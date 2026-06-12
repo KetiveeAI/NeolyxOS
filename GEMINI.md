@@ -1,8 +1,8 @@
 # GEMINI.md - NeolyxOS AI Developer Guide
 
 **Project:** NeolyxOS - Custom 64-bit Operating System  
-**Status:** Desktop 70% (Rendering Gaps) | Networking 60% | USB/Mouse ✅ | ~50% Complete  
-**Last Updated:** January 21, 2026
+**Status:** Desktop 75% (Neo-Aura) | Networking 60% | USB/Mouse ✅ | ~55% Complete  
+**Last Updated:** June 12, 2026
 
 ---
 
@@ -387,7 +387,7 @@ APPS               [████████████████░░░░
 USB                [████░░░░░░░░░░░░░░░░]  20%
 SMP                [░░░░░░░░░░░░░░░░░░░░]   0%
 ---------------------------------------------------------
-OVERALL COMPLETENESS: ~50% of production OS requirements
+OVERALL COMPLETENESS: ~55% of production OS requirements
 ```
 
 ---
