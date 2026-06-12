@@ -24,6 +24,7 @@
 #include "../apps/Calendar.app/calendar.h"
 
 #include "../include/wallpaper.h"
+#include "../include/yantra_grid.h"
 #include "../include/vm_detect.h"
 #include "../include/volume_osd.h"
 #include "../include/keyboard_osd.h"
@@ -291,6 +292,7 @@ static uint8_t kbd_getchar(void) {
 static desktop_state_t g_desktop;
 static desktop_window_t g_windows[MAX_WINDOWS];
 static uint32_t g_next_window_id = 1;
+static float g_night_mode_strength = 0.0f;  /* 0.0=off, 1.0=full warmth */
 
 /* Complete 8x8 bitmap font for all printable ASCII (32-126) */
 static const uint8_t font_8x8[96][8] = {
@@ -680,14 +682,14 @@ static void render_background(void) {
         wallpaper_render(g_desktop.framebuffer, g_desktop.pitch, 
                         g_desktop.width, g_desktop.height);
     } else {
-        /* Fallback: Simple gradient wallpaper */
+        /* Fallback: Dark navy to blue-gray gradient wallpaper */
         for (uint32_t y = 0; y < g_desktop.height; y++) {
             uint32_t t = (y * 256) / g_desktop.height;
             
-            /* Top: Deep navy, Bottom: Dark purple */
-            uint32_t r = (0x0A * (256 - t) + 0x1A * t) >> 8;
-            uint32_t g = (0x0B * (256 - t) + 0x0F * t) >> 8;
-            uint32_t b = (0x1A * (256 - t) + 0x20 * t) >> 8;
+            /* Top: Deep navy #070B14, Bottom: Dark blue-gray #142038 */
+            uint32_t r = (0x07 * (256 - t) + 0x14 * t) >> 8;
+            uint32_t g = (0x0B * (256 - t) + 0x20 * t) >> 8;
+            uint32_t b = (0x14 * (256 - t) + 0x38 * t) >> 8;
             
             uint32_t color = 0xFF000000 | (r << 16) | (g << 8) | b;
             
@@ -1095,10 +1097,40 @@ static void render_window(desktop_window_t *win) {
     /* Calculate alpha multiplier */
     uint8_t alpha = (uint8_t)(opacity * 255.0f);
     
-    /* Window shadow (simplified) */
-    uint32_t shadow_color = (alpha / 4) << 24;  /* Fade shadow with window */
-    desktop_fill_rect(wx + 3, wy + 3, ww, wh + title_height, shadow_color);
+    /* Drop shadow — soft spread with Y-offset bias.
+     * Disabled for tiled windows (they share edges). */
+    int is_tiled = 0;
+    if (wstate) is_tiled = wstate->is_tiled;
     
+    if (!is_tiled) {
+        int spread = 8;
+        int y_off = 4;
+        float shadow_base_opacity = 0.55f * (opacity);  /* Fade with window */
+        
+        int32_t total_h = (int32_t)(wh + (uint32_t)title_height);
+        
+        for (int ring = 1; ring <= spread; ring++) {
+            /* Opacity falls off quadratically with distance */
+            float ring_frac = (float)(spread - ring) / (float)spread;
+            float ring_opacity = shadow_base_opacity * ring_frac * ring_frac;
+            uint8_t sa = (uint8_t)(ring_opacity * 255.0f);
+            if (sa == 0) continue;
+            uint32_t sc = (uint32_t)sa << 24;
+            
+            /* Top edge */
+            for (int32_t px = wx - ring; px < wx + (int32_t)ww + ring; px++)
+                put_pixel_alpha(px, wy - ring + y_off, sc);
+            /* Bottom edge */
+            for (int32_t px = wx - ring; px < wx + (int32_t)ww + ring; px++)
+                put_pixel_alpha(px, wy + total_h + ring - 1 + y_off, sc);
+            /* Left edge */
+            for (int32_t py = wy - ring + y_off; py < wy + total_h + ring + y_off; py++)
+                put_pixel_alpha(wx - ring, py, sc);
+            /* Right edge */
+            for (int32_t py = wy - ring + y_off; py < wy + total_h + ring + y_off; py++)
+                put_pixel_alpha(wx + (int32_t)ww + ring - 1, py, sc);
+        }
+    }    
     /* Window title bar */
     uint32_t title_color = (WINDOW_TITLE_COLOR & 0x00FFFFFF) | ((uint32_t)alpha << 24);
     desktop_fill_rect(wx, wy, ww, title_height, title_color);
@@ -1124,7 +1156,7 @@ static void render_window(desktop_window_t *win) {
     
     /* Window border */
     desktop_draw_rect(wx, wy, ww, wh + title_height, 
-                     win->focused ? 0xFF6666FF : WINDOW_BORDER_COLOR);
+                     win->focused ? 0xFFE8660A : WINDOW_BORDER_COLOR);
     
     /* Custom content callback (only if not too small) */
     if (win->render_content && ww > 100 && wh > 50) {
@@ -1228,6 +1260,13 @@ static void render_desktop(void) {
      * Always render static elements every frame for now.
      */
     render_background();
+    
+    /* Yantra Grid overlay — subtle geometric mesh between wallpaper and windows */
+    if (yantra_grid_is_enabled()) {
+        yantra_grid_draw(g_desktop.framebuffer, g_desktop.pitch,
+                          g_desktop.width, g_desktop.height, 13 /* ~5% opacity */);
+    }
+    
     render_navigation_bar();
     render_globe_clock_widget();
     render_search_bar();
@@ -1237,31 +1276,22 @@ static void render_desktop(void) {
     int32_t tile_x, tile_y;
     uint32_t tile_w, tile_h;
     if (wm_get_tile_preview(&tile_x, &tile_y, &tile_w, &tile_h)) {
-        /* Semi-transparent blue overlay */
+        /* Ghost snap preview — saffron-tinted translucent overlay */
+        uint32_t preview_color = 0x33E8660A;  /* Saffron orange at ~20% */
         for (uint32_t py = 0; py < tile_h; py++) {
             for (uint32_t px = 0; px < tile_w; px++) {
-                int32_t sx = tile_x + px;
-                int32_t sy = tile_y + py;
-                if (sx >= 0 && sx < (int32_t)g_desktop.width &&
-                    sy >= 0 && sy < (int32_t)g_desktop.height) {
-                    uint32_t idx = sy * (g_desktop.pitch / 4) + sx;
-                    uint32_t bg = g_desktop.framebuffer[idx];
-                    /* Blend with 40% blue overlay */
-                    uint8_t r = ((bg >> 16) & 0xFF) * 6 / 10 + 0x40 * 4 / 10;
-                    uint8_t g = ((bg >> 8) & 0xFF) * 6 / 10 + 0x60 * 4 / 10;
-                    uint8_t b = (bg & 0xFF) * 6 / 10 + 0xFF * 4 / 10;
-                    g_desktop.framebuffer[idx] = 0xFF000000 | (r << 16) | (g << 8) | b;
-                }
+                put_pixel_alpha(tile_x + px, tile_y + py, preview_color);
             }
         }
-        /* Border */
+        /* Border — saffron orange, fully opaque */
+        uint32_t border_color = 0xFFE8660A;
         for (uint32_t px = 0; px < tile_w; px++) {
-            put_pixel_alpha(tile_x + px, tile_y, 0xFF6690FF);
-            put_pixel_alpha(tile_x + px, tile_y + tile_h - 1, 0xFF6690FF);
+            put_pixel_alpha(tile_x + px, tile_y, border_color);
+            put_pixel_alpha(tile_x + px, tile_y + tile_h - 1, border_color);
         }
         for (uint32_t py = 0; py < tile_h; py++) {
-            put_pixel_alpha(tile_x, tile_y + py, 0xFF6690FF);
-            put_pixel_alpha(tile_x + tile_w - 1, tile_y + py, 0xFF6690FF);
+            put_pixel_alpha(tile_x, tile_y + py, border_color);
+            put_pixel_alpha(tile_x + tile_w - 1, tile_y + py, border_color);
         }
     }
     
@@ -1333,6 +1363,32 @@ static void render_desktop(void) {
     /* Cursor is drawn by KERNEL after flip - tell kernel cursor position via syscall */
     /* This mirrors macOS/Windows hardware cursor isolation - never overwritten by userspace */
     nx_cursor_set(g_desktop.mouse_x, g_desktop.mouse_y, 1);
+    
+    /* Night Mode blue-light filter — last pass before flip.
+     * Reduces eye strain in low-light by warming the display.
+     * Set g_night_mode_strength via Settings or API. */
+    if (g_night_mode_strength > 0.001f) {
+        float str = g_night_mode_strength;
+        if (str > 1.0f) str = 1.0f;
+        /* Precompute fixed-point multipliers to avoid per-pixel float */
+        uint32_t blue_mult  = (uint32_t)((1.0f - str * 0.45f) * 256.0f);
+        uint32_t red_mult   = (uint32_t)((1.0f + str * 0.08f) * 256.0f);
+        if (red_mult > 256) red_mult = 256;  /* Clamp to prevent overflow */
+        
+        uint32_t pixel_count = g_desktop.width * g_desktop.height;
+        for (uint32_t i = 0; i < pixel_count; i++) {
+            uint32_t px = g_desktop.framebuffer[i];
+            uint32_t r = (px >> 16) & 0xFF;
+            uint32_t b = px & 0xFF;
+            
+            r = (r * red_mult) >> 8;
+            b = (b * blue_mult) >> 8;
+            
+            if (r > 255) r = 255;
+            
+            g_desktop.framebuffer[i] = (px & 0xFF00FF00) | (r << 16) | b;
+        }
+    }
     
     /* Flip back buffer to front buffer - kernel draws cursor AFTER this copy */
     flip_buffer();
@@ -1823,6 +1879,39 @@ void desktop_handle_key(uint8_t scancode, uint8_t pressed) {
         }
     }
     
+    /* Super+Arrow: keyboard tiling shortcuts
+     * 0x4B = Left, 0x4D = Right, 0x48 = Up, 0x50 = Down */
+    if (g_nx_key_held && pressed) {
+        /* Find focused window */
+        uint32_t focused_id = 0;
+        for (int i = 0; i < MAX_WINDOWS; i++) {
+            if (g_windows[i].id != 0 && g_windows[i].visible &&
+                g_windows[i].focused && !g_windows[i].minimized) {
+                focused_id = g_windows[i].id;
+                break;
+            }
+        }
+        if (focused_id != 0) {
+            wm_window_state_t *ws = wm_get_window_state(focused_id);
+            switch (scancode) {
+                case 0x4B:  /* Left arrow */
+                    wm_apply_tile(focused_id, TILE_LEFT_HALF);
+                    return;
+                case 0x4D:  /* Right arrow */
+                    wm_apply_tile(focused_id, TILE_RIGHT_HALF);
+                    return;
+                case 0x48:  /* Up arrow — maximize */
+                    wm_maximize_window(focused_id);
+                    return;
+                case 0x50:  /* Down arrow — restore from tile/maximize */
+                    if (ws && (ws->is_tiled || ws->is_maximized)) {
+                        wm_restore_window(focused_id);
+                    }
+                    return;
+            }
+        }
+    }
+    
     /* Forward to focused window */
     for (int i = 0; i < MAX_WINDOWS; i++) {
         desktop_window_t *win = &g_windows[i];
@@ -1884,7 +1973,8 @@ int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pit
     
     /* Initialize Window Manager */
     wm_init(g_desktop.width, g_desktop.height);
-    nx_debug_print("[DESKTOP] WM initialized, booting to clean desktop...\n");
+    yantra_grid_init(g_desktop.width, g_desktop.height);
+    nx_debug_print("[DESKTOP] WM + grid initialized, booting to clean desktop...\n");
     
     /* NOTE: No auto terminal window - user launches apps manually from dock */
     

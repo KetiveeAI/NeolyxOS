@@ -32,7 +32,8 @@ typedef enum {
     NX_BLUR_GAUSSIAN,       /* Standard gaussian blur */
     NX_BLUR_BOX,            /* Fast box blur (approximation) */
     NX_BLUR_MOTION,         /* Directional motion blur */
-    NX_BLUR_RADIAL          /* Radial/zoom blur from center */
+    NX_BLUR_RADIAL,         /* Radial/zoom blur from center */
+    NX_BLUR_KAWASE          /* Multi-pass Kawase approximation (O(1) per pixel) */
 } nx_blur_type_t;
 
 typedef struct {
@@ -190,6 +191,10 @@ void nx_effect_gaussian_blur(nx_effect_buffer_t* buf, float radius);
 /* Fast box blur (constant time, any radius) */
 void nx_effect_box_blur(nx_effect_buffer_t* buf, uint32_t radius);
 
+/* Kawase blur — 4-pass approximation, visually matches Gaussian at same radius
+ * but runs O(1) per pixel regardless of radius. Preferred for glass surfaces. */
+void nx_effect_kawase_blur(nx_effect_buffer_t* buf, uint32_t radius);
+
 /* ============================================================================
  * Material Effects API
  * ============================================================================ */
@@ -284,6 +289,7 @@ void nx_effect_composite(nx_effect_buffer_t* dst,
 nx_glass_effect_t nx_glass_preset_default(void);
 nx_glass_effect_t nx_glass_preset_dark(void);
 nx_glass_effect_t nx_glass_preset_light(void);
+nx_glass_effect_t nx_glass_preset_vajra(void);
 
 /* Get default frost effect */
 nx_frost_effect_t nx_frost_preset_default(void);

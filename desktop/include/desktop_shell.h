@@ -19,34 +19,34 @@
 #include <stdint.h>
 #include "nxappearance.h"
 
-/* ============ Colors ============ */
+/* ============ Colors — Vajra Design Language ============ */
 /* NOTE: Theme-dependent colors should use nxappearance_get() at runtime */
 
-/* Modern glassmorphic color palette */
-#define DESKTOP_BG_TOP      0xFF0A0B1A  /* Deep navy top */
-#define DESKTOP_BG_BOT      0xFF1A0F20  /* Dark purple-pink bottom */
-#define DESKTOP_BG_COLOR    0xFF0A0B1A  /* Fallback solid */
+/* Desktop gradient wallpaper base */
+#define DESKTOP_BG_TOP      0xFF070B14  /* Deep dark navy */
+#define DESKTOP_BG_BOT      0xFF142038  /* Dark blue-gray */
+#define DESKTOP_BG_COLOR    0xFF070B14  /* Solid fallback */
 
-/* Glassmorphism effects - use GLASS_COLOR() macro with nxappearance_get() for dynamic opacity */
-#define GLASS_DOCK          0x40303050  /* Frosted dock 25% */
-#define GLASS_WIDGET        0x70404060  /* Widget glass 44% */
-#define GLASS_SEARCH        0x40354050  /* Search bar 25% */
-#define GLASS_BORDER        0x30FFFFFF  /* Subtle white border */
+/* Glassmorphism effects — frosted surface overlays */
+#define GLASS_DOCK          0x400D1424  /* Dark surface at 25% opacity */
+#define GLASS_WIDGET        0x70142038  /* Elevated surface at 44% opacity */
+#define GLASS_SEARCH        0x400D1424  /* Dark surface at 25% opacity */
+#define GLASS_BORDER        0x301F3050  /* Border tone at 19% opacity */
 
 /* Text colors */
-#define COLOR_TEXT_WHITE    0xFFFFFFFF  /* Pure white */
-#define COLOR_TEXT_DIM      0xFF888888  /* Dimmed gray */
-#define COLOR_TEXT_BRIGHT   0xFFCCCCCC  /* Bright gray */
+#define COLOR_TEXT_WHITE    0xFFF0F4FF  /* Off-white, primary text */
+#define COLOR_TEXT_DIM      0xFF8CA0C0  /* Muted blue-gray, secondary text */
+#define COLOR_TEXT_BRIGHT   0xFFD0D8E8  /* Mid-tone for emphasis */
 
-/* Window colors (kept for compatibility) */
-#define MENUBAR_BG_COLOR    0xE0202030
-#define MENUBAR_TEXT_COLOR  0xFFFFFFFF
+/* Window & UI element colors */
+#define MENUBAR_BG_COLOR    0xE00D1424  /* Dark surface glass */
+#define MENUBAR_TEXT_COLOR  0xFFF0F4FF  /* Off-white */
 #define DOCK_BG_COLOR       GLASS_DOCK
-#define DOCK_ITEM_BG        0x60505070
-#define CURSOR_COLOR        0xFFFFFFFF
-#define WINDOW_BG_COLOR     0xFF252535
-#define WINDOW_TITLE_COLOR  0xFF303045
-#define WINDOW_BORDER_COLOR 0xFF404055
+#define DOCK_ITEM_BG        0x60142038  /* Elevated surface at 38% */
+#define CURSOR_COLOR        0xFFF0F4FF  /* Off-white */
+#define WINDOW_BG_COLOR     0xFF0D1424  /* Dark surface */
+#define WINDOW_TITLE_COLOR  0xFF142038  /* Elevated surface */
+#define WINDOW_BORDER_COLOR 0xFF1F3050  /* Border tone */
 #define WINDOW_TEXT_COLOR   0xFFE0E0E0
 
 /* ============ Layout Constants ============ */

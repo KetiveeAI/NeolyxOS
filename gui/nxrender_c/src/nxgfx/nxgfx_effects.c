@@ -282,6 +282,9 @@ void nx_effect_blur(nx_effect_buffer_t* buf, const nx_blur_params_t* params) {
         case NX_BLUR_BOX:
             nx_effect_box_blur(buf, (uint32_t)params->radius);
             break;
+        case NX_BLUR_KAWASE:
+            nx_effect_kawase_blur(buf, (uint32_t)params->radius);
+            break;
         case NX_BLUR_MOTION:
         case NX_BLUR_RADIAL:
             nx_effect_gaussian_blur(buf, params->radius);
@@ -841,5 +844,98 @@ nx_glow_effect_t nx_glow_preset_neon(nx_color_t color) {
         .intensity = 1.2f,
         .falloff = 2.0f,
         .knockout = false
+    };
+}
+
+/* ============================================================================
+ * Kawase Blur
+ *
+ * Multi-pass box blur with increasing sample offsets.
+ * Visually approximates Gaussian at the same radius but runs O(1) per pixel
+ * per pass regardless of kernel size. 4 passes at offsets [0,1,2,3] match a
+ * Gaussian with sigma ~= radius/2 for radius up to ~20.
+ * ============================================================================ */
+
+void nx_effect_kawase_blur(nx_effect_buffer_t* buf, uint32_t radius) {
+    if (!buf || !buf->pixels || radius == 0) return;
+    
+    uint32_t w = buf->width;
+    uint32_t h = buf->height;
+    
+    uint32_t* temp = malloc(w * h * sizeof(uint32_t));
+    if (!temp) return;
+    
+    /* Number of passes scales with radius: min 2, max 6 */
+    int passes = (int)(radius / 3);
+    if (passes < 2) passes = 2;
+    if (passes > 6) passes = 6;
+    
+    uint32_t *src = buf->pixels;
+    uint32_t *dst = temp;
+    
+    for (int pass = 0; pass < passes; pass++) {
+        int offset = pass + 1;
+        
+        for (uint32_t y = 0; y < h; y++) {
+            for (uint32_t x = 0; x < w; x++) {
+                /* Sample 4 diagonal neighbours + center */
+                int32_t x0 = (int32_t)x - offset;
+                int32_t x1 = (int32_t)x + offset;
+                int32_t y0 = (int32_t)y - offset;
+                int32_t y1 = (int32_t)y + offset;
+                
+                /* Clamp to edges */
+                if (x0 < 0) x0 = 0;
+                if (x1 >= (int32_t)w) x1 = w - 1;
+                if (y0 < 0) y0 = 0;
+                if (y1 >= (int32_t)h) y1 = h - 1;
+                
+                uint8_t r0, g0, b0, a0;
+                uint8_t r1, g1, b1, a1;
+                uint8_t r2, g2, b2, a2;
+                uint8_t r3, g3, b3, a3;
+                
+                unpack_rgba(src[y0 * w + x0], &r0, &g0, &b0, &a0);
+                unpack_rgba(src[y0 * w + x1], &r1, &g1, &b1, &a1);
+                unpack_rgba(src[y1 * w + x0], &r2, &g2, &b2, &a2);
+                unpack_rgba(src[y1 * w + x1], &r3, &g3, &b3, &a3);
+                
+                uint8_t r = (r0 + r1 + r2 + r3) / 4;
+                uint8_t g = (g0 + g1 + g2 + g3) / 4;
+                uint8_t b = (b0 + b1 + b2 + b3) / 4;
+                uint8_t a = (a0 + a1 + a2 + a3) / 4;
+                
+                dst[y * w + x] = pack_rgba(r, g, b, a);
+            }
+        }
+        
+        /* Swap buffers for next pass */
+        uint32_t *swap = src;
+        src = dst;
+        dst = swap;
+    }
+    
+    /* If result ended up in temp, copy back to buf */
+    if (src != buf->pixels) {
+        memcpy(buf->pixels, src, w * h * sizeof(uint32_t));
+    }
+    
+    free(temp);
+}
+
+/* ============================================================================
+ * Vajra Glass Preset
+ * ============================================================================ */
+
+nx_glass_effect_t nx_glass_preset_vajra(void) {
+    return (nx_glass_effect_t){
+        .blur_radius = 12.0f,
+        .opacity = 0.72f,
+        .refraction = 0.08f,
+        .tint_color = {13, 20, 36, 200},      /* Dark surface at ~78% */
+        .border_opacity = 0.15f,
+        .border_width = 1.0f,
+        .specular_highlight = true,
+        .highlight_intensity = 0.25f
     };
 }

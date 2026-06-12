@@ -41,7 +41,13 @@ typedef enum {
     TILE_QUADRANT_BL,
     TILE_QUADRANT_BR,
     TILE_CENTER,
-    TILE_MAXIMIZE
+    TILE_MAXIMIZE,
+    /* Third-split positions */
+    TILE_LEFT_THIRD,
+    TILE_CENTER_THIRD,
+    TILE_RIGHT_THIRD,
+    TILE_LEFT_TWO_THIRDS,
+    TILE_RIGHT_TWO_THIRDS,
 } wm_tile_pos_t;
 
 /* ============ Animation State ============ */
