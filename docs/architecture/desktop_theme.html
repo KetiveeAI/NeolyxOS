@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neo-Aura Desktop Architecture</title>
+    <link rel="stylesheet" href="../assets/navbar.css">
+    <script src="../assets/navbar.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Neo-Aura Desktop Architecture</h1>
+            <p class="subtitle">NeolyxOS Desktop Rendering & Vajra Design Language</p>
+        </header>
+
+        <h2>1. Core Concepts</h2>
+        <p>NeolyxOS desktop utilizes a custom C-based rendering engine called <strong>NXRender</strong> to implement the <strong>Neo-Aura</strong> graphics pipeline, which is styled using the <strong>Vajra Design Language</strong>.</p>
+
+        <h3>1.1 Neo-Aura Graphics Pipeline</h3>
+        <p>Neo-Aura represents the physical material properties of the UI. It emphasizes:</p>
+        <ul>
+            <li><strong>Glassmorphism:</strong> Deep, multi-layered translucency using <code>nx_effect_kawase_blur()</code> for O(1) performance regardless of blur radius.</li>
+            <li><strong>Depth:</strong> Soft drop shadows to separate floating windows from the background.</li>
+            <li><strong>Motion:</strong> Configurable animation speeds with accessibility overrides.</li>
+            <li><strong>Eye Care:</strong> A built-in blue-light filter ("Sattvik Night Mode") applied as the final post-processing pass before flip.</li>
+        </ul>
+
+        <h3>1.2 Vajra Design Language (Theme System)</h3>
+        <p>Vajra is the official color identity of NeolyxOS, rooted in warm, vibrant tones contrasting against deep dark backgrounds. The color definitions live in <code>theme.c</code> and are exposed via <code>theme.h</code>.</p>
+        
+        <h4>Core Palette:</h4>
+        <ul>
+            <li><strong>Primary:</strong> Saffron orange (<code>#E8660A</code>) — used for active focus rings, primary buttons, and the ghost snap preview overlay.</li>
+            <li><strong>Secondary:</strong> Deep violet (<code>#6D28D9</code>)</li>
+            <li><strong>Backgrounds:</strong> Deep dark navy (<code>#070B14</code>) wallpaper base, Dark surface (<code>#0D1424</code>), Elevated surface (<code>#142038</code>)</li>
+            <li><strong>Text:</strong> Off-white (<code>#F0F4FF</code>) primary, Muted blue-gray (<code>#8CA0C0</code>) secondary</li>
+            <li><strong>Accents:</strong> Sky blue (<code>#0EA5E9</code>) for badges, Warm amber (<code>#D97706</code>) for gradients.</li>
+        </ul>
+        <p><em>Note: All inline code comments use these plain English descriptions to remain accessible to international developers, while Vajra Dark remains the official theme name.</em></p>
+
+        <h2>2. Rendering Flow</h2>
+        <p>The desktop runs a continuous render loop in <code>desktop_shell.c</code>, targeting a userspace backbuffer which is then flipped to the kernel via <code>nx_fb_flip()</code>.</p>
+
+        <h3>Frame Loop Sequence:</h3>
+        <ol>
+            <li><code>render_background()</code>: Draws the wallpaper image or the Vajra gradient fallback.</li>
+            <li><code>yantra_grid_draw()</code>: Overlays a subtle 48px geometric mesh (diamond + crosshair nodes).</li>
+            <li><code>render_navigation_bar()</code>: Draws the top system bar.</li>
+            <li><code>render_globe_clock_widget()</code>, <code>render_search_bar()</code>, <code>render_desktop_icons()</code></li>
+            <li><strong>Tile Preview Overlay:</strong> Draws the saffron ghost snap preview if dragging near edge.</li>
+            <li><code>render_windows()</code>: Evaluates PiP / Sidebar mode, renders soft drop shadow, renders window content and borders.</li>
+            <li><code>dock_render()</code>, <code>app_drawer_render()</code>, <code>control_center_render()</code></li>
+            <li><strong>Night Mode Filter:</strong> Applies the color temperature adjustment matrix.</li>
+            <li><code>nx_cursor_set()</code>: Updates hardware cursor position.</li>
+            <li><code>flip_buffer()</code>: Commits the frame to the kernel.</li>
+        </ol>
+
+        <h2>3. Window Management (WM)</h2>
+        <h3>3.1 Keyboard Tiling</h3>
+        <p>The WM supports robust tiling via keyboard shortcuts (Super + Arrows for Halves/Maximize/Restore).</p>
+        
+        <h3>3.2 Advanced Tiling Zones</h3>
+        <p>Beyond standard halves and quadrants, the WM supports third-splits for ultrawide monitors (Left Third, Center Third, Right Third, etc).</p>
+
+        <h2>4. Key Files</h2>
+        <table>
+            <tr><th>File</th><th>Purpose</th></tr>
+            <tr><td><code>gui/nxrender_c/include/theme/theme.h</code></td><td>Defines <code>nx_theme_t</code> including Vajra colors, glass, shadow, and motion configs.</td></tr>
+            <tr><td><code>gui/nxrender_c/src/theme/theme.c</code></td><td>Implements <code>THEME_VAJRA_DARK</code> as the default active theme.</td></tr>
+            <tr><td><code>gui/nxrender_c/src/nxgfx/nxgfx_effects.c</code></td><td>Implements <code>nx_effect_kawase_blur()</code> and <code>nx_glass_preset_vajra()</code>.</td></tr>
+            <tr><td><code>desktop/include/desktop_shell.h</code></td><td>Defines UI color constants matching the Vajra palette.</td></tr>
+            <tr><td><code>desktop/shell/yantra_grid.c</code></td><td>Handles rendering the decorative background mesh.</td></tr>
+            <tr><td><code>desktop/shell/desktop_shell.c</code></td><td>The core compositor loop, window shadowing, keyboard tiling shortcuts, and night mode filter.</td></tr>
+        </table>
+        
+        <br>
+        <a href="../index.html">← Back to Documentation Index</a>
+    </div>
+</body>
+</html>
