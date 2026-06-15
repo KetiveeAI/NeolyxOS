@@ -6,8 +6,6 @@ pub mod drivers;
 pub mod cli;
 pub mod config;
 pub mod storage;
-pub mod gui;
-
 pub use core::vm_manager::VMManager;
 pub use core::hardware_scan::HardwareScanner;
 pub use core::vm_profile::VMProfileGenerator;

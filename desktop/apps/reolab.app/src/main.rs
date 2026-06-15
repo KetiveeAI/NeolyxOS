@@ -1,38 +1,34 @@
-use eframe::egui;
-use std::path::PathBuf;
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
+
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-mod gui;
 mod core;
 mod languages;
 mod extensions;
 mod config;
+mod platform;
 
-use gui::ide::ReoLabIDE;
 use config::Config;
+use platform::{Platform, LinuxPlatform};
 
-#[tokio::main]
-async fn main() -> Result<(), eframe::Error> {
+fn main() {
     // Initialize logging
     env_logger::init();
     
     // Load configuration
     let config = Config::load().unwrap_or_default();
     
-    // Create the IDE
-    let ide = ReoLabIDE::new(config);
-    
-    // Run the GUI
-    let options = eframe::NativeOptions {
-        initial_window_size: Some(egui::vec2(1200.0, 800.0)),
-        min_window_size: Some(egui::vec2(800.0, 600.0)),
-        ..Default::default()
-    };
-    
-    eframe::run_native(
-        "ReoLab IDE - Neolyx OS Development Environment",
-        options,
-        Box::new(|_cc| Box::new(ide)),
-    )
-} 
+    log::info!("Starting ReoLab IDE with Tauri backend");
+
+    let platform: Arc<dyn Platform> = Arc::new(LinuxPlatform::new());
+
+    tauri::Builder::default()
+        .manage(Arc::new(Mutex::new(config)))
+        .manage(platform)
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ReoLab IDE</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app-container">
+        <!-- Sidebar / File Tree -->
+        <div id="sidebar">
+            <div class="sidebar-header">Explorer</div>
+            <div id="file-tree">
+                <!-- Populated by Rust -->
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div id="main-content">
+            <!-- Editor Area -->
+            <div id="editor-area" contenteditable="true" spellcheck="false">
+                <!-- Editor content managed by Rust -->
+            </div>
+
+            <!-- Terminal Pane -->
+            <div id="terminal-pane">
+                <div class="terminal-header">Terminal</div>
+                <div id="terminal-output">
+                    <!-- Terminal output managed by Rust -->
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

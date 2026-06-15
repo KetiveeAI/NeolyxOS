@@ -19,10 +19,8 @@ log = "0.4"
 env_logger = "0.10"
 clap = { version = "4.0", features = ["derive"] }
 
-# GUI dependencies (Rust-based GUI)
-eframe = "0.24"  # egui framework
-egui = "0.24"
-egui_extras = "0.24"
+# GUI dependencies (Tauri framework)
+tauri = { version = "1.6", features = ["api-all"], optional = true }
 rfd = "0.12"  # File dialogs
 
 # Language processing
@@ -35,8 +33,8 @@ regex = "1.0"
 syntect = "5.0"  # Syntax highlighting
 
 # AI Integration
-reqwest = { version = "0.11", features = ["json"] }
-openai = "0.20"  # OpenAI API integration
+reqwest = { version = "0.11", features = ["json"], optional = true }
+openai = { version = "0.20", optional = true }  # OpenAI API integration
 
 # File system and project management
 walkdir = "2.3"
@@ -59,7 +57,6 @@ goblin = "0.8"  # ELF/PE/Mach-O parsing
 object = "0.32"  # Object file manipulation
 
 # Process management
-std::process = "1.0"
 
 # Configuration
 dirs = "5.0"
@@ -71,6 +68,9 @@ virtio = "0.1"  # VirtIO support
 # Network and I/O
 pnet = "0.33"
 usb = "0.6"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -89,8 +89,8 @@ name = "reoxc"
 path = "src/compiler/main.rs"
 
 [features]
-default = ["gui-egui"]
-gui-egui = ["eframe", "egui", "egui_extras"]
+default = ["gui-tauri"]
+gui-tauri = ["tauri"]
 cli-only = []
 ai-integration = ["openai", "reqwest"]
 c-support = []
