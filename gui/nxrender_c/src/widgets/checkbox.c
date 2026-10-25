@@ -3,6 +3,7 @@
  * Copyright (c) 2025 KetiveeAI
  */
 
+#define _GNU_SOURCE
 #include "widgets/checkbox.h"
 #include <stdlib.h>
 #include <string.h>
