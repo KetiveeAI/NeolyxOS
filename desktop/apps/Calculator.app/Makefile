@@ -54,7 +54,7 @@ info: reox-info
 HOST_CC      ?= gcc
 HOST_CFLAGS  := -Wall -Wextra -std=c11 -O1 -g \
                 -I$(REOX_SDK_DIR)/nxui -I$(NXRENDER_DIR)/include $(REOX_RUNTIME_INCLUDES)
-HOST_NXRENDER := $(NXRENDER_DIR)/libnxrender.a
+HOST_NXRENDER := $(NXRENDER_DIR)/build/host/libnxrender_host.a
 TEST_BIN := $(REOX_BUILD_DIR)/host/engine_test
 
 .PHONY: test
@@ -68,5 +68,7 @@ $(TEST_BIN): test/engine_test.c $(REOX_GEN_C) $(REOX_SDK_DIR)/nxui/nxui.c $(HOST
 	$(HOST_CC) $(HOST_CFLAGS) test/engine_test.c $(REOX_BUILD_DIR)/host/calculator.o \
 	    $(REOX_BUILD_DIR)/host/nxui.o $(HOST_NXRENDER) -lm -o $@
 
+# Always let nxrender's own Makefile decide whether the host lib is stale.
+.PHONY: $(HOST_NXRENDER)
 $(HOST_NXRENDER):
-	$(MAKE) -C $(NXRENDER_DIR)
+	$(MAKE) -C $(NXRENDER_DIR) host-test-lib

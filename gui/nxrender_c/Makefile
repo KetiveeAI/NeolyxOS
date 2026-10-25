@@ -92,3 +92,22 @@ build/neolyx/%.o: src/%.c
 
 neolyx-clean:
 	rm -rf build/neolyx $(NEOLYX_LIB)
+
+# ============================================================================
+# Host test library: the same sources as the freestanding build, compiled
+# with hosted flags into build/host/, for app-level host tests.  Never
+# touches the tracked libnxrender.a or src/**/*.o.
+# ============================================================================
+HOST_TEST_CFLAGS = -Wall -Wextra -std=c11 -O1 -g -I./include
+HOST_TEST_OBJ = $(patsubst src/%.c,build/host/%.o,$(NEOLYX_SRC))
+HOST_TEST_LIB = build/host/libnxrender_host.a
+
+.PHONY: host-test-lib
+host-test-lib: $(HOST_TEST_LIB)
+
+$(HOST_TEST_LIB): $(HOST_TEST_OBJ)
+	$(AR) rcs $@ $^
+
+build/host/%.o: src/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(HOST_TEST_CFLAGS) -c $< -o $@
