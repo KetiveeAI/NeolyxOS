@@ -53,6 +53,7 @@ SHELL_SRC = shell/main.c \
             shell/theme_osd.c \
             shell/battery_warning.c \
             shell/network_indicator.c \
+            shell/yantra_grid.c \
             lib/nxappearance.c \
             lib/nxconfig.c \
             lib/nxevent.c \

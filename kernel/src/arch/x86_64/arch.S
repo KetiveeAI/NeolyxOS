@@ -51,22 +51,26 @@ syscall_entry:
     # FMASK should already clear IF, but this is defense-in-depth
     cli
     
-    # Switch to kernel stack (SYSCALL doesn't switch stacks automatically)
-    mov %rsp, %r15              # Save user RSP
+    # Switch to kernel stack (SYSCALL doesn't switch stacks automatically).
+    # User RSP is parked in a scratch global so no user register is lost;
+    # like g_kernel_rsp0, this assumes one CPU is in syscall entry at a time.
+    mov %rsp, g_syscall_user_rsp(%rip)
     mov g_kernel_rsp0(%rip), %rsp  # Load kernel stack from global variable
     
     # Save user context for sysretq
-    pushq %r15                  # User RSP
+    pushq g_syscall_user_rsp(%rip) # User RSP
     pushq %r11                  # User RFLAGS
     pushq %rcx                  # User RIP
     
-    # Save syscall args (will be overwritten by C call)
+    # Save syscall number and argument registers. These are restored on
+    # return: only RAX (return value), RCX and R11 are clobbered for userspace.
     pushq %rax                  # Syscall number
     pushq %rdi                  # Arg1
     pushq %rsi                  # Arg2
     pushq %rdx                  # Arg3
     pushq %r10                  # Arg4
     pushq %r8                   # Arg5
+    pushq %r9                   # Arg6
     
     # Save callee-saved registers
     pushq %rbx
@@ -74,6 +78,7 @@ syscall_entry:
     pushq %r12
     pushq %r13
     pushq %r14
+    pushq %r15
     
     # Load kernel data segment
     mov $0x10, %ax
@@ -81,14 +86,15 @@ syscall_entry:
     mov %ax, %es
     
     # Set up C args: syscall_handler(num, arg1, arg2, arg3, arg4, arg5)
-    # Stack has 14 pushes (112 bytes): r15,r11,rcx,rax,rdi,rsi,rdx,r10,r8,rbx,rbp,r12,r13,r14
-    # rax (syscall num) is at RSP+80, rdi (arg1) at RSP+72, etc.
-    mov 80(%rsp), %rdi          # num (rax)
-    mov 72(%rsp), %rsi          # arg1 (rdi from user)
-    mov 64(%rsp), %rdx          # arg2 (rsi from user)
-    mov 56(%rsp), %rcx          # arg3 (rdx from user)
-    mov 48(%rsp), %r8           # arg4 (r10 from user)
-    mov 40(%rsp), %r9           # arg5 (r8 from user)
+    # Stack has 16 pushes (128 bytes, keeps 16-byte alignment for the call):
+    # user_rsp,r11,rcx,rax,rdi,rsi,rdx,r10,r8,r9,rbx,rbp,r12,r13,r14,r15
+    # rax (syscall num) is at RSP+96, rdi (arg1) at RSP+88, etc.
+    mov 96(%rsp), %rdi          # num (rax)
+    mov 88(%rsp), %rsi          # arg1 (rdi from user)
+    mov 80(%rsp), %rdx          # arg2 (rsi from user)
+    mov 72(%rsp), %rcx          # arg3 (rdx from user)
+    mov 64(%rsp), %r8           # arg4 (r10 from user)
+    mov 56(%rsp), %r9           # arg5 (r8 from user)
     
     call syscall_handler
     
@@ -105,24 +111,37 @@ syscall_entry:
     popq %rax                   # Return value back in RAX
     
     # Restore callee-saved registers
+    popq %r15
     popq %r14
     popq %r13
     popq %r12
     popq %rbp
     popq %rbx
     
-    # Skip saved args (6 * 8 = 48)
-    addq $48, %rsp
+    # Restore user argument registers
+    popq %r9
+    popq %r8
+    popq %r10
+    popq %rdx
+    popq %rsi
+    popq %rdi
+    
+    # Skip saved syscall number (RAX holds the return value)
+    addq $8, %rsp
     
     # Restore sysretq values
     popq %rcx                   # User RIP
     popq %r11                   # User RFLAGS
     popq %rsp                   # User RSP
     
-    # DEBUG: Mark sysret about to happen (if this prints, stack is OK)
-    # Note: can't easily call C here since we switched to user stack already
-    
     sysretq
+
+# Scratch slot for user RSP during syscall entry
+.data
+.align 8
+g_syscall_user_rsp:
+    .quad 0
+.text
 
 
 # Context switch between processes
@@ -316,4 +335,4 @@ syscall_enable:
     rdmsr
     or $1, %eax                 # SCE = bit 0
     wrmsr
-    ret
+    ret

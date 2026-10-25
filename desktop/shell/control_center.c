@@ -22,6 +22,8 @@
 /* Config for security settings */
 #include "nx_config.h"
 
+extern void serial_puts(const char *s);
+
 /* ============ External Desktop API ============ */
 
 extern int desktop_launch_app(const char *name);
