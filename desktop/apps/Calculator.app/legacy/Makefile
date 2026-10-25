@@ -1,17 +1,19 @@
-# Calculator.app Makefile
-# NeolyxOS Calculator
+# Calculator.app - LEGACY C implementation (superseded by src/calculator.rx)
+# Invoked via `make legacy` from the app directory.  This code predates the
+# nxrender C API it targets (nx_window_context, nx_poll_event, ...) and does
+# not compile against gui/nxrender_c today; it is kept for reference only.
 
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c11 -O2 -fPIC
 LDFLAGS = -lm
 
 # NXRender integration
-NXRENDER_DIR = ../../gui/nxrender_c
+NXRENDER_DIR = ../../../gui/nxrender_c
 NXRENDER_INCLUDE = -I$(NXRENDER_DIR)/include
 NXRENDER_LIB = -L$(NXRENDER_DIR)/lib -lnxrender
 
 # NXAudio integration
-NXAUDIO_DIR = ../../nxaudio
+NXAUDIO_DIR = ../../../nxaudio
 NXAUDIO_INCLUDE = -I$(NXAUDIO_DIR)/include
 NXAUDIO_LIB = -L$(NXAUDIO_DIR)/build -lnxaudio
 
@@ -20,11 +22,11 @@ SRCS = main.c display.c buttons.c engine.c history.c scientific.c nxaudio_feedba
 OBJS = $(SRCS:.c=.o)
 
 # Output directories
-BIN_DIR = bin
-LIB_DIR = lib
+BIN_DIR = ../bin
+LIB_DIR = ../lib
 
 # Targets
-BIN_TARGET = $(BIN_DIR)/calculator
+BIN_TARGET = $(BIN_DIR)/calculator-legacy
 LIB_TARGET = $(LIB_DIR)/libcalculator.so
 
 # Build modes
