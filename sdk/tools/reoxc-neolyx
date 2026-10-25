@@ -1,0 +1,122 @@
+#!/bin/sh
+# NeolyxOS REOX SDK - reoxc front-end wrapper
+#
+# Presents the command line the SDK Makefiles use:
+#
+#     reoxc-neolyx compile --emit c --target neolyx -o OUT.c IN.rx
+#
+# and maps it onto what the installed reoxc understands today
+# (reoxc 1.1.x: `reoxc IN.rx -o OUT.c`, which emits C by default).
+#
+# The wrapper does NOT post-process the generated C.  It only:
+#   1. locates reoxc (REOXC_REAL, then toolchain.env host/system paths);
+#   2. validates the arguments (one input, .rx/.reox, --emit c only);
+#   3. runs reoxc and turns its "error"/"type error" diagnostics into a
+#      non-zero exit status, because reoxc 1.1.x returns 0 and writes a
+#      truncated C file after a parse or type error;
+#   4. removes the output on failure so make never links stale C.
+#
+# When reoxc grows the flags listed in sdk/REOXC_REQUIREMENTS.md, set
+# REOXC_NATIVE=1 (or delete this wrapper) and the Makefile rule calls
+# reoxc directly with the identical command line.
+set -u
+
+SDK_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ENV_FILE="$SDK_DIR/toolchain.env"
+
+die() { printf 'reoxc-neolyx: %s\n' "$*" >&2; exit 2; }
+
+if [ -r "$ENV_FILE" ]; then
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+else
+    die "missing $ENV_FILE"
+fi
+
+REOXC_BIN=${REOXC_REAL:-}
+if [ -z "$REOXC_BIN" ]; then
+    for cand in "${REOXC_SYSTEM_PATH:-}" "${REOXC_HOST_PATH:-}"; do
+        if [ -n "$cand" ] && [ -x "$cand" ]; then REOXC_BIN=$cand; break; fi
+    done
+fi
+[ -n "$REOXC_BIN" ] && [ -x "$REOXC_BIN" ] || \
+    die "no reoxc found (set REOXC_REAL, or build $REOX_ROOT/reox-lang with 'cargo build --release')"
+
+# ---- argument parsing ------------------------------------------------------
+subcmd=""
+emit="c"
+target="neolyx"
+output=""
+input=""
+verbose=${REOXC_NEOLYX_VERBOSE:-0}
+passthru=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        compile) subcmd=compile ;;
+        --emit)   [ $# -ge 2 ] || die "--emit needs a value"; emit=$2; shift ;;
+        --emit=*) emit=${1#--emit=} ;;
+        --target)   [ $# -ge 2 ] || die "--target needs a value"; target=$2; shift ;;
+        --target=*) target=${1#--target=} ;;
+        -o|--output) [ $# -ge 2 ] || die "-o needs a value"; output=$2; shift ;;
+        -v|--verbose) verbose=1 ;;
+        -O0|-O1|-O2|-O3|-Os|--lto|--strip) passthru="$passthru $1" ;;
+        --version|-V) exec "$REOXC_BIN" --version ;;
+        -h|--help)
+            sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -*) die "unknown option '$1' (see sdk/REOXC_REQUIREMENTS.md)" ;;
+        *)
+            [ -z "$input" ] || die "exactly one input file is supported (got '$input' and '$1')"
+            input=$1 ;;
+    esac
+    shift
+done
+
+[ "$subcmd" = "compile" ] || die "expected the 'compile' subcommand"
+[ "$emit" = "c" ] || die "--emit $emit is not supported for NeolyxOS; only --emit c (the C is built by the NeolyxOS GCC toolchain)"
+[ "$target" = "neolyx" ] || die "--target $target is not supported by this wrapper (only neolyx)"
+[ -n "$input" ] || die "no input file"
+[ -r "$input" ] || die "cannot read input '$input'"
+case "$input" in
+    *.rx|*.reox) ;;
+    *) die "input must end in .rx or .reox: '$input'" ;;
+esac
+[ -n "$output" ] || die "-o OUT.c is required"
+case "$output" in
+    *.c) ;;
+    *) die "output must end in .c: '$output'" ;;
+esac
+
+# ---- version gate ----------------------------------------------------------
+ver=$("$REOXC_BIN" --version 2>/dev/null | sed -n 's/^reoxc \([0-9][0-9.]*\).*/\1/p')
+[ -n "$ver" ] || die "cannot determine version of $REOXC_BIN"
+min=${REOXC_MIN_VERSION:-0.0.0}
+newest=$(printf '%s\n%s\n' "$min" "$ver" | sort -t. -k1,1n -k2,2n -k3,3n | tail -n1)
+[ "$newest" = "$ver" ] || die "reoxc $ver is older than required $min"
+
+# ---- run -------------------------------------------------------------------
+if [ "${REOXC_NATIVE:-0}" = "1" ]; then
+    set -- "$REOXC_BIN" compile --emit c --target neolyx $passthru -o "$output" "$input"
+else
+    set -- "$REOXC_BIN" "$input" -o "$output" $passthru
+fi
+[ "$verbose" = "1" ] && printf 'reoxc-neolyx: %s\n' "$*" >&2
+
+log=$(mktemp "${TMPDIR:-/tmp}/reoxc-neolyx.XXXXXX") || die "mktemp failed"
+"$@" >"$log" 2>&1
+rc=$?
+cat "$log" >&2
+
+# reoxc 1.1.x reports diagnostics but still exits 0 and writes partial C.
+if grep -Eq '^(type |parse |semantic )?error' "$log"; then
+    rc=1
+fi
+rm -f "$log"
+
+if [ $rc -ne 0 ]; then
+    rm -f "$output"
+    printf 'reoxc-neolyx: compilation of %s failed (exit %d); removed %s\n' "$input" "$rc" "$output" >&2
+    exit $rc
+fi
+[ -s "$output" ] || { printf 'reoxc-neolyx: reoxc produced no output for %s\n' "$input" >&2; exit 1; }
+exit 0
