@@ -20,6 +20,13 @@
 #define SYS_YIELD       4
 #define SYS_GETPID      5
 
+/* Process creation */
+#define SYS_SPAWN       13
+#define SPAWN_WAITABLE  0x1     /* Keep child for wait(); default: detached */
+
+/* Directory listing */
+#define SYS_READDIR     30
+
 /* Memory Management */
 #define SYS_BRK         10
 #define SYS_MMAP        11
@@ -129,16 +136,59 @@ static inline int64_t syscall2(int64_t num, int64_t a1, int64_t a2) {
     return ret;
 }
 
+/* Kernel ABI: RDI, RSI, RDX, R10, R8 carry arguments 1-5; only RAX
+ * (result), RCX and R11 are clobbered. */
 static inline int64_t syscall3(int64_t num, int64_t a1, int64_t a2, int64_t a3) {
     int64_t ret;
-    register int64_t r10 __asm__("r10") = a3;
     __asm__ volatile(
         "syscall"
         : "=a"(ret)
-        : "a"(num), "D"(a1), "S"(a2), "r"(r10)
+        : "a"(num), "D"(a1), "S"(a2), "d"(a3)
         : "rcx", "r11", "memory"
     );
     return ret;
+}
+
+static inline int64_t syscall4(int64_t num, int64_t a1, int64_t a2, int64_t a3, int64_t a4) {
+    int64_t ret;
+    register int64_t r10 __asm__("r10") = a4;
+    __asm__ volatile(
+        "syscall"
+        : "=a"(ret)
+        : "a"(num), "D"(a1), "S"(a2), "d"(a3), "r"(r10)
+        : "rcx", "r11", "memory"
+    );
+    return ret;
+}
+
+/* ============ Process Wrappers ============ */
+
+/*
+ * Start a program from disk as a new process (own address space) that
+ * runs alongside the caller. argv may be NULL (argv[0] = path).
+ * Returns the child's PID, or a negative error code.
+ */
+static inline int nx_spawn(const char *path, char *const argv[], uint32_t flags) {
+    return (int)syscall3(SYS_SPAWN, (int64_t)path, (int64_t)argv, (int64_t)flags);
+}
+
+/* ============ Directory Listing ============ */
+
+/* Directory entry - MUST MATCH kernel vfs_dirent_t (include/fs/vfs.h) */
+#define NX_DIRENT_NAME_MAX 255
+typedef struct {
+    char name[NX_DIRENT_NAME_MAX + 1];
+    uint32_t type;          /* 1 = file, 2 = directory */
+    uint64_t inode;
+    uint64_t size;
+} nx_dirent_t;
+
+#define NX_DIRENT_FILE      1
+#define NX_DIRENT_DIR       2
+
+/* List up to max entries of a directory. Returns 0 and sets *count, or < 0. */
+static inline int nx_readdir(const char *path, nx_dirent_t *entries, uint32_t max, uint32_t *count) {
+    return (int)syscall4(SYS_READDIR, (int64_t)path, (int64_t)entries, (int64_t)max, (int64_t)count);
 }
 
 /* ============ File I/O Wrappers ============ */

@@ -18,6 +18,13 @@
 .global sti
 .global hlt
 .global syscall_msr_init
+
+.section .bss
+.align 8
+.global g_syscall_user_rsp
+g_syscall_user_rsp:
+    .quad 0
+.section .text
 .global syscall_enable
 
 # Load GDT
@@ -45,85 +52,149 @@ idt_load:
 
 # System call entry point
 # SYSCALL: RCX = user RIP, R11 = user RFLAGS, RAX = syscall number
-# Args: RDI=arg1, RSI=arg2, RDX=arg3, R10=arg4, R8=arg5, R9=arg6
+# Args: RDI=arg1, RSI=arg2, RDX=arg3, R10=arg4, R8=arg5
+#
+# ABI guarantee to userspace: every register except RAX (return value),
+# RCX and R11 (clobbered by SYSCALL/SYSRET) is preserved.
+#
+# FMASK clears IF on entry, so the global scratch slot below cannot be
+# overwritten by an interrupt before it is consumed (single CPU).
+# g_kernel_rsp0 always holds the top of the *current* process's kernel
+# stack; the scheduler updates it on every switch.
 syscall_entry:
-    # CRITICAL: Disable interrupts immediately!
-    # FMASK should already clear IF, but this is defense-in-depth
-    cli
-    
-    # Switch to kernel stack (SYSCALL doesn't switch stacks automatically)
-    mov %rsp, %r15              # Save user RSP
-    mov g_kernel_rsp0(%rip), %rsp  # Load kernel stack from global variable
-    
-    # Save user context for sysretq
-    pushq %r15                  # User RSP
-    pushq %r11                  # User RFLAGS
-    pushq %rcx                  # User RIP
-    
-    # Save syscall args (will be overwritten by C call)
-    pushq %rax                  # Syscall number
-    pushq %rdi                  # Arg1
-    pushq %rsi                  # Arg2
-    pushq %rdx                  # Arg3
-    pushq %r10                  # Arg4
-    pushq %r8                   # Arg5
-    
-    # Save callee-saved registers
+    movq %rsp, g_syscall_user_rsp(%rip)     # Save user RSP without clobbering a GPR
+    movq g_kernel_rsp0(%rip), %rsp          # Switch to this process's kernel stack
+
+    pushq g_syscall_user_rsp(%rip)          # User RSP
+    pushq %r11                              # User RFLAGS
+    pushq %rcx                              # User RIP
+
+    # Preserve every register userspace may rely on
     pushq %rbx
     pushq %rbp
     pushq %r12
     pushq %r13
     pushq %r14
-    
-    # Load kernel data segment
-    mov $0x10, %ax
-    mov %ax, %ds
-    mov %ax, %es
-    
-    # Set up C args: syscall_handler(num, arg1, arg2, arg3, arg4, arg5)
-    # Stack has 14 pushes (112 bytes): r15,r11,rcx,rax,rdi,rsi,rdx,r10,r8,rbx,rbp,r12,r13,r14
-    # rax (syscall num) is at RSP+80, rdi (arg1) at RSP+72, etc.
-    mov 80(%rsp), %rdi          # num (rax)
-    mov 72(%rsp), %rsi          # arg1 (rdi from user)
-    mov 64(%rsp), %rdx          # arg2 (rsi from user)
-    mov 56(%rsp), %rcx          # arg3 (rdx from user)
-    mov 48(%rsp), %r8           # arg4 (r10 from user)
-    mov 40(%rsp), %r9           # arg5 (r8 from user)
-    
+    pushq %r15
+    pushq %rdi
+    pushq %rsi
+    pushq %rdx
+    pushq %r10
+    pushq %r8
+    pushq %r9
+    # 15 qwords pushed onto a 16-byte aligned stack top: realign for the call
+    subq $8, %rsp
+
+    # syscall_handler(num, arg1, arg2, arg3, arg4, arg5)
+    movq %r8, %r9                           # arg5
+    movq %r10, %r8                          # arg4
+    movq %rdx, %rcx                         # arg3
+    movq %rsi, %rdx                         # arg2
+    movq %rdi, %rsi                         # arg1
+    movq %rax, %rdi                         # num
     call syscall_handler
-    
-    # RAX now contains return value - DO NOT CLOBBER IT
-    # Use stack to preserve return value instead of register
-    pushq %rax                  # Save return value on stack
-    
-    # Restore user data segment (use a scratch register)
-    mov $0x23, %bx              # Use BX instead of AX
-    mov %bx, %ds
-    mov %bx, %es
-    
-    # Restore return value
-    popq %rax                   # Return value back in RAX
-    
-    # Restore callee-saved registers
+    # RAX = return value (left untouched below)
+
+    addq $8, %rsp
+    popq %r9
+    popq %r8
+    popq %r10
+    popq %rdx
+    popq %rsi
+    popq %rdi
+    popq %r15
     popq %r14
     popq %r13
     popq %r12
     popq %rbp
     popq %rbx
-    
-    # Skip saved args (6 * 8 = 48)
-    addq $48, %rsp
-    
-    # Restore sysretq values
-    popq %rcx                   # User RIP
-    popq %r11                   # User RFLAGS
-    popq %rsp                   # User RSP
-    
-    # DEBUG: Mark sysret about to happen (if this prints, stack is OK)
-    # Note: can't easily call C here since we switched to user stack already
-    
+
+    popq %rcx                               # User RIP
+    popq %r11                               # User RFLAGS
+    popq %rsp                               # User RSP (interrupts still masked)
     sysretq
 
+
+# void sched_switch(uint64_t *save_rsp, uint64_t new_rsp)
+#
+# Kernel-stack switch used by the scheduler. Saves callee-saved registers on
+# the current stack, stores RSP into *save_rsp, loads new_rsp and pops the
+# same frame. A new process's stack is pre-built so the final RET lands in
+# user_first_entry.
+.global sched_switch
+sched_switch:
+    pushq %rbp
+    pushq %rbx
+    pushq %r12
+    pushq %r13
+    pushq %r14
+    pushq %r15
+    movq %rsp, (%rdi)
+    movq %rsi, %rsp
+    popq %r15
+    popq %r14
+    popq %r13
+    popq %r12
+    popq %rbx
+    popq %rbp
+    ret
+
+# First instruction a newly created process runs (in kernel mode, on its
+# own kernel stack, interrupts disabled). Never returns.
+.global user_first_entry
+user_first_entry:
+    andq $-16, %rsp
+    call process_first_run
+1:  cli
+    hlt
+    jmp 1b
+
+# First instruction a new kernel thread runs. R12 = entry, R13 = argument.
+.global kthread_first_entry
+kthread_first_entry:
+    andq $-16, %rsp
+    movq %r12, %rdi
+    movq %r13, %rsi
+    call kthread_start
+1:  cli
+    hlt
+    jmp 1b
+
+# void enter_user_mode_args(uint64_t stack, uint64_t entry,
+#                           uint64_t arg0, uint64_t arg1)
+# Like enter_user_mode, but starts the program with RDI = arg0 (argc) and
+# RSI = arg1 (argv). All other registers are cleared.
+.global enter_user_mode_args
+enter_user_mode_args:
+    cli
+    mov $0x23, %ax
+    mov %ax, %ds
+    mov %ax, %es
+    mov %ax, %fs
+    mov %ax, %gs
+
+    pushq $0x23             # SS
+    pushq %rdi              # RSP
+    pushq $0x202            # RFLAGS (IF=1)
+    pushq $0x2B             # CS (64-bit user code)
+    pushq %rsi              # RIP
+
+    movq %rdx, %rdi         # argc
+    movq %rcx, %rsi         # argv
+    xor %rax, %rax
+    xor %rbx, %rbx
+    xor %rcx, %rcx
+    xor %rdx, %rdx
+    xor %rbp, %rbp
+    xor %r8, %r8
+    xor %r9, %r9
+    xor %r10, %r10
+    xor %r11, %r11
+    xor %r12, %r12
+    xor %r13, %r13
+    xor %r14, %r14
+    xor %r15, %r15
+    iretq
 
 # Context switch between processes
 context_switch:
@@ -316,4 +387,4 @@ syscall_enable:
     rdmsr
     or $1, %eax                 # SCE = bit 0
     wrmsr
-    ret
+    ret

@@ -11,6 +11,7 @@
  * Copyright (c) 2025 KetiveeAI
  */
 
+#include "core/process.h"
 #include <stdint.h>
 
 extern void serial_puts(const char *s);
@@ -79,9 +80,12 @@ static void serial_hex64(uint64_t val) {
 static fault_origin_t classify_fault(uint64_t rip, uint64_t cs) {
     /* Ring 3 (user mode) if CS indicates CPL 3 */
     if ((cs & 3) == 3) {
-        /* Check if this is a registered service */
-        /* For now, treat all Ring 3 faults as services */
-        return FAULT_ORIGIN_SERVICE;
+        /* System processes (desktop) are services; launched apps are not */
+        process_t *proc = process_current();
+        if (proc && (proc->flags & PROC_FLAG_SYSTEM)) {
+            return FAULT_ORIGIN_SERVICE;
+        }
+        return FAULT_ORIGIN_USER;
     }
     
     /* Ring 0 - check if in driver code range */
@@ -229,12 +233,12 @@ void fault_route(uint64_t vector, uint64_t error_code, uint64_t rip, uint64_t cs
             
         case FAULT_ACTION_ZOMBIE:
             serial_puts("[FAULT] Action: Mark service as ZOMBIE\n");
-            /* Mark first running service as zombie if no specific name available */
-            for (int i = 0; i < g_service_count; i++) {
-                if (g_services[i].state == SVC_STATE_RUNNING) {
-                    mark_service_zombie(g_services[i].name);
-                    request_recovery(g_services[i].name);
-                    break;
+            {
+                /* The faulting service is the current process */
+                process_t *proc = process_current();
+                if (proc) {
+                    mark_service_zombie(proc->name);
+                    request_recovery(proc->name);
                 }
             }
             break;

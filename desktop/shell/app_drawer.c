@@ -10,6 +10,9 @@
 #include "../include/app_drawer.h"
 #include "../include/desktop_shell.h"
 #include <string.h>
+#include "../include/nxsyscall.h"
+
+extern void serial_puts(const char *s);
 
 /* ============ External Desktop Functions ============ */
 
@@ -118,8 +121,54 @@ int app_drawer_init(uint32_t screen_width, uint32_t screen_height) {
     return 0;
 }
 
+/*
+ * List programs installed on disk (APP_DISK_DIR) and register each one with
+ * an executable path, so launching it starts a real process. Returns the
+ * number registered (0 when the directory is missing or empty).
+ */
+static int app_drawer_scan_disk_apps(void) {
+    static nx_dirent_t entries[APP_DISK_SCAN_MAX];
+    uint32_t count = 0;
+    
+    if (nx_readdir(APP_DISK_DIR, entries, APP_DISK_SCAN_MAX, &count) != 0) {
+        serial_puts("[DRAWER] No " APP_DISK_DIR " directory on disk\n");
+        return 0;
+    }
+    if (count > APP_DISK_SCAN_MAX) count = APP_DISK_SCAN_MAX;
+    
+    int added = 0;
+    for (uint32_t i = 0; i < count; i++) {
+        nx_dirent_t *e = &entries[i];
+        e->name[NX_DIRENT_NAME_MAX] = '\0';
+        if (e->type != NX_DIRENT_FILE || e->name[0] == '\0' || e->name[0] == '.') continue;
+        
+        /* exec path = APP_DISK_DIR "/" name, bounded */
+        char exec_path[APP_PATH_MAX];
+        int n = 0;
+        const char *dir = APP_DISK_DIR;
+        while (*dir && n < APP_PATH_MAX - 1) exec_path[n++] = *dir++;
+        if (n < APP_PATH_MAX - 1) exec_path[n++] = '/';
+        const char *nm = e->name;
+        while (*nm && n < APP_PATH_MAX - 1) exec_path[n++] = *nm++;
+        if (*nm) continue;  /* Name too long for an app path: skip */
+        exec_path[n] = '\0';
+        
+        if (app_drawer_register_app(e->name, exec_path, NULL, APP_CAT_UTILITIES) != 0) break;
+        drawer_strcpy(g_drawer.apps[g_drawer.app_count - 1].exec_path, exec_path, APP_PATH_MAX);
+        added++;
+        
+        serial_puts("[DRAWER] Found program ");
+        serial_puts(exec_path);
+        serial_puts("\n");
+    }
+    return added;
+}
+
 int app_drawer_scan_apps(void) {
     g_drawer.app_count = 0;
+    
+    /* Programs on disk first: they are the ones that launch as processes */
+    app_drawer_scan_disk_apps();
     
     /* Register built-in apps */
     for (int i = 0; builtin_apps[i].name; i++) {
@@ -155,6 +204,7 @@ int app_drawer_register_app(const char *name, const char *path,
         /* Append /resources/icon.nxi */
     }
     
+    app->exec_path[0] = '\0';
     app->category = category;
     app->visible = 1;
     app->pinned = 0;
@@ -209,7 +259,11 @@ void app_drawer_search(const char *query) {
 
 /* ============ Animation ============ */
 
+/* Direction of the running animation: 1 = closing, 0 = opening */
+static int g_drawer_closing = 0;
+
 void app_drawer_open(void) {
+    g_drawer_closing = 0;
     if (!g_drawer.visible) {
         g_drawer.visible = 1;
         g_drawer.animating = 1;
@@ -220,6 +274,7 @@ void app_drawer_open(void) {
 void app_drawer_close(void) {
     if (g_drawer.visible) {
         g_drawer.animating = 1;
+        g_drawer_closing = 1;
         /* Animation will set visible=0 when done */
     }
 }
@@ -241,14 +296,14 @@ void app_drawer_update(uint32_t delta_ms) {
     
     float delta = (float)delta_ms / (float)ANIMATION_DURATION_MS;
     
-    if (g_drawer.visible && g_drawer.animation_progress < 1.0f) {
+    if (g_drawer.visible && !g_drawer_closing) {
         /* Opening animation */
         g_drawer.animation_progress += delta;
         if (g_drawer.animation_progress >= 1.0f) {
             g_drawer.animation_progress = 1.0f;
             g_drawer.animating = 0;
         }
-    } else if (g_drawer.visible && g_drawer.animation_progress >= 1.0f) {
+    } else if (g_drawer.visible && g_drawer_closing) {
         /* Closing animation */
         g_drawer.animation_progress -= delta;
         if (g_drawer.animation_progress <= 0.0f) {
@@ -557,11 +612,23 @@ int app_drawer_launch_app(uint32_t index) {
     /* Mark as recently used */
     app->recent = 1;
     
-    /* TODO: Actually launch the app via process manager */
-    /* For now, just log */
-    /* serial_println("Launching app: "); */
-    /* serial_println(app->path); */
+    if (app->exec_path[0] == '\0') {
+        /* Built-in entry without a program on disk: nothing to start yet */
+        serial_puts("[DRAWER] No program installed for ");
+        serial_puts(app->name);
+        serial_puts("\n");
+        return -1;
+    }
     
+    serial_puts("[DRAWER] Launching ");
+    serial_puts(app->exec_path);
+    serial_puts("\n");
+    
+    int pid = nx_spawn(app->exec_path, NULL, 0);
+    if (pid < 0) {
+        serial_puts("[DRAWER] Launch failed\n");
+        return -1;
+    }
     return 0;
 }
 

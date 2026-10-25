@@ -192,8 +192,10 @@ void isr_handler(registers_t *regs) {
         if (from_userspace) {
             serial_puts("\n[FAULT_ROUTER] Routing userspace exception...\n");
             fault_route(int_no, regs->err_code, regs->rip, regs->cs);
-            serial_puts("[FAULT_ROUTER] Userspace process terminated.\n");
-            return;
+            /* Returning would re-run the faulting instruction forever:
+             * terminate the process and run something else instead. */
+            extern void process_exit_on_fault(uint64_t vector) __attribute__((noreturn));
+            process_exit_on_fault(int_no);
         }
         
         /* Kernel-space exception — unrecoverable, halt. */
@@ -211,7 +213,14 @@ void isr_handler(registers_t *regs) {
         switch (irq) {
             case 0:  /* Timer */
                 pit_tick();
-                break;
+                /* EOI before scheduling: the switch may not come back here
+                 * until much later, and the PIC must keep delivering ticks */
+                pic_send_eoi(0);
+                {
+                    extern void scheduler_tick_irq(int from_user);
+                    scheduler_tick_irq((regs->cs & 3) == 3);
+                }
+                return;
                 
             case 1:  /* Keyboard */
                 keyboard_irq();

@@ -27,6 +27,15 @@ echo "[IMG] Copying kernel..."
 mcopy -i neolyx_new.img kernel/kernel.bin ::/EFI/BOOT/kernel.bin
 mcopy -i neolyx_new.img kernel/kernel.bin ::/kernel.bin
 
+echo "[IMG] Installing user programs into /apps..."
+mmd -i neolyx_new.img ::/apps
+if [ -f "tests/userland/ticker/ticker" ]; then
+    mcopy -i neolyx_new.img tests/userland/ticker/ticker ::/apps/ticker
+    echo "  ✓ /apps/ticker"
+else
+    echo "  (tests/userland/ticker/ticker not built - run build_all.sh)"
+fi
+
 echo "[IMG] Creating installation marker..."
 echo "NeolyxOS Installed" | mcopy -i neolyx_new.img - ::/INSTALLED.MRK
 

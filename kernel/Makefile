@@ -69,6 +69,7 @@ obj-y += bsp.o
 obj-y += heap.o
 obj-y += pmm.o
 obj-y += vmm.o
+obj-y += addrspace.o
 
 # System calls and process management
 obj-y += syscall.o
@@ -261,6 +262,9 @@ heap.o: src/mm/heap.c
 
 pmm.o: src/mm/pmm.c
 	$(CC) $(CFLAGS) -c src/mm/pmm.c -o pmm.o
+
+addrspace.o: src/mm/addrspace.c include/mm/addrspace.h
+	$(CC) $(CFLAGS) -c src/mm/addrspace.c -o addrspace.o
 
 vmm.o: src/mm/vmm.c
 	$(CC) $(CFLAGS) -c src/mm/vmm.c -o vmm.o

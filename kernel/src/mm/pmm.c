@@ -8,6 +8,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "mm/addrspace.h"
 #include "mm/pmm.h"
 
 /* ============ External Dependencies ============ */
@@ -231,6 +232,10 @@ void pmm_init(void *memory_map, uint64_t map_size, uint64_t descriptor_size) {
         serial_hex64(kernel_end_addr);
         serial_puts("\n");
     }
+    
+    /* Physical alias of the per-process user window: never allocate here,
+     * user address spaces map their own frames at these virtual addresses */
+    addrspace_reserve_window();
     
     /* Calculate final stats */
     pmm_stats.total_memory = pmm_stats.total_pages * PAGE_SIZE;

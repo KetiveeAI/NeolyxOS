@@ -212,93 +212,51 @@ int get_current_pid(void) {
     return 0;  /* Kernel context - PID 0 */
 }
 
-/* Spawn a new process (real implementation using fork+exec) */
+/* Spawn a new process from a program file (own address space) */
 int process_spawn(const char *path, int flags) {
     if (!path) {
         return -1;
     }
     
+    #define SPAWN_FLAG_WAIT  0x01  /* Wait for child to complete */
+    #define SPAWN_FLAG_DETACH 0x02 /* Detach child completely */
+    
     serial_puts("[SPAWN] Spawning process: ");
     serial_puts(path);
     serial_puts("\n");
     
-    /* Import process management functions from process.c */
-    extern int32_t process_fork(void);
-    extern int process_exec(const char *path, char *const argv[], char *const envp[]);
+    extern int32_t process_spawn_file(const char *path, int argc,
+                                      const char *const *argv, uint32_t flags);
     extern int32_t process_wait(int32_t pid, int *status);
     
-    /* Fork the current process */
-    int32_t pid = process_fork();
-    
+    /* A waited-for child must stay around after exit; others are detached */
+    uint32_t pflags = (flags & SPAWN_FLAG_WAIT) ? 0 : 0x0008 /* PROC_FLAG_DETACHED */;
+    int32_t pid = process_spawn_file(path, 0, NULL, pflags);
     if (pid < 0) {
-        serial_puts("[SPAWN] Fork failed\n");
-        return -1;
-    }
-    
-    if (pid == 0) {
-        /* ========== CHILD PROCESS ========== */
-        /* Build minimal argv array */
-        char *argv[2];
-        argv[0] = (char *)path;  /* Program name */
-        argv[1] = NULL;          /* Terminator */
-        
-        /* Empty environment for now */
-        char *envp[1];
-        envp[0] = NULL;
-        
-        /* Replace this process with the new program */
-        int ret = process_exec(path, argv, envp);
-        
-        /* If exec returns, it failed */
-        serial_puts("[SPAWN] Exec failed for: ");
+        serial_puts("[SPAWN] Failed to start ");
         serial_puts(path);
         serial_puts("\n");
-        
-        /* Exit with error code - process_exit is in process.c */
-        extern void process_exit(int exit_code);
-        process_exit(127);  /* 127 = command not found/exec failed */
-        
-        /* Should never reach here */
         return -1;
     }
     
-    /* ========== PARENT PROCESS ========== */
-    serial_puts("[SPAWN] Child process created with PID ");
-    /* Print PID */
-    char pidbuf[12];
-    int i = 11;
-    pidbuf[i--] = '\0';
-    if (pid == 0) { pidbuf[i--] = '0'; }
-    else {
-        int32_t p = pid;
-        while (p > 0 && i >= 0) { pidbuf[i--] = '0' + (p % 10); p /= 10; }
-    }
-    serial_puts(&pidbuf[i + 1]);
-    serial_puts("\n");
-    
-    /* Check spawn flags */
-    #define SPAWN_FLAG_WAIT  0x01  /* Wait for child to complete */
-    #define SPAWN_FLAG_DETACH 0x02 /* Detach child completely */
-    
     if (flags & SPAWN_FLAG_WAIT) {
-        /* Wait for child to complete */
         int status = 0;
-        process_wait(pid, &status);
-        
-        serial_puts("[SPAWN] Child exited with status ");
-        if (status < 0) { serial_puts("-"); status = -status; }
-        char sbuf[12];
-        i = 11;
-        sbuf[i--] = '\0';
-        if (status == 0) { sbuf[i--] = '0'; }
-        else {
-            while (status > 0 && i >= 0) { sbuf[i--] = '0' + (status % 10); status /= 10; }
+        if (process_wait(pid, &status) < 0) {
+            serial_puts("[SPAWN] Cannot wait for child from this context\n");
+        } else {
+            serial_puts("[SPAWN] Child exited with status ");
+            char sbuf[12];
+            int i = 11;
+            int s = status < 0 ? -status : status;
+            sbuf[i--] = '\0';
+            if (s == 0) sbuf[i--] = '0';
+            while (s > 0 && i >= 0) { sbuf[i--] = '0' + (s % 10); s /= 10; }
+            if (status < 0) serial_puts("-");
+            serial_puts(&sbuf[i + 1]);
+            serial_puts("\n");
         }
-        serial_puts(&sbuf[i + 1]);
-        serial_puts("\n");
     }
     
-    /* Return child PID to caller */
     return pid;
 }
 

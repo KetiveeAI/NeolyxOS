@@ -2183,6 +2183,9 @@ void desktop_run(void) {
         /* Check NX key long-press for help overlay */
         nx_key_tick();
         
+        /* Advance the app drawer open/close animation (one frame) */
+        app_drawer_update(16);
+        
         /* Always render every frame */
         render_desktop();
         

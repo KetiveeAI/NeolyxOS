@@ -49,6 +49,22 @@ static volatile int key_buffer_tail = 0;
 /* Last raw scancode */
 static volatile uint8_t last_scancode = 0;
 
+/*
+ * Input event queue for the syscall interface (sys_input_poll).
+ * Unlike key_buffer (ASCII keycodes for the kernel shell), it records every
+ * make and break code with its own scancode, including keys that have no
+ * ASCII value (Meta/NX, arrows), so userspace sees presses and releases.
+ */
+#define KBD_EVQ_SIZE        64
+typedef struct {
+    uint8_t scancode;   /* Make code without the release bit (E0 prefix dropped) */
+    uint8_t ascii;      /* ASCII for printable presses, else 0 */
+    uint8_t pressed;    /* 1 = press, 0 = release */
+} kbd_event_t;
+static volatile kbd_event_t kbd_evq[KBD_EVQ_SIZE];
+static volatile int kbd_evq_head = 0;
+static volatile int kbd_evq_tail = 0;
+
 /* ============ Scancode Tables ============ */
 
 /* Normal scancode to ASCII */
@@ -100,6 +116,8 @@ static uint16_t buffer_pop(void) {
 void keyboard_init(void) {
     serial_puts("[KBD] Keyboard driver initialized (extended scancode support)\n");
     key_buffer_head = 0;
+    kbd_evq_head = 0;
+    kbd_evq_tail = 0;
     key_buffer_tail = 0;
     kbd_shift = 0;
     kbd_ctrl = 0;
@@ -123,6 +141,26 @@ void keyboard_irq(void) {
     uint8_t key = scancode & 0x7F;
     int is_extended = kbd_e0_prefix;
     kbd_e0_prefix = 0;
+    
+    /* Record the event for userspace before any filtering below */
+    {
+        uint8_t ascii = 0;
+        if (!is_extended && !released) {
+            char c = kbd_shift ? kbd_map_shift[key] : kbd_map_normal[key];
+            if (kbd_caps) {
+                if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
+                else if (c >= 'A' && c <= 'Z') c = c - 'A' + 'a';
+            }
+            ascii = (uint8_t)c;
+        }
+        int next = (kbd_evq_head + 1) % KBD_EVQ_SIZE;
+        if (next != kbd_evq_tail) {     /* Full: drop the newest event */
+            kbd_evq[kbd_evq_head].scancode = key;
+            kbd_evq[kbd_evq_head].ascii = ascii;
+            kbd_evq[kbd_evq_head].pressed = released ? 0 : 1;
+            kbd_evq_head = next;
+        }
+    }
     
     /* Handle extended modifier keys (right-Ctrl, right-Alt, Meta) */
     if (is_extended) {
@@ -305,27 +343,17 @@ int keyboard_is_capslock(void) {
  * Returns 0 if event available, -1 if no events
  */
 int keyboard_get_event(uint8_t *scancode, uint8_t *ascii, uint8_t *pressed) {
-    if (!keyboard_has_key()) {
+    if (!scancode || !ascii || !pressed) return -1;
+    
+    /* Called from syscalls with interrupts masked, so no race with the IRQ */
+    if (kbd_evq_tail == kbd_evq_head) {
         return -1;  /* No event */
     }
     
-    uint16_t keycode = buffer_pop();
-    if (keycode == 0) {
-        return -1;  /* Empty */
-    }
-    
-    /* Extract scancode from last_scancode */
-    *scancode = last_scancode & 0x7F;
-    
-    /* Extract ASCII from keycode (lower 8 bits) */
-    if (keycode & 0x100) {
-        *ascii = 0;  /* Special key */
-    } else {
-        *ascii = (uint8_t)(keycode & 0xFF);
-    }
-    
-    /* Check if it was a release (last_scancode high bit) */
-    *pressed = !(last_scancode & 0x80);
+    *scancode = kbd_evq[kbd_evq_tail].scancode;
+    *ascii = kbd_evq[kbd_evq_tail].ascii;
+    *pressed = kbd_evq[kbd_evq_tail].pressed;
+    kbd_evq_tail = (kbd_evq_tail + 1) % KBD_EVQ_SIZE;
     
     return 0;
 }

@@ -13,6 +13,7 @@
 #include "fs/vfs.h"
 #include "mm/kheap.h"
 #include "mm/pmm.h"
+#include "mm/addrspace.h"
 
 /* ============ External Dependencies ============ */
 
@@ -70,21 +71,29 @@ static void serial_hex64(uint64_t v) {
 
 /* ============ User Memory Validation ============ */
 
+/*
+ * Validate a user buffer against the calling process's page tables: the
+ * whole range must be inside the user window and mapped user-accessible
+ * (and writable when write != 0). Kernel-mode callers without an address
+ * space keep the old lower-half check.
+ */
 int syscall_validate_ptr(const void *ptr, size_t size, int write) {
     if (!ptr) return -EFAULT;
     
-    /* Check if pointer is in user space (below kernel) */
     uint64_t addr = (uint64_t)ptr;
+    process_t *proc = process_current();
     
-    /* Simple check: user space is below 0x0000800000000000 */
-    if (addr >= 0x0000800000000000ULL) {
-        return -EFAULT;
+    if (proc && proc->as) {
+        if (addrspace_check_range(proc->as, addr, size, write) != 0) {
+            return -EFAULT;
+        }
+        return 0;
     }
     
-    /* TODO: Check page tables for actual mapping */
-    (void)size;
-    (void)write;
-    
+    /* No user address space: only reject kernel-half pointers */
+    if (addr >= 0x0000800000000000ULL || addr + size < addr) {
+        return -EFAULT;
+    }
     return 0;
 }
 
@@ -112,19 +121,60 @@ int syscall_copy_to_user(void *dst, const void *src, size_t size) {
     return 0;
 }
 
+/*
+ * Copy a NUL-terminated user string. Each page is validated before the
+ * first byte in it is read, so a string running off the end of mapped
+ * memory fails with -EFAULT instead of faulting the kernel.
+ * Returns the string length, -EFAULT, or -ENAMETOOLONG if it does not fit.
+ */
 int syscall_strncpy_from_user(char *dst, const char *src, size_t max) {
-    if (syscall_validate_ptr(src, 1, 0) != 0) {
-        return -EFAULT;
-    }
+    if (!dst || max == 0) return -EINVAL;
     
-    size_t i = 0;
-    while (i < max - 1) {
+    uint64_t addr = (uint64_t)src;
+    uint64_t checked_until = addr;  /* First byte not yet validated */
+    
+    for (size_t i = 0; i < max; i++) {
+        uint64_t cur = addr + i;
+        if (cur >= checked_until) {
+            if (syscall_validate_ptr((const void *)cur, 1, 0) != 0) {
+                dst[0] = '\0';
+                return -EFAULT;
+            }
+            checked_until = (cur & ~0xFFFULL) + 0x1000;
+        }
         dst[i] = src[i];
-        if (src[i] == '\0') break;
-        i++;
+        if (dst[i] == '\0') return (int)i;
     }
-    dst[i] = '\0';
-    return i;
+    dst[max - 1] = '\0';
+    return -ENAMETOOLONG;
+}
+
+/*
+ * Copy a user argv array (NULL-terminated) into kernel storage.
+ * storage must hold PROCESS_ARGV_MAX * PROCESS_ARG_LEN bytes and ptrs
+ * PROCESS_ARGV_MAX + 1 entries. Returns argc or a negative errno.
+ */
+static int copy_user_argv(uint64_t argv_ptr, char *storage, const char **ptrs) {
+    int argc = 0;
+    ptrs[0] = NULL;
+    if (argv_ptr == 0) return 0;
+    
+    for (;;) {
+        uint64_t uptr;
+        if (syscall_copy_from_user(&uptr, (const void *)(argv_ptr + (uint64_t)argc * 8),
+                                   sizeof(uptr)) != 0) {
+            return -EFAULT;
+        }
+        if (uptr == 0) break;
+        if (argc >= PROCESS_ARGV_MAX) return -E2BIG;
+        
+        char *slot = storage + (uint64_t)argc * PROCESS_ARG_LEN;
+        int len = syscall_strncpy_from_user(slot, (const char *)uptr, PROCESS_ARG_LEN);
+        if (len < 0) return (len == -ENAMETOOLONG) ? -E2BIG : len;
+        ptrs[argc++] = slot;
+    }
+    ptrs[argc] = NULL;
+    return argc;
 }
 
 /* ============ Privilege Check ============ */
@@ -166,11 +216,7 @@ int64_t sys_time_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64
 
 int64_t sys_yield_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a1; (void)a2; (void)a3; (void)a4; (void)a5;
-    /* TODO: Re-enable when desktop has proper process structure
-     * For now, just return - the desktop was started directly with IRETQ
-     * and has no process context for the scheduler to switch.
-     */
-    /* process_yield(); */
+    process_yield();
     return 0;
 }
 
@@ -194,13 +240,69 @@ int64_t sys_fork_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64
 int64_t sys_exec_impl(uint64_t path_ptr, uint64_t argv_ptr, uint64_t envp_ptr, uint64_t a4, uint64_t a5) {
     (void)a4; (void)a5;
     
+    (void)envp_ptr;  /* Environment is not supported yet */
+    
     char path[256];
     if (syscall_strncpy_from_user(path, (const char *)path_ptr, 256) < 0) {
         return -EFAULT;
     }
     
-    /* Note: argv and envp are user pointers - process_exec handles them */
-    return process_exec(path, (char *const *)argv_ptr, (char *const *)envp_ptr);
+    /* Arguments are copied into kernel memory before the old image goes away */
+    char *storage = (char *)kmalloc(PROCESS_ARGV_MAX * PROCESS_ARG_LEN);
+    if (!storage) return -ENOMEM;
+    const char *argv[PROCESS_ARGV_MAX + 1];
+    int argc = copy_user_argv(argv_ptr, storage, argv);
+    if (argc < 0) {
+        kfree(storage);
+        return argc;
+    }
+    
+    /* Only returns on failure */
+    int ret = process_exec(path, argc ? (char *const *)argv : NULL, NULL);
+    kfree(storage);
+    return ret;
+}
+
+/*
+ * int32_t sys_spawn(const char *path, char *const argv[], uint32_t flags)
+ *
+ * Start a program from disk as a new process with its own address space,
+ * running alongside the caller. Returns the child's PID or a negative errno.
+ * flags: SPAWN_WAITABLE keeps the child for sys_wait(); otherwise the child
+ * is detached and freed as soon as it exits.
+ */
+int64_t sys_spawn_impl(uint64_t path_ptr, uint64_t argv_ptr, uint64_t flags,
+                       uint64_t a4, uint64_t a5) {
+    (void)a4; (void)a5;
+    
+    if (flags & ~(uint64_t)SPAWN_WAITABLE) return -EINVAL;
+    
+    char path[256];
+    if (syscall_strncpy_from_user(path, (const char *)path_ptr, 256) < 0) {
+        return -EFAULT;
+    }
+    if (path[0] != '/') return -EINVAL;  /* Absolute paths only */
+    
+    char *storage = (char *)kmalloc(PROCESS_ARGV_MAX * PROCESS_ARG_LEN);
+    if (!storage) return -ENOMEM;
+    const char *argv[PROCESS_ARGV_MAX + 1];
+    int argc = copy_user_argv(argv_ptr, storage, argv);
+    if (argc < 0) {
+        kfree(storage);
+        return argc;
+    }
+    
+    process_t *caller = process_current();
+    serial_puts("[SYSCALL] spawn '");
+    serial_puts(path);
+    serial_puts("' requested by PID ");
+    serial_dec(caller ? caller->pid : 0);
+    serial_puts("\n");
+    
+    uint32_t pflags = (flags & SPAWN_WAITABLE) ? 0 : PROC_FLAG_DETACHED;
+    int32_t pid = process_spawn_file(path, argc, argc ? argv : NULL, pflags);
+    kfree(storage);
+    return pid;
 }
 
 int64_t sys_wait_impl(uint64_t pid, uint64_t status_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
@@ -220,88 +322,51 @@ int64_t sys_wait_impl(uint64_t pid, uint64_t status_ptr, uint64_t a3, uint64_t a
 
 /* Memory */
 
-/* Global heap tracking for desktop (no process context)
- * This is set by the ELF loader after loading the desktop binary.
- * Windows/macOS style: 64MB heap reserve, grow via brk syscall */
-static uint64_t g_desktop_heap_start = 0;
-static uint64_t g_desktop_heap_end = 0;
-static uint64_t g_desktop_heap_max = 0;  /* 64MB reserve limit */
-
-void syscall_set_desktop_heap(uint64_t start, uint64_t max_size) {
-    g_desktop_heap_start = start;
-    g_desktop_heap_end = start;
-    g_desktop_heap_max = start + max_size;
-    serial_puts("[SYSCALL] Desktop heap: ");
-    serial_dec(start >> 20);
-    serial_puts("MB - ");
-    serial_dec((start + max_size) >> 20);
-    serial_puts("MB (");
-    serial_dec(max_size >> 20);
-    serial_puts("MB reserve)\n");
-}
-
+/*
+ * void *sys_brk(void *addr)
+ *
+ * Per-process program break. addr == 0 queries the current break. Growing
+ * maps fresh zero-filled pages into the caller's address space on demand;
+ * the reserve ends at heap_max (64MB, or earlier if it would reach the
+ * stack). Shrinking moves the break but keeps pages mapped until exit.
+ * Returns the new (page-aligned) break or a negative errno.
+ */
 int64_t sys_brk_impl(uint64_t addr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
-    serial_puts("[BRK] called, addr=");
-    serial_dec((int64_t)addr);
-    serial_puts(" heap_start=");
-    serial_dec((int64_t)g_desktop_heap_start);
-    serial_puts("\n");
+    process_t *proc = process_current();
+    if (!proc || !proc->as || proc->heap_start == 0) {
+        serial_puts("[BRK] ERROR: caller has no user heap\n");
+        return -ENOMEM;
+    }
     
-    /* Use desktop global heap first if configured (desktop runs directly, no process) */
-    if (g_desktop_heap_start != 0) {
-        if (addr == 0) {
-            serial_puts("[BRK] Query, returning heap_end=");
-            serial_dec((int64_t)g_desktop_heap_end);
-            serial_puts("\n");
-            return g_desktop_heap_end;  /* Query current break */
-        }
-        
-        if (addr < g_desktop_heap_start) {
-            return -EINVAL;  /* Can't shrink below start */
-        }
-        
-        if (addr > g_desktop_heap_max) {
-            serial_puts("[BRK] ERROR: Heap request exceeds 64MB reserve\n");
+    if (addr == 0) {
+        return (int64_t)proc->heap_end;
+    }
+    if (addr < proc->heap_start) {
+        return -EINVAL;
+    }
+    if (addr > proc->heap_max) {
+        serial_puts("[BRK] PID ");
+        serial_dec(proc->pid);
+        serial_puts(": request exceeds heap reserve\n");
+        return -ENOMEM;
+    }
+    
+    uint64_t aligned = (addr + 4095) & ~4095ULL;
+    if (aligned > proc->heap_mapped) {
+        if (addrspace_map_alloc(proc->as, proc->heap_mapped, aligned - proc->heap_mapped,
+                                AS_MAP_WRITE) != 0) {
+            serial_puts("[BRK] PID ");
+            serial_dec(proc->pid);
+            serial_puts(": out of memory\n");
             return -ENOMEM;
         }
-        
-        /* Page-align the request */
-        uint64_t aligned = (addr + 4095) & ~4095;
-        
-        /* The heap region was ALREADY mapped with PAGE_USER at boot (64MB reserve).
-         * We just need to track the heap end - no remapping needed.
-         * Calling paging_add_user_flag again would corrupt page tables! */
-        if (aligned > g_desktop_heap_end) {
-            uint64_t grow_size = aligned - g_desktop_heap_end;
-            pmm_reserve_region(g_desktop_heap_end, grow_size);
-            /* NOTE: Paging already done at boot - DO NOT call paging_add_user_flag here! */
-        }
-        
-        g_desktop_heap_end = aligned;
-        
-        serial_puts("[BRK] returning ");
-        serial_dec(aligned);
-        serial_puts("\n");
-        return aligned;
+        proc->heap_mapped = aligned;
     }
     
-    /* Fall back to process-based heap (for future multi-process support) */
-    process_t *proc = process_current();
-    if (proc && proc->heap_start) {
-        if (addr == 0) {
-            return proc->heap_end;
-        }
-        if (addr < proc->heap_start) {
-            return -EINVAL;
-        }
-        proc->heap_end = addr;
-        return addr;
-    }
-    
-    serial_puts("[BRK] ERROR: No heap configured\n");
-    return -ENOMEM;
+    proc->heap_end = aligned;
+    return (int64_t)aligned;
 }
 
 /* File I/O */
@@ -570,6 +635,7 @@ int64_t sys_shutdown_impl(uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, ui
 extern int nxgame_init(void);
 extern void *nxgame_session_create(int type, uint32_t caps, void *quotas);
 extern int nxgame_session_destroy(void *session);
+extern const uint32_t g_nxgame_quotas_size;
 extern int nxgame_session_start(void *session);
 extern int nxgame_session_stop(void *session);
 extern int nxgame_gpu_acquire(void *session);
@@ -611,8 +677,25 @@ int64_t sys_nxgame_create_impl(uint64_t type, uint64_t caps, uint64_t quotas_ptr
         return -EMFILE;  /* Too many sessions */
     }
     
-    void *quotas = quotas_ptr ? (void *)quotas_ptr : NULL;
+    /* Quotas come from user memory: copy them in before the bridge reads them */
+    void *quotas = NULL;
+    if (quotas_ptr) {
+        if (g_nxgame_quotas_size == 0 || g_nxgame_quotas_size > 4096) {
+            return -EINVAL;
+        }
+        quotas = kmalloc(g_nxgame_quotas_size);
+        if (!quotas) {
+            return -ENOMEM;
+        }
+        if (syscall_copy_from_user(quotas, (const void *)quotas_ptr, g_nxgame_quotas_size) != 0) {
+            kfree(quotas);
+            return -EFAULT;
+        }
+    }
     void *session = nxgame_session_create((int)type, (uint32_t)caps, quotas);
+    if (quotas) {
+        kfree(quotas);  /* the session keeps its own copy */
+    }
     if (!session) {
         return -ENOMEM;
     }
@@ -965,6 +1048,14 @@ int64_t sys_fb_map_impl(uint64_t info_ptr, uint64_t a2, uint64_t a3, uint64_t a4
 int64_t sys_fb_flip_impl(uint64_t src_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
+    /* The back buffer is linear (width * 4 bytes per row) and must be the
+     * caller's own readable memory */
+    if (src_ptr && syscall_validate_ptr((const void *)src_ptr,
+                                        (uint64_t)g_framebuffer_width * 4 * g_framebuffer_height,
+                                        0) != 0) {
+        return -EFAULT;
+    }
+    
     /* If userspace provides a back buffer, copy it to front buffer */
     if (src_ptr && g_framebuffer_addr) {
         /*
@@ -1208,4 +1299,4 @@ void syscall_trace(uint64_t num, uint64_t ret) {
     serial_puts(" = ");
     serial_dec(ret);
     serial_puts("\n");
-}
+}

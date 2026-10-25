@@ -39,6 +39,9 @@ static int g_initialized = 0;
 static uint32_t g_next_session_id = 1;
 
 /* Default quotas */
+/* Size of nxgame_quotas_t, for callers that copy quotas in from user space */
+const uint32_t g_nxgame_quotas_size = sizeof(nxgame_quotas_t);
+
 static const nxgame_quotas_t g_default_quotas = {
     .max_vram_mb = 0,           /* Unlimited */
     .max_cpu_percent = 0,       /* Unlimited */

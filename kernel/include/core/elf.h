@@ -171,4 +171,21 @@ int elf_load(const void *data, elf_info_t *info);
  */
 int elf_load_file(const char *path, elf_info_t *info);
 
+struct addrspace;
+
+/**
+ * Load a static ELF64 executable into a user address space.
+ *
+ * Every PT_LOAD segment must lie inside the user window and below the
+ * stack region; pages are allocated private to the space and BSS is zeroed.
+ * Dynamic executables (PT_INTERP / ET_DYN) are rejected.
+ *
+ * @param as    Target address space (not necessarily the active one)
+ * @param data  ELF file contents in kernel memory
+ * @param size  Exact size of data in bytes
+ * @param info  Filled with entry point, load range and initial brk
+ * @return 0 on success, -1 on any validation or allocation failure
+ */
+int elf_load_user(struct addrspace *as, const void *data, uint64_t size, elf_info_t *info);
+
 #endif /* NEOLYX_ELF_H */
