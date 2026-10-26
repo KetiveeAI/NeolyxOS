@@ -9,6 +9,7 @@
 
 #include "../include/app_drawer.h"
 #include "../include/nxui.h"
+#include "../include/nxevent.h"
 #include "../include/desktop_shell.h"
 #include <string.h>
 
@@ -575,11 +576,8 @@ int app_drawer_launch_app(uint32_t index) {
     /* Mark as recently used */
     app->recent = 1;
     
-    /* TODO: Actually launch the app via process manager */
-    /* For now, just log */
-    /* serial_println("Launching app: "); */
-    /* serial_println(app->path); */
-    
+    /* Hand the launch to the shell (it opens or focuses the app window). */
+    nxevent_publish_app(NX_EVENT_APP_LAUNCHED, (uint32_t)(index + 100), app->name, app->path);
     return 0;
 }
 

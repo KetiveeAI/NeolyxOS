@@ -1721,6 +1721,56 @@ void nx_key_tick(void) {
 }
 
 int desktop_launch_app(const char *name);   /* defined below */
+static void render_empty_content(desktop_window_t *win, void *ctx);
+
+/* Shell-side handling of app launches (dock, app drawer, search). Apps
+ * without a registered window get a cascaded window with the empty state
+ * until a process launcher exists. Re-launching focuses the open window. */
+static int shell_streq_ci(const char *a, const char *b) {
+    while (*a && *b) {
+        char x = *a, y = *b;
+        if (x >= 'A' && x <= 'Z') x = (char)(x + 32);
+        if (y >= 'A' && y <= 'Z') y = (char)(y + 32);
+        if (x != y) return 0;
+        a++; b++;
+    }
+    return *a == 0 && *b == 0;
+}
+
+static void desktop_on_app_launched(const nx_event_t *event, void *userdata) {
+    (void)userdata;
+    if (!event || !event->data || event->data_size < sizeof(nx_app_data_t)) return;
+    const nx_app_data_t *app = (const nx_app_data_t *)event->data;
+    const char *name = app->app_name;
+    if (!name[0]) return;
+    /* Dock labels map to registered startup apps where one exists */
+    if (shell_streq_ci(name, "Files")) name = "File Manager";
+    else if (shell_streq_ci(name, "Settings")) name = "System Settings";
+    else if (shell_streq_ci(name, "Fonts")) name = "Font Manager";
+    /* Already open: focus and restore */
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (g_windows[i].id != 0 && shell_streq_ci(g_windows[i].title, name)) {
+            if (g_windows[i].minimized) {
+                g_windows[i].minimized = 0;
+                g_windows[i].visible = 1;
+                wm_restore_window(g_windows[i].id);
+            }
+            desktop_focus_window(g_windows[i].id);
+            dock_set_running(app->app_id, 1);
+            return;
+        }
+    }
+    if (desktop_launch_app(name) != 0) {
+        /* No registered window: cascade a generic one */
+        static int cascade = 0;
+        int32_t x = 180 + (cascade % 6) * 32, y = 110 + (cascade % 6) * 28;
+        cascade++;
+        uint32_t id = desktop_create_window(app->app_name, x, y, 640, 440);
+        if (id) desktop_set_window_render(id, render_empty_content, NULL);
+    }
+    dock_set_running(app->app_id, 1);
+}
+
 
 /* ASCII of the key being dispatched (set by the event loop before desktop_handle_key). */
 static char g_key_ascii = 0;
@@ -1941,6 +1991,8 @@ int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pit
     
     /* Initialize Event Bus */
     nxevent_init();
+    /* Launch requests from the dock, drawer and search open windows here */
+    nxevent_subscribe(NX_EVENT_APP_LAUNCHED, desktop_on_app_launched, NULL);
     nx_debug_print("[DESKTOP] Event bus done, dock init...\n");
     
     /* Initialize Dock */
