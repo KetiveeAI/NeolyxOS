@@ -10,7 +10,7 @@ LDFLAGS = -lm
 
 # Source files
 NXGFX_SRC = src/nxgfx/context.c src/nxgfx/text.c src/nxgfx/lighting.c src/nxgfx/gpu_driver.c src/nxgfx/nxsvg.c src/nxgfx/nxgfx_effects.c src/nxgfx/software_renderer.c src/nxgfx/hdr.c
-WIDGETS_SRC = src/widgets/widget.c src/widgets/button.c src/widgets/label.c src/widgets/textfield.c src/widgets/container.c src/widgets/slider.c src/widgets/listview.c src/widgets/tabview.c
+WIDGETS_SRC = src/widgets/widget.c src/widgets/button.c src/widgets/label.c src/widgets/textfield.c src/widgets/container.c src/widgets/slider.c src/widgets/checkbox.c src/widgets/listview.c src/widgets/tabview.c
 NXRENDER_SRC = src/nxrender/compositor.c src/nxrender/window.c src/nxrender/application.c src/nxrender/device.c
 LAYOUT_SRC = src/layout/layout.c src/layout/nx_layout_node.c src/layout/nx_layout_math.c src/layout/nx_layout_flex.c src/layout/nx_layout_grid.c src/layout/nx_layout_absolute.c
 THEME_SRC = src/theme/theme.c
@@ -58,3 +58,56 @@ info:
 	@echo "NXRender C Library for NeolyxOS"
 	@echo "Sources: $(ALL_SRC)"
 	@echo "Output: $(LIB)"
+
+# ============================================================================
+# NeolyxOS userspace build (freestanding, consumed by sdk/reox.mk)
+#
+# Same sources as the host library minus the device/GPU/SVG back ends that
+# depend on a hosted libc (fopen, sscanf, usleep).  Objects live under
+# build/neolyx/ so they never mix with the host objects above.
+# ============================================================================
+NEOLYX_CFLAGS = -Wall -Wextra -std=c11 -O2 \
+                -ffreestanding -fno-stack-protector -mno-red-zone \
+                -U_FORTIFY_SOURCE -D__NEOLYXOS__ -I./include
+
+NEOLYX_SRC = src/nxgfx/context.c src/nxgfx/text.c src/nxgfx/lighting.c \
+             src/nxgfx/nxgfx_effects.c src/nxgfx/software_renderer.c src/nxgfx/hdr.c \
+             $(WIDGETS_SRC) \
+             src/nxrender/window.c \
+             $(LAYOUT_SRC) $(THEME_SRC) $(ANIM_SRC) $(INPUT_SRC) $(FFI_SRC)
+
+NEOLYX_OBJ = $(patsubst src/%.c,build/neolyx/%.o,$(NEOLYX_SRC))
+NEOLYX_LIB = libnxrender_neolyx.a
+
+.PHONY: neolyx neolyx-clean
+neolyx: $(NEOLYX_LIB)
+
+$(NEOLYX_LIB): $(NEOLYX_OBJ)
+	$(AR) rcs $@ $^
+	@echo "Built freestanding NXRender: $@"
+
+build/neolyx/%.o: src/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(NEOLYX_CFLAGS) -c $< -o $@
+
+neolyx-clean:
+	rm -rf build/neolyx $(NEOLYX_LIB)
+
+# ============================================================================
+# Host test library: the same sources as the freestanding build, compiled
+# with hosted flags into build/host/, for app-level host tests.  Never
+# touches the tracked libnxrender.a or src/**/*.o.
+# ============================================================================
+HOST_TEST_CFLAGS = -Wall -Wextra -std=c11 -O1 -g -I./include
+HOST_TEST_OBJ = $(patsubst src/%.c,build/host/%.o,$(NEOLYX_SRC))
+HOST_TEST_LIB = build/host/libnxrender_host.a
+
+.PHONY: host-test-lib
+host-test-lib: $(HOST_TEST_LIB)
+
+$(HOST_TEST_LIB): $(HOST_TEST_OBJ)
+	$(AR) rcs $@ $^
+
+build/host/%.o: src/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(HOST_TEST_CFLAGS) -c $< -o $@

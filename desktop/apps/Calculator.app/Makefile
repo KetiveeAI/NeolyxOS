@@ -1,76 +1,74 @@
-# Calculator.app Makefile
-# NeolyxOS Calculator
+# Calculator.app Makefile - NeolyxOS Calculator written in REOX
+#
+# Targets:
+#   all / bin/calculator   REOX -> C -> freestanding NeolyxOS ELF (via sdk/reox.mk)
+#   gen                    only generate src/calculator.c from src/calculator.rx
+#   legacy                 the previous C implementation (legacy/, reference only)
+#   clean
+#
+# Copyright (c) 2025 KetiveeAI
 
-CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -O2 -fPIC
-LDFLAGS = -lm
+include ../../../sdk/reox.mk
 
-# NXRender integration
-NXRENDER_DIR = ../../gui/nxrender_c
-NXRENDER_INCLUDE = -I$(NXRENDER_DIR)/include
-NXRENDER_LIB = -L$(NXRENDER_DIR)/lib -lnxrender
+APP_NAME  := calculator
+BIN_DIR   := bin
+BIN       := $(BIN_DIR)/$(APP_NAME)
 
-# NXAudio integration
-NXAUDIO_DIR = ../../nxaudio
-NXAUDIO_INCLUDE = -I$(NXAUDIO_DIR)/include
-NXAUDIO_LIB = -L$(NXAUDIO_DIR)/build -lnxaudio
+REOX_SRCS  := src/calculator.rx
+REOX_GEN_C := $(REOX_SRCS:.rx=.c)
+APP_OBJS   := $(REOX_GEN_C:.c=.o)
 
-# Source files
-SRCS = main.c display.c buttons.c engine.c history.c scientific.c nxaudio_feedback.c
-OBJS = $(SRCS:.c=.o)
+# Keep the generated C: it is a build artefact but useful for review.
+.SECONDARY: $(REOX_GEN_C)
+.PRECIOUS: $(REOX_GEN_C)
 
-# Output directories
-BIN_DIR = bin
-LIB_DIR = lib
+.PHONY: all gen legacy clean info
 
-# Targets
-BIN_TARGET = $(BIN_DIR)/calculator
-LIB_TARGET = $(LIB_DIR)/libcalculator.so
+all: $(BIN)
 
-# Build modes
-.PHONY: all clean install standalone real dirs
+gen: $(REOX_GEN_C)
 
-all: standalone
-
-dirs:
-	@mkdir -p $(BIN_DIR) $(LIB_DIR)
-
-# Standalone (no NXRender/NXAudio, uses stubs)
-standalone: CFLAGS += -DSTANDALONE
-standalone: dirs $(BIN_TARGET)
-
-# Real NXRender + NXAudio build
-real: CFLAGS += -DNXRENDER_REAL -DNXAUDIO_REAL $(NXRENDER_INCLUDE) $(NXAUDIO_INCLUDE)
-real: LDFLAGS += $(NXRENDER_LIB) $(NXAUDIO_LIB)
-real: dirs $(BIN_TARGET) $(LIB_TARGET)
-
-$(BIN_TARGET): $(OBJS)
-	$(CC) $(OBJS) -o $(BIN_TARGET) $(LDFLAGS)
-
-$(LIB_TARGET): $(OBJS)
-	$(CC) -shared $(OBJS) -o $(LIB_TARGET) $(LDFLAGS)
+$(BIN): $(APP_OBJS) $(REOX_SUPPORT_OBJS) $(REOX_LDLIBS)
+	@mkdir -p $(BIN_DIR)
+	$(LD) $(NEOLYX_USER_LDFLAGS) -o $@ $(APP_OBJS) $(REOX_SUPPORT_OBJS) $(REOX_LDLIBS)
+	@echo "Built $(BIN) (REOX runtime library: $(if $(filter 1,$(REOX_RUNTIME_AVAILABLE)),$(REOX_RUNTIME_LIB),not linked - $(REOX_RUNTIME_LIB) is absent))"
 
 %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(REOX_CFLAGS) -c $< -o $@
+
+legacy:
+	$(MAKE) -C legacy standalone
 
 clean:
-	rm -f $(OBJS)
-	rm -f $(BIN_TARGET) $(LIB_TARGET)
+	rm -f $(APP_OBJS) $(REOX_GEN_C) $(BIN)
+	rm -rf $(REOX_BUILD_DIR)
+	-$(MAKE) -C legacy clean >/dev/null 2>&1
 
-install: $(BIN_TARGET)
-	mkdir -p /Applications/Calculator.app/bin
-	mkdir -p /Applications/Calculator.app/lib
-	mkdir -p /Applications/Calculator.app/resources
-	cp $(BIN_TARGET) /Applications/Calculator.app/bin/
-	cp -r resources/* /Applications/Calculator.app/resources/
-	cp manifest.npa /Applications/Calculator.app/
-	@echo "Installed Calculator.app"
+info: reox-info
+	@echo "REOX_SRCS = $(REOX_SRCS)"
 
-# Dependencies
-main.o: main.c nxrender.h calc.h nxaudio_feedback.h
-display.o: display.c nxrender.h calc.h
-buttons.o: buttons.c nxrender.h calc.h
-engine.o: engine.c calc.h
-history.o: history.c calc.h
-scientific.o: scientific.c calc.h
-nxaudio_feedback.o: nxaudio_feedback.c nxaudio_feedback.h
+# ---- host-side engine test -------------------------------------------------
+# Compiles the generated C on the development host (no NeolyxOS syscalls)
+# together with NxUI and the host nxrender library, and checks the engine
+# through the same hooks the buttons use.
+HOST_CC      ?= gcc
+HOST_CFLAGS  := -Wall -Wextra -std=c11 -O1 -g \
+                -I$(REOX_SDK_DIR)/nxui -I$(NXRENDER_DIR)/include $(REOX_RUNTIME_INCLUDES)
+HOST_NXRENDER := $(NXRENDER_DIR)/build/host/libnxrender_host.a
+TEST_BIN := $(REOX_BUILD_DIR)/host/engine_test
+
+.PHONY: test
+test: $(TEST_BIN)
+	$(TEST_BIN)
+
+$(TEST_BIN): test/engine_test.c $(REOX_GEN_C) $(REOX_SDK_DIR)/nxui/nxui.c $(HOST_NXRENDER)
+	@mkdir -p $(dir $@)
+	$(HOST_CC) $(HOST_CFLAGS) -Dmain=calc_main -c $(REOX_GEN_C) -o $(REOX_BUILD_DIR)/host/calculator.o
+	$(HOST_CC) $(HOST_CFLAGS) -c $(REOX_SDK_DIR)/nxui/nxui.c -o $(REOX_BUILD_DIR)/host/nxui.o
+	$(HOST_CC) $(HOST_CFLAGS) test/engine_test.c $(REOX_BUILD_DIR)/host/calculator.o \
+	    $(REOX_BUILD_DIR)/host/nxui.o $(HOST_NXRENDER) -lm -o $@
+
+# Always let nxrender's own Makefile decide whether the host lib is stale.
+.PHONY: $(HOST_NXRENDER)
+$(HOST_NXRENDER):
+	$(MAKE) -C $(NXRENDER_DIR) host-test-lib

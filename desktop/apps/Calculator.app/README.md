@@ -1,75 +1,62 @@
-# NeolyxOS Calculator.app
+# Calculator.app
 
-System calculator application for NeolyxOS with basic, scientific, and programmer modes.
-
-## Features
-
-- **Basic Mode**: Standard arithmetic operations (+, -, ×, ÷)
-- **Scientific Mode**: Trigonometry, logarithms, powers, roots, constants
-- **Programmer Mode**: Hex/Dec/Oct/Bin conversion, bitwise operations
-- **Memory Functions**: M+, M-, MR, MC, MS
-- **History Tracking**: Recall previous calculations
-- **Keyboard Support**: Full keyboard input for quick entry
-
-## Directory Structure
+NeolyxOS Calculator, written in REOX.  First application built through the
+NeolyxOS REOX SDK (`sdk/`); see `sdk/README.md` for the pipeline.
 
 ```
 Calculator.app/
-├── main.c              # Application entry point
-├── calc.h              # Common definitions
-├── nxrender.h          # NXRender API wrapper
-├── manifest.npa        # App manifest
-├── Makefile
-├── engine.c            # Core calculation logic
-├── display.c           # Display rendering
-├── buttons.c           # Button layouts and rendering
-├── scientific.c        # Scientific functions
-├── history.c           # Calculation history
-├── resources/          # App resources
-│   └── calculator.nxi  # App icon
-├── bin/                # Compiled output
-└── lib/                # Libraries
+  src/calculator.rx     the app: engine + UI (REOX)
+  Makefile              includes ../../../sdk/reox.mk
+  manifest.npa          app manifest
+  test/engine_test.c    host-side engine test (make test)
+  legacy/               previous C implementation, reference only (make legacy)
+  bin/calculator        output: freestanding NeolyxOS ELF (ignored by git)
 ```
 
 ## Build
 
-```bash
-cd apps/Calculator.app
-make clean
-make
+```sh
+make                 # src/calculator.rx -> src/calculator.c -> bin/calculator
+make test            # host build of the generated C + NxUI, 37 engine checks
+make info            # resolved toolchain paths
+make legacy          # old C sources; does not compile against today's nxrender
 ```
 
-## Keyboard Shortcuts
+`make` needs `reoxc` (path in `sdk/toolchain.env`) and builds
+`gui/nxrender_c/libnxrender_neolyx.a` on demand.  The generated C
+references no REOX runtime symbol, so the ELF links whether or not
+`librx_neolyx.a` exists; the final line of the build says which.
 
-| Key | Action |
-|-----|--------|
-| 0-9 | Enter digit |
-| . | Decimal point |
-| + | Add |
-| - | Subtract |
-| * | Multiply |
-| / | Divide |
-| Enter | Calculate result |
-| Escape | Clear all |
-| Backspace | Delete last digit |
-| % | Percent |
+## Design
 
-## Scientific Functions
+* **Entry** is exact: a typed number is `mantissa / 10^frac_digits` with
+  up to 15 digits, so the display never shows float noise while typing.
+  Results are doubles formatted to 10 decimals with trailing zeros
+  trimmed; magnitudes of 1e18 and above switch to `d.ddddde+NN`.
+* **Engine** is a classic accumulator / pending-operator machine
+  (`engine_operator`, `engine_equals`), with memory (MC, MR, M+, M-),
+  percent, negate, backspace, square root (Newton iteration: REOX has no
+  math builtins yet), square and reciprocal.  Division by zero, the
+  square root of a negative and 1/0 enter an `Error` state cleared by the
+  next digit or AC.
+* **UI** is two `layer`s: `Display` (expression line, value, memory
+  indicator) and `Keypad` (4 x 7 grid of `nxui_button`s).  Buttons carry
+  an action id; NxUI calls `rx_ui_on_action(act)` on click and
+  `rx_ui_on_key(key)` on keyboard input, and both feed `engine_dispatch`.
+* **No strings in REOX yet**: formatting goes through `nxui_format_input`,
+  `nxui_format_number` and `nxui_concat`.
 
-- **Trigonometry**: sin, cos, tan, asin, acos, atan
-- **Hyperbolic**: sinh, cosh, tanh
-- **Logarithms**: log, ln, log₂
-- **Powers**: x², x³, xʸ, eˣ, 10ˣ
-- **Roots**: √x, ∛x, ʸ√x
-- **Constants**: π, e
-- **Other**: n!, 1/x, |x|, floor, ceil, round, random
+## Running on NeolyxOS
 
-## Programmer Functions
+The ELF is a standalone userspace process: `nxui_run` maps the
+framebuffer, polls input and presents frames through `nxsyscall.h`.
+It has not yet been launched inside the booted desktop because the shell
+has no process launcher (`desktop/shell/app_drawer.c`,
+`app_drawer_launch_app` is a TODO) and the boot image carries only the
+kernel with the desktop ELF embedded.  Linking the Calculator objects
+into the desktop and calling `reox_ffi_init()` is the embedded path the
+bridge already supports.
 
-- **Bitwise**: AND, OR, XOR, NOT, <<, >>
-- **Bases**: Hex, Dec, Oct, Bin conversion
-- **Modulo**: MOD operation
+## Keyboard
 
-## License
-
-Copyright (c) 2025 KetiveeAI. All Rights Reserved. Proprietary License.
+`0`-`9`, `.`, `+ - * /`, Enter or `=`, Esc (AC), Backspace, `%`.
