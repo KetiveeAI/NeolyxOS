@@ -1213,6 +1213,12 @@ void kernel_main(NeolyxBootInfo *boot_info) {
     idt_init();
     serial_puts("[BOOT] IDT ready with exception handling\\n");
     
+    /* Program the PIT for 1000 Hz so pit_get_ticks() counts milliseconds
+     * (SYS_TIME and every desktop animation depend on it). Without this the
+     * timer ran at the reset default of 18.2 Hz. */
+    extern void pit_init(void);
+    pit_init();
+    
     g_boot_info = boot_info;  /* Save for kernel */
     
     if (!boot_info || boot_info->magic != NEOLYX_BOOT_MAGIC) {

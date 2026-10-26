@@ -181,6 +181,20 @@ nxc_status_t nxui_material(nxc_canvas_t *c, nxc_rect_t r, float radius,
  * 3 = inactive window, 4 = active window. Draw before the surface. */
 nxc_status_t nxui_elevation(nxc_canvas_t *c, nxc_rect_t r, float radius, int32_t level);
 
+/*
+ * A frosted panel with its shadow in one call, cached: the wallpaper is
+ * static, so the rendered pixels of a panel that does not move are
+ * identical every frame. Up to NXUI_PANEL_CACHE_SLOTS distinct panels
+ * (keyed by integer rect, radius, material and elevation) are kept and
+ * blitted; a panel that moves or resizes re-renders and replaces its
+ * slot. Fractional rects are rounded to whole pixels. Use this for the
+ * menu bar, widgets, dock, popovers and sheets; use nxui_material() for
+ * panels that animate every frame.
+ */
+#define NXUI_PANEL_CACHE_SLOTS 12
+nxc_status_t nxui_panel(nxc_canvas_t *c, nxc_rect_t r, float radius,
+                        const nxc_material_t *m, int32_t elevation);
+
 /* The wallpaper and its pre-blurred copy (same size as the screen). */
 const nxc_surface_t *nxui_wallpaper(void);
 const nxc_surface_t *nxui_wallpaper_blurred(void);

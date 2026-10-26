@@ -20,6 +20,7 @@ FREESTANDING_SRC = lib/libc_stubs.c
 # nx_malloc.c provides global heap allocator (must be single TU, not inline!)
 SHELL_SRC = shell/desktop_shell.c \
             shell/nxui.c \
+            shell/menubar.c \
             shell/app_drawer.c \
             shell/lock_screen.c \
             shell/window_manager.c \

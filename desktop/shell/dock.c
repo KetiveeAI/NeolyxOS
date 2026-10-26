@@ -662,8 +662,7 @@ void dock_render(nxc_canvas_t *c, int mouse_x, int mouse_y) {
     g_dock.width = (int)pill.w;
     g_dock.height = (int)pill.h + 12;
 
-    nxui_elevation(c, pill, th->radius_dock, 2);
-    nxui_material(c, pill, th->radius_dock, &th->mat_dock);
+    nxui_panel(c, pill, th->radius_dock, &th->mat_dock, 2);
 
     /* Icons */
     for (int i = 0; i < n; i++) {
@@ -697,8 +696,7 @@ void dock_render(nxc_canvas_t *c, int mouse_x, int mouse_y) {
             float tw = nxui_text_width(NXUI_TEXT_BODY_MEDIUM, icon->label) + 2.0f * DOCK_ICON_LABEL_PAD;
             float th_ = 24.0f;
             nxc_rect_t tip = nxc_rect(ix + sz * 0.5f - tw * 0.5f, iy - th_ - 10.0f, tw, th_);
-            nxui_elevation(c, tip, 8.0f, 1);
-            nxui_material(c, tip, 8.0f, &th->mat_popover);
+            nxui_panel(c, tip, 8.0f, &th->mat_popover, 1);
             nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, tip, icon->label, th->text_primary, NXC_ALIGN_CENTER);
         }
         x += sz + gap;

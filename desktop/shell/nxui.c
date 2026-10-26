@@ -308,6 +308,128 @@ nxc_status_t nxui_elevation(nxc_canvas_t *c, nxc_rect_t r, float radius, int32_t
     return st;
 }
 
+/* ============ Panel cache ============ */
+
+/* Shadow reach beyond the panel rect for each elevation level (sigma*3 +
+ * offset + spread, rounded up), matching nxui_elevation. */
+static int32_t panel_margin(int32_t level) {
+    switch (level) {
+        case 0: return 0;
+        case 1: return 8;
+        case 2: return 66;
+        case 3: return 58;
+        default: return 116;
+    }
+}
+
+typedef struct {
+    int32_t        used;
+    int32_t        x, y, w, h;        /* panel rect (whole pixels) */
+    int32_t        ox, oy, sw, sh;    /* slot view: origin and size on screen */
+    float          radius;
+    nxc_material_t mat;
+    int32_t        elevation;
+    nxui_appearance_t appearance;
+    nxc_surface_t  surf;              /* transparent, at least sw x sh */
+    int32_t        cap_w, cap_h;      /* allocated size */
+    uint32_t       last_use;
+} nxui_panel_slot_t;
+
+static nxui_panel_slot_t g_panels[NXUI_PANEL_CACHE_SLOTS];
+static uint32_t g_panel_tick;
+
+static int material_eq(const nxc_material_t *a, const nxc_material_t *b) {
+    return a->blur_sigma == b->blur_sigma && a->saturation == b->saturation &&
+           a->tint == b->tint && a->noise == b->noise && a->border == b->border;
+}
+
+/* Render the panel (shadow + material) into the slot surface. The slot
+ * view covers the panel plus its shadow margin, clipped to the screen, so
+ * the blurred wallpaper can be viewed through a window of the same size
+ * at the same origin (the backdrop requires matching sizes). */
+static nxc_status_t panel_render(nxui_panel_slot_t *sl) {
+    const nxc_surface_t *wb = nxui_wallpaper_blurred();
+    if (!wb) return NXC_ERR_STATE;
+    nxc_surface_clear(&sl->surf, NXC_ARGB(0, 0, 0, 0));
+    nxc_surface_t view = sl->surf;
+    view.width = sl->sw; view.height = sl->sh;
+    nxc_canvas_t c;
+    nxc_status_t st = nxc_canvas_init(&c, &view);
+    if (st != NXC_OK) return st;
+    nxc_rect_t r = nxc_rect((float)(sl->x - sl->ox), (float)(sl->y - sl->oy), (float)sl->w, (float)sl->h);
+    st = nxui_elevation(&c, r, sl->radius, sl->elevation);
+    if (st != NXC_OK) return st;
+    nxc_surface_t src;
+    st = nxc_surface_wrap(&src, wb->pixels + (int64_t)sl->oy * wb->stride + sl->ox, sl->sw, sl->sh,
+                          wb->stride, NXC_SURFACE_OPAQUE);
+    if (st != NXC_OK) return st;
+    return nxc_draw_backdrop(&c, r, sl->radius, &src, &sl->mat);
+}
+
+nxc_status_t nxui_panel(nxc_canvas_t *c, nxc_rect_t r, float radius, const nxc_material_t *m,
+                        int32_t elevation) {
+    if (!c || !m || !g_ui.ready) return NXC_ERR_INVALID_ARG;
+    if (!(r.w > 0.0f) || !(r.h > 0.0f) || r.w > 8192.0f || r.h > 8192.0f) return NXC_ERR_INVALID_ARG;
+    int32_t x = (int32_t)(r.x + 0.5f), y = (int32_t)(r.y + 0.5f);
+    int32_t w = (int32_t)(r.w + 0.5f), h = (int32_t)(r.h + 0.5f);
+    if (w <= 0 || h <= 0) return NXC_OK;
+    if (elevation < 0) elevation = 0;
+    if (elevation > 4) elevation = 4;
+    const nxc_surface_t *wb = nxui_wallpaper_blurred();
+    nxc_rect_t ir = nxc_rect((float)x, (float)y, (float)w, (float)h);
+    if (!wb || x < 0 || y < 0 || x + w > wb->width || y + h > wb->height) {
+        nxui_elevation(c, ir, radius, elevation);          /* partly off screen: uncached */
+        return nxui_material(c, ir, radius, m);
+    }
+    int32_t margin = panel_margin(elevation);
+    int32_t ox = x - margin < 0 ? 0 : x - margin;
+    int32_t oy = y - margin < 0 ? 0 : y - margin;
+    int32_t ex = x + w + margin > wb->width ? wb->width : x + w + margin;
+    int32_t ey = y + h + margin > wb->height ? wb->height : y + h + margin;
+    int32_t sw = ex - ox, sh = ey - oy;
+
+    g_panel_tick++;
+    nxui_panel_slot_t *hit = 0, *victim = 0;
+    for (int32_t i = 0; i < NXUI_PANEL_CACHE_SLOTS; i++) {
+        nxui_panel_slot_t *sl = &g_panels[i];
+        if (sl->used && sl->x == x && sl->y == y && sl->w == w && sl->h == h && sl->radius == radius &&
+            sl->elevation == elevation && sl->appearance == g_ui.appearance && material_eq(&sl->mat, m)) {
+            hit = sl;
+            break;
+        }
+        if (!victim || !sl->used || (victim->used && sl->last_use < victim->last_use)) victim = sl;
+    }
+    if (!hit) {
+        nxui_panel_slot_t *sl = victim;
+        if (!sl->surf.pixels || sl->cap_w < sw || sl->cap_h < sh) {
+            /* Allocate with slack so small size changes reuse the buffer
+             * (the heap is a bump allocator: every allocation is for good). */
+            int32_t cw = (sw + 63) & ~63, ch = (sh + 63) & ~63;
+            if (cw < sl->cap_w) cw = sl->cap_w;
+            if (ch < sl->cap_h) ch = sl->cap_h;
+            nxc_surface_t ns;
+            if (nxc_surface_create(&ns, cw, ch, 0) != NXC_OK) {
+                nxui_elevation(c, ir, radius, elevation);
+                return nxui_material(c, ir, radius, m);
+            }
+            sl->surf = ns;
+            sl->cap_w = cw; sl->cap_h = ch;
+        }
+        sl->used = 1;
+        sl->x = x; sl->y = y; sl->w = w; sl->h = h;
+        sl->ox = ox; sl->oy = oy; sl->sw = sw; sl->sh = sh;
+        sl->radius = radius; sl->mat = *m;
+        sl->elevation = elevation; sl->appearance = g_ui.appearance;
+        nxc_status_t st = panel_render(sl);
+        if (st != NXC_OK) { sl->used = 0; return st; }
+        hit = sl;
+    }
+    hit->last_use = g_panel_tick;
+    return nxc_draw_surface(c, &hit->surf, nxc_irect(0, 0, hit->sw, hit->sh),
+                            nxc_rect((float)hit->ox, (float)hit->oy, (float)hit->sw, (float)hit->sh),
+                            255, NXC_FILTER_NEAREST);
+}
+
 const nxc_surface_t *nxui_wallpaper(void) { return g_ui.wallpaper.pixels ? &g_ui.wallpaper : 0; }
 const nxc_surface_t *nxui_wallpaper_blurred(void) {
     return g_ui.wallpaper_blur.pixels ? &g_ui.wallpaper_blur : 0;

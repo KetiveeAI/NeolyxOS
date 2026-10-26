@@ -8,6 +8,7 @@
  */
 
 #include "../include/anveshan.h"
+#include "../include/nxui.h"
 #include "../include/nxconfig.h"
 #include <stddef.h>
 
@@ -282,6 +283,9 @@ void anveshan_init(uint32_t screen_w, uint32_t screen_h) {
     
     /* Load default settings */
     anveshan_settings_t defaults = ANVESHAN_DEFAULTS;
+    defaults.width = 380;
+    defaults.height = 40;
+    defaults.y_position = 84;
     g_anveshan.settings = defaults;
     
     /* Compute initial geometry */
@@ -455,96 +459,60 @@ void anveshan_clear(void) {
 
 /* ============ Rendering ============ */
 
-void anveshan_render(uint32_t *fb, uint32_t pitch) {
-    if (!g_initialized) return;
-    
+void anveshan_render(nxc_canvas_t *c) {
+    if (!c || !g_initialized) return;
+    const nxui_theme_t *th = nxui_theme();
     anveshan_settings_t *s = &g_anveshan.settings;
-    uint32_t sw = g_anveshan.screen_width;
-    uint32_t sh = g_anveshan.screen_height;
-    
-    int bar_x = g_anveshan.bar_x;
-    int bar_y = g_anveshan.bar_y;
-    int bar_w = s->width;
-    int bar_h = s->height;
-    
-    /* Glass background with configurable opacity */
-    uint32_t bg_color = ((uint32_t)s->opacity << 24) | (s->bg_color & 0x00FFFFFF);
-    av_fill_pill(fb, pitch, bar_x, bar_y, bar_w, bar_h, bg_color, sw, sh);
-    
-    /* Border */
-    uint32_t border_color = 0x40FFFFFF;
-    av_draw_circle(fb, pitch, bar_x + bar_h/2, bar_y + bar_h/2, bar_h/2 - 1, border_color, sw, sh);
-    av_draw_circle(fb, pitch, bar_x + bar_w - bar_h/2 - 1, bar_y + bar_h/2, bar_h/2 - 1, border_color, sw, sh);
-    
-    /* Search icon (magnifying glass) */
-    int icon_x = bar_x + 22;
-    int icon_y = bar_y + bar_h / 2;
-    av_draw_circle(fb, pitch, icon_x, icon_y, 7, s->icon_color | 0xFF000000, sw, sh);
-    for (int i = 0; i < 4; i++) {
-        av_put_pixel_alpha(fb, pitch, icon_x + 5 + i, icon_y + 5 + i, 
-                           s->icon_color | 0xFF000000, sw, sh);
-    }
-    
-    /* Text (query or placeholder) */
-    int text_x = bar_x + 42;
-    int text_y = bar_y + (bar_h - 8) / 2;
-    
+    float bw = (float)s->width, bh = (float)s->height;
+    nxc_rect_t bar = nxc_rect((float)g_anveshan.bar_x, (float)g_anveshan.bar_y, bw, bh);
+    int active = g_anveshan.active;
+
+    nxui_panel(c, bar, bh * 0.5f, &th->mat_widget, 2);
+    if (active) nxc_stroke_rrect(c, bar, bh * 0.5f, 1.5f, NXC_WITH_ALPHA(th->accent, 200));
+    nxsym_draw(c, NXSYM_SEARCH, bar.x + 22.0f, bar.y + bh * 0.5f, 17.0f,
+               active ? th->text_primary : th->text_secondary, 0.0f);
+
+    nxc_rect_t field = nxc_rect(bar.x + 40.0f, bar.y, bw - 80.0f, bh);
     if (g_anveshan.query[0]) {
-        av_draw_text(fb, pitch, text_x, text_y, g_anveshan.query, 0xFFFFFFFF, sw, sh);
-        
-        /* Cursor if active */
-        if (g_anveshan.active) {
-            int cursor_x = text_x + g_anveshan.cursor_pos * 8;
-            av_fill_rect_alpha(fb, pitch, cursor_x, text_y, 2, 8, 0xFFFFFFFF, sw, sh);
+        nxui_text_in_rect(c, NXUI_TEXT_BODY, field, g_anveshan.query, th->text_primary, NXC_ALIGN_LEFT);
+        if (active && ((int)(nxui_time() * 2.0f) & 1)) {
+            float cx = field.x + nxui_text_width(NXUI_TEXT_BODY, g_anveshan.query) + 1.0f;
+            nxc_fill_rect(c, nxc_rect(cx, bar.y + 11.0f, 1.5f, bh - 22.0f), th->text_primary);
         }
     } else {
-        av_draw_text(fb, pitch, text_x, text_y, s->placeholder, s->text_color | 0xFF000000, sw, sh);
+        nxui_text_in_rect(c, NXUI_TEXT_BODY, field, active ? "Type to search" : "Anveshan \xE2\x80\x94 search anything",
+                          th->text_secondary, NXC_ALIGN_LEFT);
+        if (active && ((int)(nxui_time() * 2.0f) & 1)) {
+            nxc_fill_rect(c, nxc_rect(field.x, bar.y + 11.0f, 1.5f, bh - 22.0f), th->text_primary);
+        }
     }
-    
-    /* Microphone icon (if enabled) */
     if (s->voice_enabled) {
-        int mic_x = bar_x + bar_w - 28;
-        int mic_y = bar_y + (bar_h - 14) / 2;
-        av_fill_rounded_rect(fb, pitch, mic_x, mic_y, 8, 14, 3, s->icon_color | 0xFF000000, sw, sh);
-        av_fill_circle(fb, pitch, mic_x + 4, mic_y, 4, s->icon_color | 0xFF000000, sw, sh);
+        nxsym_draw(c, NXSYM_MIC, bar.x + bw - 22.0f, bar.y + bh * 0.5f, 16.0f, th->text_tertiary, 0.0f);
     }
-    
-    /* Dropdown with results */
-    if (g_anveshan.open && g_anveshan.result_count > 0) {
-        int dropdown_y = bar_y + bar_h + 8;
-        int item_h = 36;
-        int dropdown_h = g_anveshan.result_count * item_h + 16;
-        
-        /* Dropdown background */
-        av_fill_rounded_rect(fb, pitch, bar_x, dropdown_y, bar_w, dropdown_h, 12,
-                             ((uint32_t)(s->opacity - 20) << 24) | 0x202030, sw, sh);
-        
-        /* Results */
+
+    /* Results dropdown: 36 px rows under the bar (geometry shared with the
+     * mouse handler). */
+    if (active && g_anveshan.result_count > 0) {
+        float item_h = 36.0f;
+        float dy = bar.y + bh + 8.0f;
+        nxc_rect_t box = nxc_rect(bar.x, dy, bw, (float)g_anveshan.result_count * item_h + 16.0f);
+        nxui_panel(c, box, 14.0f, &th->mat_popover, 2);
+        nxc_stroke_rrect(c, box, 14.0f, 1.0f, th->window_border);
         for (int i = 0; i < g_anveshan.result_count; i++) {
             anveshan_result_t *res = &g_anveshan.results[i];
-            int item_y = dropdown_y + 8 + i * item_h;
-            
-            /* Highlight selected */
-            if (i == g_anveshan.selected_idx) {
-                av_fill_rounded_rect(fb, pitch, bar_x + 8, item_y, bar_w - 16, item_h - 4, 8,
-                                     0x40FFFFFF, sw, sh);
+            nxc_rect_t row = nxc_rect(bar.x + 8.0f, dy + 8.0f + (float)i * item_h, bw - 16.0f, item_h - 4.0f);
+            int sel = (i == g_anveshan.selected_idx);
+            if (sel) nxc_fill_rrect(c, row, 8.0f, th->accent);
+            if (res->type == ANVESHAN_TYPE_APP) {
+                nxapp_icon_draw(c, nxapp_icon_from_name(res->title), row.x + 8.0f, row.y + 4.0f, 24.0f, 255);
+            } else {
+                nxsym_draw(c, res->type == ANVESHAN_TYPE_SETTING ? NXSYM_GEAR : NXSYM_DOCUMENT,
+                           row.x + 20.0f, row.y + row.h * 0.5f, 18.0f, sel ? th->text_on_accent : th->text_secondary, 0.0f);
             }
-            
-            /* Icon (colored circle) */
-            av_fill_circle(fb, pitch, bar_x + 28, item_y + item_h/2 - 2, 12, res->icon_color, sw, sh);
-            
-            /* Type indicator */
-            const char *type_char = "?";
-            if (res->type == ANVESHAN_TYPE_APP) type_char = "A";
-            else if (res->type == ANVESHAN_TYPE_SETTING) type_char = "S";
-            else if (res->type == ANVESHAN_TYPE_FILE) type_char = "F";
-            av_draw_text(fb, pitch, bar_x + 24, item_y + item_h/2 - 6, type_char, 0xFFFFFFFF, sw, sh);
-            
-            /* Title */
-            av_draw_text(fb, pitch, bar_x + 52, item_y + 4, res->title, 0xFFFFFFFF, sw, sh);
-            
-            /* Subtitle */
-            av_draw_text(fb, pitch, bar_x + 52, item_y + 16, res->subtitle, 0xFF888888, sw, sh);
+            nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, nxc_rect(row.x + 42.0f, row.y + 2.0f, row.w - 50.0f, 16.0f),
+                              res->title, sel ? th->text_on_accent : th->text_primary, NXC_ALIGN_LEFT);
+            nxui_text_in_rect(c, NXUI_TEXT_CAPTION, nxc_rect(row.x + 42.0f, row.y + 17.0f, row.w - 50.0f, 14.0f),
+                              res->subtitle, sel ? NXC_WITH_ALPHA(th->text_on_accent, 200) : th->text_secondary, NXC_ALIGN_LEFT);
         }
     }
 }

@@ -181,6 +181,14 @@ static void run_action(const action_t *a) {
             ev.type = INPUT_TYPE_KEYBOARD;
             ev.keyboard.scancode = (uint8_t)a->key;
             ev.keyboard.pressed = a->key_up ? 0 : 1;
+            /* PS/2 set 1 -> ASCII for the main block, like the kernel driver */
+            static const char map[0x40] = {
+                0, 0, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 0, 0,
+                'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', 0, 0, 'a', 's',
+                'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`', 0, '\\', 'z', 'x', 'c', 'v',
+                'b', 'n', 'm', ',', '.', '/', 0, '*', 0, ' ', 0, 0, 0, 0, 0, 0,
+            };
+            if (a->key < 0x40) ev.keyboard.ascii = (uint8_t)map[a->key];
             push(ev);
             break;
         }

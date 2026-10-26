@@ -274,20 +274,23 @@ void process_exit(int exit_code) {
 
 void process_sleep(uint32_t ms) {
     /*
-     * CRITICAL: Do NOT enable interrupts (STI) during syscall handling!
-     * Timer interrupts during kernel syscall execution cause a GPF because
-     * the ISR tries to IRET when the stack is set up for SYSRET.
-     * 
-     * Use pure busy-wait for now. This is inefficient but stable.
-     * TODO: Proper solution is to switch to a dedicated kernel thread
-     * that can safely receive interrupts, or use a timer callback.
+     * Timer-based sleep. SYSCALL entry arrives with interrupts disabled;
+     * the handler runs on its own kernel stack with a complete frame, so
+     * taking IRQs here is safe: an ISR pushes its frame on this stack and
+     * IRETQs back. HLT parks the CPU until the next interrupt (the PIT
+     * fires every millisecond), which keeps a VM from burning a core.
+     * The old 100k-pause busy loop per "ms" was ~2 ms on current CPUs and
+     * dragged the desktop to ~30 fps.
      */
-    
-    /* Pure busy-wait - ~100k loops ≈ 1ms on QEMU */
-    uint64_t delay_loops = (uint64_t)ms * 100000ULL;
-    for (volatile uint64_t i = 0; i < delay_loops; i++) {
-        __asm__ volatile("pause");
+    extern uint64_t pit_get_ticks(void);
+    if (ms == 0) return;
+    if (ms > 60000u) ms = 60000u;          /* bound a hostile request */
+    uint64_t end = pit_get_ticks() + ms;
+    __asm__ volatile("sti");
+    while (pit_get_ticks() < end) {
+        __asm__ volatile("hlt");
     }
+    __asm__ volatile("cli");
 }
 
 void process_block(void) {

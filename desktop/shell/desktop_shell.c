@@ -32,6 +32,7 @@
 #include "../include/battery_warning.h"
 #include "../include/network_indicator.h"
 #include "../include/nxui.h"
+#include "../include/menubar.h"
 #include "../lib/nxicons/nxicons_internal.h"
 #define nxc_cosf_shell nxc_cosf_pub
 #define nxc_sinf_shell nxc_sinf_pub
@@ -746,7 +747,7 @@ static void render_navigation_bar(void) {
     float w = (float)g_desktop.width, h = th->menubar_height;
     nxc_rect_t bar = nxc_rect(0, 0, w, h);
 
-    nxui_material(c, bar, 0.0f, &th->mat_menubar);
+    nxui_panel(c, bar, 0.0f, &th->mat_menubar, 0);
     nxc_fill_rect(c, nxc_rect(0, h - 1.0f, w, 1.0f), th->separator);
 
     /* Left: app name and menus */
@@ -754,13 +755,7 @@ static void render_navigation_bar(void) {
     nxc_rect_t slot = nxc_rect(x, 0, 200, h);
     nxui_text_in_rect(c, NXUI_TEXT_MENU_BOLD, slot, "NeolyxOS", th->text_primary, NXC_ALIGN_LEFT);
     x += nxui_text_width(NXUI_TEXT_MENU_BOLD, "NeolyxOS") + 22.0f;
-    static const char *const menus[] = { "File", "Edit", "View", "Window", "Help" };
-    for (int i = 0; i < 5; i++) {
-        float tw = nxui_text_width(NXUI_TEXT_MENU, menus[i]);
-        nxui_text_in_rect(c, NXUI_TEXT_MENU, nxc_rect(x, 0, tw + 2.0f, h), menus[i], th->text_primary,
-                          NXC_ALIGN_LEFT);
-        x += tw + 20.0f;
-    }
+    x = menubar_render_titles(c, x, h);
 
     /* Right: status symbols */
     float cy = h * 0.5f;
@@ -805,8 +800,7 @@ static void render_globe_clock_widget(void) {
     nxc_canvas_t *c = nxui_canvas();
     const nxui_theme_t *th = nxui_theme();
     nxc_rect_t box = nxc_rect(24.0f, 44.0f, 240.0f, 112.0f);
-    nxui_elevation(c, box, th->radius_widget, 2);
-    nxui_material(c, box, th->radius_widget, &th->mat_widget);
+    nxui_panel(c, box, th->radius_widget, &th->mat_widget, 2);
 
     uint32_t hh, mm, ss, dd, mo, yy, wd;
     current_time(&hh, &mm, &ss, &dd, &mo, &yy, &wd);
@@ -861,18 +855,9 @@ static void render_globe_clock_widget(void) {
     nxc_fill_rrect(c, nxc_rect(tx, box.y + 90.0f, bw * ((float)ss + 0.5f) / 60.0f, 3.0f), 1.5f, th->accent);
 }
 
-/* Anveshan search field - top center */
+/* Anveshan search field - top center (drawn by anveshan.c) */
 static void render_search_bar(void) {
-    nxc_canvas_t *c = nxui_canvas();
-    const nxui_theme_t *th = nxui_theme();
-    float bw = 380.0f, bh = 40.0f;
-    nxc_rect_t bar = nxc_rect(((float)g_desktop.width - bw) * 0.5f, 84.0f, bw, bh);
-    nxui_elevation(c, bar, bh * 0.5f, 2);
-    nxui_material(c, bar, bh * 0.5f, &th->mat_widget);
-    nxsym_draw(c, NXSYM_SEARCH, bar.x + 22.0f, bar.y + bh * 0.5f, 17.0f, th->text_secondary, 0.0f);
-    nxui_text_in_rect(c, NXUI_TEXT_BODY, nxc_rect(bar.x + 40.0f, bar.y, bw - 80.0f, bh),
-                      "Anveshan \xE2\x80\x94 search anything", th->text_secondary, NXC_ALIGN_LEFT);
-    nxsym_draw(c, NXSYM_MIC, bar.x + bw - 22.0f, bar.y + bh * 0.5f, 16.0f, th->text_tertiary, 0.0f);
+    anveshan_render(nxui_canvas());
 }
 
 /* External storage connected flag - set by kernel when USB/storage detected */
@@ -1134,16 +1119,52 @@ static void render_windows(void) {
     }
 }
 
+/* Frame statistics (ms, accumulated over 60 frames) */
+static uint64_t g_render_ms_acc = 0, g_flip_ms_acc = 0, g_last_frame_end = 0;
+
+/* Per-stage profile in TSC cycles (printed as k-cycles per frame). */
+enum { PF_BG, PF_NAV, PF_CLOCK, PF_SEARCH, PF_WINDOWS, PF_DOCK, PF_OVERLAYS, PF_END, PF_INPUT, PF_SLEEP, PF_COUNT };
+static uint64_t g_pf_loop_t = 0;   /* TSC at the end of the previous render */
+static uint64_t g_pf[PF_COUNT];
+static inline uint64_t rdtsc_now(void) {
+    uint32_t lo, hi;
+    __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
+    return ((uint64_t)hi << 32) | lo;
+}
+#define PF_MARK(stage) do { uint64_t _t = rdtsc_now(); g_pf[stage] += _t - pf_t; pf_t = _t; } while (0)
+
 static void render_desktop(void) {
     /* Only log once every 60 frames to avoid serial spam */
     static int frame_count = 0;
     static uint64_t last_time = 0;
-    
-    if (frame_count++ % 60 == 0) {
-        serial_puts("[DESKTOP] Frame\n");
-    }
+    static uint64_t window_start = 0;
     
     uint64_t now = pit_get_ticks();
+    if (frame_count++ % 60 == 0) {
+        /* Once per 60 frames: average frame, render and flip time (ms) */
+        serial_puts("[DESKTOP] Frame");
+        if (window_start) {
+            serial_puts(" avg ");
+            serial_dec((int64_t)((now - window_start) / 60));
+            serial_puts(" ms (render ");
+            serial_dec((int64_t)(g_render_ms_acc / 60));
+            serial_puts(", flip ");
+            serial_dec((int64_t)(g_flip_ms_acc / 60));
+            serial_puts(") kcyc bg/nav/clock/search/win/dock/ovl/end/input/sleep:");
+            for (int i = 0; i < PF_COUNT; i++) {
+                serial_puts(" ");
+                serial_dec((int64_t)(g_pf[i] / 60 / 1000));
+                g_pf[i] = 0;
+            }
+        }
+        serial_puts("\n");
+        window_start = now;
+        g_render_ms_acc = 0;
+        g_flip_ms_acc = 0;
+    }
+    uint64_t t_render0 = now;
+    uint64_t pf_t = rdtsc_now();
+
     float dt = (last_time > 0) ? (float)(now - last_time) / 1000.0f : 0.016f;
     if (dt > 0.1f) dt = 0.016f;  /* Cap delta time */
     last_time = now;
@@ -1158,11 +1179,15 @@ static void render_desktop(void) {
     /* Wallpaper and a clean canvas for this frame */
     nxui_frame_begin();
     nxc_canvas_t *frame = nxui_canvas();
+    PF_MARK(PF_BG);
     
     render_navigation_bar();
+    PF_MARK(PF_NAV);
     render_globe_clock_widget();
-    render_search_bar();
+    PF_MARK(PF_CLOCK);
+    if (!anveshan_is_active()) render_search_bar();   /* active: drawn above windows */
     render_desktop_icons();
+    PF_MARK(PF_SEARCH);
     
     /* Tile preview (below windows): translucent accent panel */
     int32_t tile_x, tile_y;
@@ -1175,11 +1200,19 @@ static void render_desktop(void) {
     }
     
     render_windows();
+    PF_MARK(PF_WINDOWS);
     
     /* Modular dock rendering */
     dock_tick();  /* Update animations */
     dock_render(frame, g_desktop.mouse_x, g_desktop.mouse_y);
+    PF_MARK(PF_DOCK);
     
+    /* Active search field and its results float above windows */
+    if (anveshan_is_active()) render_search_bar();
+
+    /* Menu bar dropdown (above windows and the dock) */
+    menubar_render(frame);
+
     /* App Drawer overlay (above everything except cursor) */
     app_drawer_update((uint32_t)(nxui_frame_dt() * 1000.0f));
     app_drawer_render(frame);
@@ -1211,8 +1244,7 @@ static void render_desktop(void) {
         const nxui_theme_t *th = nxui_theme();
         float mw = 3.0f * 40.0f + 16.0f, mh = 48.0f;
         nxc_rect_t menu = nxc_rect((float)qm->x, (float)qm->y, mw, mh);
-        nxui_elevation(frame, menu, 12.0f, 2);
-        nxui_material(frame, menu, 12.0f, &th->mat_popover);
+        nxui_panel(frame, menu, 12.0f, &th->mat_popover, 2);
         static const nxsym_t syms[3] = { NXSYM_GRID, NXSYM_MAXIMIZE, NXSYM_CHEVRON_RIGHT };
         for (int i = 0; i < 3; i++) {
             nxc_rect_t cell = nxc_rect(menu.x + 8.0f + 40.0f * (float)i, menu.y + 8.0f, 32.0f, 32.0f);
@@ -1248,8 +1280,14 @@ static void render_desktop(void) {
         }
     }
     
+    PF_MARK(PF_OVERLAYS);
     /* Cursor + present the backbuffer (double buffered, no tearing) */
+    uint64_t t_flip0 = pit_get_ticks();
+    g_render_ms_acc += t_flip0 - t_render0;
     nxui_frame_end(g_desktop.mouse_x, g_desktop.mouse_y);
+    g_flip_ms_acc += pit_get_ticks() - t_flip0;
+    PF_MARK(PF_END);
+    g_last_frame_end = pit_get_ticks();
 }
 
 /* ============ Window Management ============ */
@@ -1402,6 +1440,15 @@ void desktop_handle_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
     if (app_drawer_is_open()) {
         app_drawer_handle_mouse(g_desktop.mouse_x, g_desktop.mouse_y, buttons);
         return;  /* Drawer consumes all mouse events when open */
+    }
+    
+    /* Menu bar menus take the pointer while open or when a title is hit */
+    if (menubar_handle_mouse(g_desktop.mouse_x, g_desktop.mouse_y, buttons, prev_buttons)) {
+        return;
+    }
+    /* Anveshan search field and its results */
+    if (anveshan_handle_mouse(g_desktop.mouse_x, g_desktop.mouse_y, buttons, prev_buttons)) {
+        return;
     }
     
     /* Handle Control Center input */
@@ -1673,7 +1720,68 @@ void nx_key_tick(void) {
     }
 }
 
+int desktop_launch_app(const char *name);   /* defined below */
+
+/* ASCII of the key being dispatched (set by the event loop before desktop_handle_key). */
+static char g_key_ascii = 0;
+
+/* Menu bar actions (menubar.c publishes them; the shell decides). */
+static desktop_window_t *focused_window(void) {
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (g_windows[i].id != 0 && g_windows[i].visible && g_windows[i].focused) return &g_windows[i];
+    }
+    return NULL;
+}
+
+static void desktop_menu_action(int menu, int action) {
+    (void)menu;
+    desktop_window_t *fw = focused_window();
+    switch (action) {
+        case 1:  /* New Window */
+            desktop_launch_app("File Manager");
+            break;
+        case 4: case 5:  /* Close Window, Quit */
+            if (fw) wm_close_window_animated(fw->id);
+            break;
+        case 15: /* Toggle Appearance */
+            nxui_set_appearance(nxui_appearance() == NXUI_APPEARANCE_DARK ? NXUI_APPEARANCE_LIGHT : NXUI_APPEARANCE_DARK);
+            theme_osd_show_dark_mode(nxui_appearance() == NXUI_APPEARANCE_DARK);
+            break;
+        case 17: /* Minimize */
+            if (fw) {
+                int32_t dcx = g_desktop.width / 2, dcy = g_desktop.height - 50;
+                wm_minimize_window(fw->id, dcx, dcy);
+                wm_add_minimized(fw->id, 0, fw->title, dcx, dcy);
+                fw->minimized = 1;
+            }
+            break;
+        case 18: /* Zoom */
+            if (fw) wm_maximize_window(fw->id);
+            break;
+        case 22: /* Keyboard Shortcuts */
+            keyboard_osd_help_show();
+            break;
+        case 23: /* About */
+            notification_push("System", "NeolyxOS", "Vajra desktop on the NXCanvas renderer", 0xFFE8660A);
+            notification_center_show();
+            break;
+        default:
+            serial_puts("[MENU] action not wired yet\n");
+            break;
+    }
+}
+
 void desktop_handle_key(uint8_t scancode, uint8_t pressed) {
+    /* Open menu or active search field take the keyboard first */
+    if (menubar_handle_key(scancode, pressed)) return;
+    if (anveshan_handle_key(scancode, pressed, g_key_ascii)) return;
+    /* NX + Space opens the search field */
+    if (scancode == 0x39 && pressed && g_nx_key_held) {
+        anveshan_get_state()->active = 1;
+        g_nx_help_shown = 0;
+        g_nx_key_held = 0;   /* release of NX must not open the drawer */
+        return;
+    }
     /* Track Caps Lock state */
     static int caps_lock_on = 0;
     
@@ -1817,6 +1925,11 @@ int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pit
         g_windows[i].id = 0;
     }
     
+    /* Menu bar menus and the Anveshan search field */
+    menubar_init();
+    menubar_set_handler(desktop_menu_action);
+    anveshan_init(g_desktop.width, g_desktop.height);
+    
     nx_debug_print("[DESKTOP] Calling WM init...\n");
     
     /* Initialize Window Manager */
@@ -1888,21 +2001,31 @@ static startup_app_t g_startup_apps[] = {
 /* Font Manager window content renderer */
 static void render_fontmanager_content(desktop_window_t *win, void *ctx) {
     (void)ctx;
-    
-    int y = win->y + 28 + 10;
-    int x = win->x + 10;
-    
-    desktop_draw_text(x, y, "Available Fonts:", 0xFFFFFFFF);
-    y += 16;
-    
-    const char *fonts[] = {"Consolas", "Monaco", "Menlo", "Noto Mono", "Terminus"};
+    nxc_canvas_t *c = nxui_canvas();
+    const nxui_theme_t *th = nxui_theme();
+    float x = (float)win->x + 16.0f, y = (float)win->y + 24.0f + 14.0f;
+    nxui_text(c, NXUI_TEXT_HEADLINE, x, y + 12.0f, "Installed typefaces", th->text_primary, NULL);
+    static const char *const fonts[] = { "NXSans Text", "NXSans UI", "NXSans Bold", "NXSans Display", "NXSans Mono" };
+    static const nxui_text_style_t styles[] = { NXUI_TEXT_BODY, NXUI_TEXT_BODY_MEDIUM, NXUI_TEXT_HEADLINE, NXUI_TEXT_TITLE3, NXUI_TEXT_MONO };
+    y += 34.0f;
     for (int i = 0; i < 5; i++) {
-        desktop_draw_text(x + 10, y, fonts[i], 0xFFCCCCCC);
-        y += 12;
+        nxui_text(c, styles[i], x, y + 12.0f, fonts[i], th->text_primary, NULL);
+        nxui_text(c, NXUI_TEXT_CAPTION, x + 150.0f, y + 12.0f, "Hamburgefonstiv 0123", th->text_secondary, NULL);
+        y += 26.0f;
     }
-    
-    y += 10;
-    desktop_draw_text(x, y, "Current: Consolas 14pt", 0xFF88FF88);
+    y += 8.0f;
+    nxui_text(c, NXUI_TEXT_FOOTNOTE, x, y + 12.0f, "System font: NXSans UI 13 pt", th->success, NULL);
+}
+
+/* Windows without a content renderer show a quiet empty state. */
+static void render_empty_content(desktop_window_t *win, void *ctx) {
+    (void)ctx;
+    nxc_canvas_t *c = nxui_canvas();
+    const nxui_theme_t *th = nxui_theme();
+    float cx = (float)win->x + (float)win->width * 0.5f, cy = (float)win->y + 24.0f + (float)win->height * 0.5f;
+    nxapp_icon_draw(c, nxapp_icon_from_name(win->title), cx - 32.0f, cy - 48.0f, 64.0f, 110);
+    nxui_text_in_rect(c, NXUI_TEXT_BODY, nxc_rect(cx - 150.0f, cy + 24.0f, 300.0f, 20.0f), win->title, th->text_secondary, NXC_ALIGN_CENTER);
+    nxui_text_in_rect(c, NXUI_TEXT_CAPTION, nxc_rect(cx - 150.0f, cy + 44.0f, 300.0f, 18.0f), "Nothing to show yet", th->text_tertiary, NXC_ALIGN_CENTER);
 }
 
 /* Start registered startup applications */
@@ -1968,6 +2091,8 @@ int desktop_launch_app(const char *name) {
                 /* Check if Font Manager to set custom renderer */
                 if (app->name[0] == 'F' && app->name[1] == 'o') {
                     desktop_set_window_render(win_id, render_fontmanager_content, NULL);
+                } else {
+                    desktop_set_window_render(win_id, render_empty_content, NULL);
                 }
                 return 0;
             }
@@ -1994,6 +2119,8 @@ void desktop_run(void) {
         frame_count++;
         
         /* Poll ALL input events */
+        if (g_pf_loop_t) g_pf[PF_SLEEP] += rdtsc_now() - g_pf_loop_t;
+        uint64_t pf_in0 = rdtsc_now();
         input_event_t event;
         int had_input = 0;
         int mouse_moved = 0;
@@ -2021,6 +2148,7 @@ void desktop_run(void) {
                 }
             } else if (event.type == INPUT_TYPE_KEYBOARD) {
                 /* Keyboard event */
+                g_key_ascii = (char)event.keyboard.ascii;
                 desktop_handle_key(event.keyboard.scancode, event.keyboard.pressed);
             }
         }
@@ -2031,13 +2159,18 @@ void desktop_run(void) {
         /* Check NX key long-press for help overlay */
         nx_key_tick();
         
+        g_pf[PF_INPUT] += rdtsc_now() - pf_in0;
+        
         /* Always render every frame */
         render_desktop();
+        g_pf_loop_t = rdtsc_now();
         
-        /* Frame rate limiting - cap at ~60 FPS to reduce flicker
-         * This gives stable frame timing and reduces partial frame visibility
-         */
-        nx_sleep(16);  /* 16ms ≈ 60 FPS */
+        /* Frame pacing: aim at 60 Hz, sleeping only the unused part of
+         * the budget so a slow frame never adds a full sleep on top. */
+        {
+            uint64_t spent = pit_get_ticks() - g_last_frame_end;
+            if (spent < 15) nx_sleep(15 - spent);
+        }
     }
     
     /* This should NEVER be reached */

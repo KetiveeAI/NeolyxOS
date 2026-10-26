@@ -386,8 +386,7 @@ void app_drawer_render(nxc_canvas_t *c) {
                                 (float)g_drawer.drawer_width, (float)g_drawer.drawer_height);
     nxc_save(c);
     nxc_set_alpha(c, (uint8_t)(progress * 255.0f));
-    nxui_elevation(c, sheet, 24.0f, 2);
-    nxui_material(c, sheet, 24.0f, &th->mat_popover);
+    nxui_panel(c, sheet, 24.0f, &th->mat_popover, 2);
     nxc_stroke_rrect(c, sheet, 24.0f, 1.0f, th->window_border);
     nxc_fill_rrect(c, nxc_rect(sheet.x + sheet.w * 0.5f - 20.0f, sheet.y + 8.0f, 40.0f, 4.0f), 2.0f, th->text_tertiary);
 

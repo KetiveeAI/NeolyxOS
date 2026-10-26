@@ -796,8 +796,7 @@ void control_center_render(nxc_canvas_t *c) {
 
     nxc_save(c);
     nxc_set_alpha(c, (uint8_t)(ease * 255.0f));
-    nxui_elevation(c, panel, th->radius_popover, 2);
-    nxui_material(c, panel, th->radius_popover, &th->mat_popover);
+    nxui_panel(c, panel, th->radius_popover, &th->mat_popover, 2);
     nxc_stroke_rrect(c, panel, th->radius_popover, 1.0f, th->window_border);
 
     float px = panel.x, py = panel.y;
