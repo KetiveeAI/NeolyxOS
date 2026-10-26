@@ -8,6 +8,7 @@
  */
 
 #include "../include/notification_center.h"
+#include "../include/nxui.h"
 #include "../include/nxsyscall.h"
 #include <stddef.h>
 
@@ -194,7 +195,7 @@ int notification_get_count(void) {
 
 /* ============ Rendering ============ */
 
-void notification_center_render(uint32_t *fb, uint32_t pitch) {
+static void notification_center_render_legacy(uint32_t *fb, uint32_t pitch) {
     if (!g_nc.visible || !g_nc_initialized) return;
     
     int px = g_nc.x;
@@ -318,4 +319,59 @@ int notification_center_handle_input(int mouse_x, int mouse_y, uint8_t buttons, 
 
 notification_center_state_t* notification_center_get_state(void) {
     return &g_nc;
+}
+
+/* ============ Canvas renderer ============ */
+
+static float nc_anim = 0.0f;
+
+void notification_center_render(nxc_canvas_t *c) {
+    if (!c || !g_nc_initialized) return;
+    nc_anim = nxui_approach(nc_anim, g_nc.visible ? 1.0f : 0.0f, 0.06f, nxui_frame_dt());
+    if (nc_anim < 0.01f) return;
+    const nxui_theme_t *th = nxui_theme();
+    float ease = nxui_ease_out_cubic(nc_anim);
+    nxc_rect_t panel = nxc_rect((float)g_nc.x, (float)g_nc.y - (1.0f - ease) * 12.0f, (float)g_nc.width, (float)g_nc.height);
+    nxc_save(c);
+    nxc_set_alpha(c, (uint8_t)(ease * 255.0f));
+    nxui_elevation(c, panel, th->radius_popover, 2);
+    nxui_material(c, panel, th->radius_popover, &th->mat_popover);
+    nxc_stroke_rrect(c, panel, th->radius_popover, 1.0f, th->window_border);
+
+    /* Header */
+    nxui_text_in_rect(c, NXUI_TEXT_TITLE3, nxc_rect(panel.x + 16.0f, panel.y, 200.0f, 40.0f), "Notifications",
+                      th->text_primary, NXC_ALIGN_LEFT);
+    if (g_nc.count > 0) {
+        nxc_rect_t clr = nxc_rect(panel.x + panel.w - 76.0f, panel.y + 9.0f, 62.0f, 22.0f);
+        nxc_fill_rrect(c, clr, 11.0f, th->control_fill);
+        nxui_text_in_rect(c, NXUI_TEXT_CAPTION, clr, "Clear all", th->text_secondary, NXC_ALIGN_CENTER);
+    }
+
+    nxc_save(c);
+    nxc_clip_rect(c, nxc_irect((int32_t)panel.x, (int32_t)panel.y + 40, g_nc.width, g_nc.height - 44));
+    float y = panel.y + 40.0f - (float)g_nc.scroll_offset;
+    for (int i = 0; i < g_nc.count; i++) {
+        const notification_t *nt = &g_nc.notifications[i];
+        if (nt->dismissed) continue;
+        nxc_rect_t card = nxc_rect(panel.x + 12.0f, y, panel.w - 24.0f, (float)NC_NOTIF_HEIGHT);
+        nxc_fill_rrect(c, card, 12.0f, i == g_nc.hover_idx ? th->control_fill_hover : th->control_fill);
+        nxapp_icon_draw(c, nxapp_icon_from_name(nt->app_name), card.x + 12.0f, card.y + 14.0f, 36.0f, 255);
+        float tx = card.x + 60.0f, tw = card.w - 60.0f - 36.0f;
+        nxui_text_in_rect(c, NXUI_TEXT_CAPTION, nxc_rect(tx, card.y + 8.0f, tw, 16.0f), nt->app_name, th->text_tertiary, NXC_ALIGN_LEFT);
+        nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, nxc_rect(tx, card.y + 24.0f, tw, 20.0f), nt->title, th->text_primary, NXC_ALIGN_LEFT);
+        nxui_text_in_rect(c, NXUI_TEXT_FOOTNOTE, nxc_rect(tx, card.y + 44.0f, tw, 18.0f), nt->message, th->text_secondary, NXC_ALIGN_LEFT);
+        if (!nt->read) nxc_fill_circle(c, card.x + card.w - 14.0f, card.y + 14.0f, 4.0f, th->accent);
+        if (i == g_nc.hover_idx) {
+            nxc_fill_circle(c, card.x + card.w - 22.0f, card.y + card.h * 0.5f, 11.0f, th->control_fill_pressed);
+            nxsym_draw(c, NXSYM_CLOSE, card.x + card.w - 22.0f, card.y + card.h * 0.5f, 10.0f, th->text_primary, 0.0f);
+        }
+        y += NC_NOTIF_HEIGHT + NC_NOTIF_GAP;
+    }
+    if (g_nc.count == 0) {
+        nxsym_draw(c, NXSYM_BELL, panel.x + panel.w * 0.5f, panel.y + 170.0f, 36.0f, th->text_tertiary, 0.0f);
+        nxui_text_in_rect(c, NXUI_TEXT_BODY, nxc_rect(panel.x, panel.y + 196.0f, panel.w, 20.0f), "No notifications",
+                          th->text_tertiary, NXC_ALIGN_CENTER);
+    }
+    nxc_restore(c);
+    nxc_restore(c);
 }

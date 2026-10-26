@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "../include/volume_osd.h"
+#include "../include/nxui.h"
 #include "../include/nxsyscall.h"
 
 /* OSD State */
@@ -131,7 +132,7 @@ static void draw_speaker_icon(int32_t x, int32_t y, int muted, uint8_t alpha) {
 }
 
 /* Render volume OSD */
-void volume_osd_render(uint32_t *fb, uint32_t pitch) {
+static void volume_osd_render_legacy(uint32_t *fb, uint32_t pitch) {
     if (!g_osd.visible || g_osd.opacity == 0) return;
     
     (void)fb;
@@ -188,4 +189,28 @@ void volume_osd_render(uint32_t *fb, uint32_t pitch) {
 /* Get current OSD state */
 volume_osd_state_t volume_osd_get_state(void) {
     return g_osd;
+}
+
+/* ============ Canvas renderer ============ */
+
+/* A centered HUD card near the bottom: symbol on the left, level bar. */
+void volume_osd_render(nxc_canvas_t *c) {
+    if (!c || !g_osd.visible || g_osd.opacity == 0) return;
+    const nxui_theme_t *th = nxui_theme();
+    nxc_rect_t box = nxc_rect((float)g_osd.x, (float)g_osd.y, (float)g_osd.width, (float)g_osd.height);
+    nxc_save(c);
+    nxc_set_alpha(c, g_osd.opacity);
+    nxui_elevation(c, box, 16.0f, 2);
+    nxui_material(c, box, 16.0f, &th->mat_hud);
+    float cy = box.y + box.h * 0.5f;
+    nxsym_draw(c, g_osd.muted ? NXSYM_VOLUME_MUTE : NXSYM_VOLUME, box.x + 28.0f, cy, 22.0f, th->text_primary,
+               (float)g_osd.volume / 100.0f);
+    nxc_rect_t track = nxc_rect(box.x + 56.0f, cy - 4.0f, box.w - 76.0f, 8.0f);
+    nxc_fill_rrect(c, track, 4.0f, th->control_fill);
+    if (!g_osd.muted && g_osd.volume > 0) {
+        float fw = track.w * (float)(g_osd.volume > 100 ? 100 : g_osd.volume) / 100.0f;
+        if (fw < 8.0f) fw = 8.0f;
+        nxc_fill_rrect(c, nxc_rect(track.x, track.y, fw, track.h), 4.0f, NXC_WITH_ALPHA(th->text_primary, 235));
+    }
+    nxc_restore(c);
 }

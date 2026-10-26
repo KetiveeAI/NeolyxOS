@@ -113,15 +113,30 @@ static void boot_log(const char *msg) {
 /* Forward declarations */
 static int init_stub(void) { return 0; }
 
+/* driver_init_fn returns int; adapt the void-returning subsystems so the
+ * table stays type-correct (GCC 15 rejects the implicit conversion). */
+static int platform_detect_step(void) { platform_detect(); return 0; }
+static int platform_init_step(void)   { platform_init(); return 0; }
+static int serial_init_step(void)     { serial_init(); return 0; }
+static int font_init_step(void)       { font_init(); return 0; }
+static int tcpip_init_step(void)      { tcpip_init(); return 0; }
+static int vfs_init_step(void)        { vfs_init(); return 0; }
+static int firewall_init_step(void)   { firewall_init(); return 0; }
+static int sysconfig_init_step(void)  { sysconfig_init(); return 0; }
+/* pmm_init needs the firmware memory map, which the boot_firmware.c path
+ * passes directly; this table cannot, so it reports the step as failed
+ * rather than calling pmm_init with garbage. */
+static int pmm_init_step(void)        { boot_log("PMM: initialized by the firmware boot path"); return -1; }
+
 static driver_entry_t boot_drivers[] = {
     /* Stage 1: Early */
     /* Core bootstrap stages */
     {"BSP Setup", bsp_init, NULL, BOOT_STAGE_EARLY, 0, 0, 0},
-    {"Platform Detection", platform_detect, NULL, BOOT_STAGE_EARLY, 0, 0, 0},
-    {"Platform Init", platform_init, NULL, BOOT_STAGE_EARLY, 0, 0, 0 },
-    {"Serial Console", serial_init, NULL, BOOT_STAGE_EARLY, 0, 0, 0},
-    {"Memory Manager", pmm_init, NULL, BOOT_STAGE_EARLY, 0, 0, 0},
-    {"Font System", font_init, NULL, BOOT_STAGE_EARLY, 0, 0, 0},
+    {"Platform Detection", platform_detect_step, NULL, BOOT_STAGE_EARLY, 0, 0, 0},
+    {"Platform Init", platform_init_step, NULL, BOOT_STAGE_EARLY, 0, 0, 0 },
+    {"Serial Console", serial_init_step, NULL, BOOT_STAGE_EARLY, 0, 0, 0},
+    {"Memory Manager", pmm_init_step, NULL, BOOT_STAGE_EARLY, 0, 0, 0},
+    {"Font System", font_init_step, NULL, BOOT_STAGE_EARLY, 0, 0, 0},
     
     /* Stage 2: Core */
     {"Interrupt Descriptor Table", init_stub, NULL, BOOT_STAGE_CORE, 0, 0, 0},
@@ -136,10 +151,10 @@ static driver_entry_t boot_drivers[] = {
     {"Ethernet (e1000)", e1000_init, NULL, BOOT_STAGE_NETWORK, 0, 1, 0},
     {"WiFi", wifi_init, NULL, BOOT_STAGE_NETWORK, 0, 1, 0},
     {"Bluetooth", bluetooth_init, NULL, BOOT_STAGE_NETWORK, 0, 1, 0},
-    {"TCP/IP Stack", tcpip_init, NULL, BOOT_STAGE_NETWORK, 0, 0, 0},
+    {"TCP/IP Stack", tcpip_init_step, NULL, BOOT_STAGE_NETWORK, 0, 0, 0},
     
     /* Stage 5: Filesystem */
-    {"Virtual Filesystem", vfs_init, NULL, BOOT_STAGE_FILESYSTEM, 0, 0, 0},
+    {"Virtual Filesystem", vfs_init_step, NULL, BOOT_STAGE_FILESYSTEM, 0, 0, 0},
     {"Filesystem Hierarchy", fs_init, NULL, BOOT_STAGE_FILESYSTEM, 0, 0, 0},
     
     /* Stage 6: Late */
@@ -147,10 +162,10 @@ static driver_entry_t boot_drivers[] = {
     {"Audio (NXAudio)", nxaudio_init, NULL, BOOT_STAGE_LATE, 0, 1, 0},
     {"Power Management", power_init, NULL, BOOT_STAGE_LATE, 0, 0, 0},
     {"Print Subsystem", print_init, NULL, BOOT_STAGE_LATE, 0, 1, 0},
-    {"Firewall", firewall_init, NULL, BOOT_STAGE_LATE, 0, 0, 0},
+    {"Firewall", firewall_init_step, NULL, BOOT_STAGE_LATE, 0, 0, 0},
     
     /* Stage 7: User/Desktop Services */
-    {"System Config", sysconfig_init, NULL, BOOT_STAGE_USER, 0, 0, 0},
+    {"System Config", sysconfig_init_step, NULL, BOOT_STAGE_USER, 0, 0, 0},
     {"App Launcher", app_launcher_init, NULL, BOOT_STAGE_USER, 0, 0, 0},
     {"Session Manager", session_manager_init, NULL, BOOT_STAGE_USER, 0, 0, 0},
     

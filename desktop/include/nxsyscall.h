@@ -95,6 +95,22 @@ typedef struct {
 
 /* ============ Syscall Macros ============ */
 
+#ifdef NX_HOST_PREVIEW
+/*
+ * Host preview build (desktop/tools/preview): the same wrappers route to a
+ * dispatcher implemented by the harness instead of the SYSCALL instruction,
+ * so shell code renders unmodified on the development machine.
+ */
+int64_t nx_host_syscall(int64_t num, int64_t a1, int64_t a2, int64_t a3);
+static inline int64_t syscall0(int64_t num) { return nx_host_syscall(num, 0, 0, 0); }
+static inline int64_t syscall1(int64_t num, int64_t a1) { return nx_host_syscall(num, a1, 0, 0); }
+static inline int64_t syscall2(int64_t num, int64_t a1, int64_t a2) {
+    return nx_host_syscall(num, a1, a2, 0);
+}
+static inline int64_t syscall3(int64_t num, int64_t a1, int64_t a2, int64_t a3) {
+    return nx_host_syscall(num, a1, a2, a3);
+}
+#else
 /* Inline syscall with 0-3 arguments */
 static inline int64_t syscall0(int64_t num) {
     int64_t ret;
@@ -140,6 +156,7 @@ static inline int64_t syscall3(int64_t num, int64_t a1, int64_t a2, int64_t a3) 
     );
     return ret;
 }
+#endif /* NX_HOST_PREVIEW */
 
 /* ============ File I/O Wrappers ============ */
 

@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "../include/keyboard_osd.h"
+#include "../include/nxui.h"
 #include "../include/nxsyscall.h"
 
 /* OSD State */
@@ -152,7 +153,7 @@ void keyboard_osd_tick(void) {
 }
 
 /* Render keyboard OSD */
-void keyboard_osd_render(uint32_t *fb, uint32_t pitch) {
+static void keyboard_osd_render_legacy(uint32_t *fb, uint32_t pitch) {
     if (!g_kbd_osd.visible || g_kbd_osd.opacity == 0) return;
     
     (void)fb;
@@ -253,7 +254,7 @@ int keyboard_osd_help_visible(void) {
 }
 
 /* Render help overlay - called from desktop render loop */
-void keyboard_osd_help_render(uint32_t *fb, uint32_t pitch, uint32_t sw, uint32_t sh) {
+static void keyboard_osd_help_render_legacy(uint32_t *fb, uint32_t pitch, uint32_t sw, uint32_t sh) {
     if (!g_help_visible) return;
     
     /* Semi-transparent full-screen background */
@@ -302,4 +303,50 @@ void keyboard_osd_help_render(uint32_t *fb, uint32_t pitch, uint32_t sw, uint32_
     
     /* Footer hint */
     desktop_draw_text(panel_x + 16, panel_y + panel_h - 24, "Release NX to close", 0x80FFFFFF);
+}
+
+/* ============ Canvas renderer ============ */
+
+void keyboard_osd_render(nxc_canvas_t *c) {
+    if (!c || !g_kbd_osd.visible || g_kbd_osd.opacity == 0) return;
+    const nxui_theme_t *th = nxui_theme();
+    nxc_rect_t box = nxc_rect((float)g_kbd_osd.x, (float)g_kbd_osd.y, (float)g_kbd_osd.width, (float)g_kbd_osd.height);
+    nxc_save(c);
+    nxc_set_alpha(c, g_kbd_osd.opacity);
+    nxui_elevation(c, box, 16.0f, 2);
+    nxui_material(c, box, 16.0f, &th->mat_hud);
+    nxsym_t sym = (g_kbd_osd.type == KBD_OSD_CAPS_LOCK || g_kbd_osd.type == KBD_OSD_NUM_LOCK) ? NXSYM_LOCK : NXSYM_KEYBOARD;
+    nxsym_draw(c, sym, box.x + 28.0f, box.y + box.h * 0.5f, 22.0f, th->text_primary, 0.0f);
+    nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, nxc_rect(box.x + 52.0f, box.y, box.w - 64.0f, box.h), g_kbd_osd.text,
+                      th->text_primary, NXC_ALIGN_LEFT);
+    nxc_restore(c);
+}
+
+/* Full-screen shortcut sheet: dimmed desktop, centered glass card. */
+void keyboard_osd_help_render(nxc_canvas_t *c) {
+    if (!c || !g_help_visible) return;
+    const nxui_theme_t *th = nxui_theme();
+    float sw = (float)nxui_width(), sh = (float)nxui_height();
+    nxc_fill_rect(c, nxc_rect(0, 0, sw, sh), NXC_ARGB(120, 0, 0, 8));
+    int count = 0;
+    while (g_shortcuts[count].keys && count < 64) count++;   /* table is NULL-terminated */
+    float row_h = 30.0f, cw = 460.0f, ch = 64.0f + (float)count * row_h + 16.0f;
+    nxc_rect_t card = nxc_rect((sw - cw) * 0.5f, (sh - ch) * 0.5f, cw, ch);
+    nxui_elevation(c, card, 18.0f, 2);
+    nxui_material(c, card, 18.0f, &th->mat_popover);
+    nxui_text_in_rect(c, NXUI_TEXT_TITLE2, nxc_rect(card.x + 24.0f, card.y + 12.0f, cw - 48.0f, 36.0f), "Keyboard shortcuts",
+                      th->text_primary, NXC_ALIGN_LEFT);
+    for (int i = 0; i < count; i++) {
+        float y = card.y + 60.0f + (float)i * row_h;
+        if (i & 1) nxc_fill_rrect(c, nxc_rect(card.x + 16.0f, y, cw - 32.0f, row_h), 8.0f, NXC_WITH_ALPHA(th->text_primary, 10));
+        float kw = nxui_text_width(NXUI_TEXT_BODY_MEDIUM, g_shortcuts[i].keys) + 16.0f;
+        nxc_rect_t key = nxc_rect(card.x + 24.0f, y + 5.0f, kw, row_h - 10.0f);
+        nxc_fill_rrect(c, key, 6.0f, th->control_fill);
+        nxc_stroke_rrect(c, key, 6.0f, 1.0f, th->separator);
+        nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, key, g_shortcuts[i].keys, th->text_primary, NXC_ALIGN_CENTER);
+        nxui_text_in_rect(c, NXUI_TEXT_BODY, nxc_rect(card.x + 200.0f, y, cw - 224.0f, row_h), g_shortcuts[i].action,
+                          th->text_secondary, NXC_ALIGN_LEFT);
+    }
+    nxui_text_in_rect(c, NXUI_TEXT_CAPTION, nxc_rect(card.x, card.y + ch - 24.0f, cw, 16.0f), "Release NX to close",
+                      th->text_tertiary, NXC_ALIGN_CENTER);
 }

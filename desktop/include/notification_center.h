@@ -11,6 +11,7 @@
 #define NOTIFICATION_CENTER_H
 
 #include <stdint.h>
+#include "nxcanvas.h"
 
 /* ============ Notification Entry ============ */
 
@@ -71,7 +72,7 @@ void notification_center_show(void);
 void notification_center_hide(void);
 int notification_center_is_visible(void);
 
-void notification_center_render(uint32_t *fb, uint32_t pitch);
+void notification_center_render(nxc_canvas_t *c);
 int notification_center_handle_input(int mouse_x, int mouse_y, uint8_t buttons, uint8_t prev_buttons);
 void notification_center_tick(void);
 

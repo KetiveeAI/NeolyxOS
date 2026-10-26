@@ -295,7 +295,7 @@ void anveshan_init(uint32_t screen_w, uint32_t screen_h) {
 }
 
 void anveshan_load_settings(void) {
-    nxc_config_t *config = nxc_load(NXC_USER_DEFAULTS);
+    nxc_config_t *config = nxc_config_load(NXC_USER_DEFAULTS);
     if (!config) return;
     
     g_anveshan.settings.width = nxc_get_int(config, "search", "width", 320);
@@ -312,7 +312,7 @@ void anveshan_load_settings(void) {
 }
 
 void anveshan_save_settings(void) {
-    nxc_config_t *config = nxc_load(NXC_USER_DEFAULTS);
+    nxc_config_t *config = nxc_config_load(NXC_USER_DEFAULTS);
     if (!config) return;
     
     nxc_set_int(config, "search", "width", g_anveshan.settings.width);
@@ -324,7 +324,7 @@ void anveshan_save_settings(void) {
     nxc_set_bool(config, "search", "search_files", g_anveshan.settings.search_files);
     nxc_set_bool(config, "search", "voice_enabled", g_anveshan.settings.voice_enabled);
     
-    nxc_save(config);
+    nxc_config_save(config);
 }
 
 /* ============ App Indexing ============ */

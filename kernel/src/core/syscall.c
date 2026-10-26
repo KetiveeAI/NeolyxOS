@@ -975,6 +975,27 @@ int64_t sys_fb_flip_impl(uint64_t src_ptr, uint64_t a2, uint64_t a3, uint64_t a4
         uint32_t src_stride = g_framebuffer_width * 4;  /* Linear backbuffer stride */
         uint32_t dst_stride = g_framebuffer_pitch;       /* Hardware framebuffer stride */
         
+        /*
+         * Both copy paths below read width*4*height bytes from the user
+         * back buffer. Validate the whole source range for read access
+         * before touching it (computed in 64 bits so it cannot wrap).
+         */
+        uint64_t src_size = (uint64_t)g_framebuffer_width * 4ULL *
+                            (uint64_t)g_framebuffer_height;
+        if (syscall_validate_ptr((const void *)src_ptr, (size_t)src_size, 0) != 0) {
+            /* Rate-limited: a misbehaving client may call this every frame */
+            static uint32_t s_flip_rejects = 0;
+            if (s_flip_rejects < 8) {
+                s_flip_rejects++;
+                serial_puts("[SYSCALL] fb_flip: rejected invalid back buffer ");
+                serial_hex64(src_ptr);
+                serial_puts(" size ");
+                serial_hex64(src_size);
+                serial_puts("\n");
+            }
+            return -EFAULT;
+        }
+        
         if (src_stride == dst_stride) {
             /* Fast path: strides match, do single memcpy */
             uint64_t fb_size = (uint64_t)dst_stride * g_framebuffer_height;

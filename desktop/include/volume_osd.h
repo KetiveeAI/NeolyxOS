@@ -8,6 +8,7 @@
 #define VOLUME_OSD_H
 
 #include <stdint.h>
+#include "nxcanvas.h"
 
 /* OSD state structure */
 typedef struct {
@@ -36,7 +37,7 @@ int volume_osd_is_visible(void);
 void volume_osd_tick(void);
 
 /* Render volume OSD */
-void volume_osd_render(uint32_t *fb, uint32_t pitch);
+void volume_osd_render(nxc_canvas_t *c);
 
 /* Get current state */
 volume_osd_state_t volume_osd_get_state(void);

@@ -11,6 +11,7 @@
 #define BATTERY_WARNING_H
 
 #include <stdint.h>
+#include "nxcanvas.h"
 
 /* Warning thresholds */
 #define BATTERY_LOW_THRESHOLD     20
@@ -40,7 +41,7 @@ void battery_warning_check(int battery_percent, int is_charging);
 void battery_warning_dismiss(void);
 int battery_warning_is_visible(void);
 void battery_warning_tick(void);
-void battery_warning_render(uint32_t *fb, uint32_t pitch);
+void battery_warning_render(nxc_canvas_t *c);
 
 /* Reset warning flags (e.g., when plugged in) */
 void battery_warning_reset(void);

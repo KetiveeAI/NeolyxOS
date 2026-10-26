@@ -232,6 +232,22 @@ void pmm_init(void *memory_map, uint64_t map_size, uint64_t descriptor_size) {
         serial_puts("\n");
     }
     
+    /* Reserve the userspace program region (desktop ELF at 0x1000000,
+     * its 64 MB heap reserve and stack, see core/main.c "Dynamic layout").
+     * The ELF is copied there before main.c reserves it, so without this
+     * early reservation the kernel heap (allocated from the PMM right
+     * after _kernel_end) grows into the region once the kernel image is
+     * large enough, and loading the desktop silently overwrites it. */
+    {
+        const uint64_t user_start = 0x1000000ULL;            /* 16 MB */
+        const uint64_t user_size  = 0x5000000ULL;            /* 80 MB */
+        if (kernel_end_addr > user_start) {
+            serial_puts("[PMM] WARNING: kernel image extends past the userspace region base\n");
+        }
+        pmm_reserve_region(user_start, user_size);
+        serial_puts("[PMM] Reserved userspace region: 0x1000000 - 0x6000000\n");
+    }
+    
     /* Calculate final stats */
     pmm_stats.total_memory = pmm_stats.total_pages * PAGE_SIZE;
     pmm_stats.free_memory = pmm_stats.free_pages * PAGE_SIZE;

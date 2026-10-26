@@ -1288,8 +1288,14 @@ void kernel_main(NeolyxBootInfo *boot_info) {
              * IMPORTANT: Desktop ELF is loaded at 0x1000000-0x1280000, so heap must be AFTER that!
              * Using 0x2000000 (32MB) as heap start to leave room for userspace
              */
-            heap_init(0x2000000, 0x1000000);
-            serial_puts("[OK] Heap initialized at 0x2000000\n");
+            /* The userspace program region is 0x1000000 - 0x6000000 (desktop
+             * ELF, its 64 MB heap reserve and stack, reserved in pmm_init), so
+             * the kernel heap lives right above it. The desktop's heap used to
+             * grow over a kernel heap placed at 0x2000000. */
+            extern void pmm_reserve_region(uint64_t start, uint64_t size);
+            pmm_reserve_region(0x6000000, 0x1000000);
+            heap_init(0x6000000, 0x1000000);
+            serial_puts("[OK] Heap initialized at 0x6000000 (16 MB, above userspace region)\n");
         }
         
         /* Initialize Filesystem Layer */
@@ -1386,7 +1392,8 @@ void kernel_main(NeolyxBootInfo *boot_info) {
             /* Debug: List files in root directory */
             serial_puts("[BOOT] DEBUG: Root directory contents:\n");
             {
-                typedef struct { char name[256]; uint8_t type; uint64_t inode; uint64_t size; } vfs_dirent_t;
+                /* vfs_dirent_t comes from fs/vfs.h; a local redefinition
+                 * with a different layout used to shadow it here. */
                 vfs_dirent_t entries[16];
                 uint32_t count = 0;
                 if (vfs_readdir("/", entries, 16, &count) == 0) {

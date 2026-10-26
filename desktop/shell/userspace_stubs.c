@@ -90,6 +90,8 @@ void session_unlock(void) {
 }
 
 /* ============ Memset (required by some code) ============ */
+/* The host preview build links the host C library, which provides these. */
+#ifndef NX_HOST_PREVIEW
 
 void *memset(void *s, int c, uint64_t n) {
     uint8_t *p = (uint8_t *)s;
@@ -107,6 +109,8 @@ void *memcpy(void *dest, const void *src, uint64_t n) {
     }
     return dest;
 }
+
+#endif /* NX_HOST_PREVIEW */
 
 /* ============ Cursor Syscall - MOVED TO nxsyscall.h ============ */
 /* nx_cursor_set() is now defined as inline in nxsyscall.h */

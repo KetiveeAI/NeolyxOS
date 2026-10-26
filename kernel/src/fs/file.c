@@ -8,6 +8,7 @@
 #include <mm/heap.h>
 #include <stdint.h>
 #include <stddef.h>
+int file_unmount(const char* mount_point);   /* defined below */
 
 // Global file system state
 static nxfs_mount_info_t* mounted_fs = NULL;
