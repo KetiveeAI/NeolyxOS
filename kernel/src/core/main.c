@@ -445,6 +445,7 @@ void nx_kernel_start(void) {
             uint64_t stack_end = stack_base + stack_size;
             
             /* Log computed regions */
+            extern void serial_putc(char c);
             serial_puts("[KERNEL] Dynamic layout:\n");
             serial_puts("  ELF code: 0x");
             {

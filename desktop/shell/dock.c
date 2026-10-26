@@ -9,6 +9,7 @@
  */
 
 #include "../include/dock.h"
+#include "../include/nxui.h"
 #include "../include/nxconfig.h"
 #include "../include/nxsyscall.h"
 #include "../include/nxi_render.h"
@@ -207,7 +208,7 @@ void dock_init(uint32_t screen_w, uint32_t screen_h) {
     nx_debug_print("[DOCK] Adding default icons...\n");
     /* Add default icons (from dock_icon_colors) */
     static const char *default_labels[] = {
-        "Files", "Safari", "Messages", "Notes", 
+        "Files", "Browser", "Messages", "Notes",
         "Photos", "Music", "Mail", "Settings"
     };
     for (int i = 0; i < DOCK_ICON_COLOR_COUNT && i < 8; i++) {
@@ -311,7 +312,7 @@ void dock_start_bounce(uint32_t app_id) {
 
 /* ============ Rendering ============ */
 
-void dock_render(uint32_t *fb, uint32_t pitch, int mouse_x, int mouse_y) {
+static void dock_render_legacy(uint32_t *fb, uint32_t pitch, int mouse_x, int mouse_y) {
     extern void nx_debug_print(const char *msg);
     static int dock_debug_count = 0;
     
@@ -562,5 +563,142 @@ void dock_event_handler(const nx_event_t *event, void *userdata) {
         
         default:
             break;
+    }
+}
+
+/* ============ Canvas renderer ============ */
+
+/*
+ * Magnification profile: icons scale by a smooth bump around the pointer
+ * (cosine falloff over 2.5 icon slots) and the row grows to make room, so
+ * neighbours slide instead of overlapping. Positions are laid out from
+ * the scaled widths, then the whole row is centered on the screen.
+ */
+#define DOCK_ICON_LABEL_PAD   14
+#define DOCK_RUN_DOT_R        2.0f
+#define DOCK_MAG_SPAN         2.5f
+
+static float dock_cos_bump(float d) {
+    /* 1 at d = 0, 0 at |d| >= DOCK_MAG_SPAN, smooth in between */
+    if (d < 0.0f) d = -d;
+    if (d >= DOCK_MAG_SPAN) return 0.0f;
+    float t = d / DOCK_MAG_SPAN;
+    /* cosine ease: 0.5 (1 + cos(pi t)) via a quintic approximation (no libm) */
+    float u = 1.0f - t;
+    return u * u * (3.0f - 2.0f * u) * (1.0f - t * t * 0.25f);
+}
+
+/* Smoothed pointer position inside the dock, for continuous magnification. */
+static float g_dock_hover_pos = -1.0f;   /* in icon slots, -1 = none */
+static float g_dock_mag = 0.0f;          /* 0..1 magnification blend */
+
+void dock_render(nxc_canvas_t *c, int mouse_x, int mouse_y) {
+    if (!c || !g_dock.visible || !g_dock_initialized) return;
+    const nxui_theme_t *th = nxui_theme();
+    appearance_settings_t *app = g_dock.settings ? g_dock.settings : nxappearance_get();
+    float dt = nxui_frame_dt();
+
+    float base = (float)(app->dock_icon_size > 0 ? app->dock_icon_size : 48);
+    if (base < 32.0f) base = 32.0f;
+    if (base > 96.0f) base = 96.0f;
+    int n = g_dock.icon_count;
+    if (n < 1) return;
+    float gap = (float)DOCK_ICON_GAP;
+    float pad = 12.0f;
+    float mag_amount = app->dock_magnification ? (app->dock_magnification_amount > 1.0f ?
+                                                  app->dock_magnification_amount : 1.6f) : 1.0f;
+    if (mag_amount > 2.0f) mag_amount = 2.0f;
+
+    /* Pill geometry at rest (used for hit testing and the pointer slot). */
+    float row_w = (float)n * base + (float)(n - 1) * gap;
+    float pill_h = base + 16.0f;
+    float pill_w = row_w + 2.0f * pad;
+    float pill_x = ((float)g_dock.screen_width - pill_w) * 0.5f;
+    float pill_y = (float)g_dock.screen_height - pill_h - (float)DOCK_MARGIN_BOTTOM;
+
+    /* Pointer slot and magnification blend (animated). */
+    int inside = mouse_y >= (int)pill_y - 10 && mouse_y <= (int)(pill_y + pill_h) &&
+                 mouse_x >= (int)pill_x - 20 && mouse_x <= (int)(pill_x + pill_w) + 20;
+    float target_mag = (inside && mag_amount > 1.0f) ? 1.0f : 0.0f;
+    g_dock_mag = nxui_approach(g_dock_mag, target_mag, 0.08f, dt);
+    if (inside) {
+        float slot = ((float)mouse_x - (pill_x + pad)) / (base + gap);
+        g_dock_hover_pos = (g_dock_hover_pos < 0.0f) ? slot : nxui_approach(g_dock_hover_pos, slot, 0.04f, dt);
+    } else if (g_dock_mag < 0.01f) {
+        g_dock_hover_pos = -1.0f;
+    }
+
+    /* Per-icon scale and layout. */
+    float sizes[DOCK_MAX_ICONS];
+    float total = 0.0f;
+    for (int i = 0; i < n; i++) {
+        float bump = (g_dock_hover_pos >= 0.0f) ? dock_cos_bump((float)i + 0.5f - g_dock_hover_pos) : 0.0f;
+        float scale = 1.0f + (mag_amount - 1.0f) * bump * g_dock_mag;
+        sizes[i] = base * scale;
+        total += sizes[i];
+    }
+    total += (float)(n - 1) * gap;
+    float x = ((float)g_dock.screen_width - total) * 0.5f;
+    float baseline = pill_y + pill_h - 8.0f;          /* icons sit on this line */
+
+    /* Hover index from the magnified layout (for clicks). */
+    g_dock.hover_idx = -1;
+    if (inside) {
+        float hx = x;
+        for (int i = 0; i < n; i++) {
+            if ((float)mouse_x >= hx - gap * 0.5f && (float)mouse_x < hx + sizes[i] + gap * 0.5f) {
+                g_dock.hover_idx = i;
+                break;
+            }
+            hx += sizes[i] + gap;
+        }
+    }
+    /* The pill stretches a little with the magnified row. */
+    float stretch = total - row_w;
+    if (stretch < 0.0f) stretch = 0.0f;
+    nxc_rect_t pill = nxc_rect(pill_x - stretch * 0.5f, pill_y, pill_w + stretch, pill_h);
+    g_dock.x = (int)pill.x;
+    g_dock.y = (int)pill.y - 12;                      /* include magnified overhang */
+    g_dock.width = (int)pill.w;
+    g_dock.height = (int)pill.h + 12;
+
+    nxui_panel(c, pill, th->radius_dock, &th->mat_dock, 2);
+
+    /* Icons */
+    for (int i = 0; i < n; i++) {
+        dock_icon_t *icon = &g_dock.icons[i];
+        float sz = sizes[i];
+        float lift = 0.0f;
+        if (icon->bouncing) {
+            /* Two decaying hops over 60 frames. */
+            float t = (float)icon->bounce_frame / 60.0f;
+            float hop = t < 0.5f ? t * 2.0f : (t - 0.5f) * 2.0f;
+            float amp = t < 0.5f ? 1.0f : 0.45f;
+            lift = amp * 22.0f * 4.0f * hop * (1.0f - hop);
+        }
+        if (i == g_dock.minimize_anim_idx && g_dock.minimize_progress > 0) {
+            float t = (float)g_dock.minimize_progress / 100.0f;
+            lift = 10.0f * 4.0f * t * (1.0f - t);
+        }
+        float ix = x, iy = baseline - sz - lift;
+        nxapp_icon_t kind = nxapp_icon_from_name(icon->label);
+        /* Contact shadow under the icon. */
+        nxc_draw_shadow_rrect(c, nxc_rect(ix, iy, sz, sz), sz * 0.225f, sz * 0.08f, 0.0f, sz * 0.06f,
+                              0.0f, NXC_ARGB(90, 0, 0, 8));
+        nxapp_icon_draw(c, kind, ix, iy, sz, 255);
+        /* Running indicator */
+        if (icon->active || icon->running) {
+            nxc_fill_circle(c, ix + sz * 0.5f, pill.y + pill.h - 4.5f, DOCK_RUN_DOT_R,
+                            NXC_WITH_ALPHA(th->text_primary, 220));
+        }
+        /* Label tooltip for the hovered icon */
+        if (i == g_dock.hover_idx && g_dock_mag > 0.5f) {
+            float tw = nxui_text_width(NXUI_TEXT_BODY_MEDIUM, icon->label) + 2.0f * DOCK_ICON_LABEL_PAD;
+            float th_ = 24.0f;
+            nxc_rect_t tip = nxc_rect(ix + sz * 0.5f - tw * 0.5f, iy - th_ - 10.0f, tw, th_);
+            nxui_panel(c, tip, 8.0f, &th->mat_popover, 1);
+            nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, tip, icon->label, th->text_primary, NXC_ALIGN_CENTER);
+        }
+        x += sz + gap;
     }
 }

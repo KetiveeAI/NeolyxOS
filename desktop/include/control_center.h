@@ -12,6 +12,7 @@
 #define CONTROL_CENTER_H
 
 #include <stdint.h>
+#include "nxcanvas.h"
 
 /* ============ Toggle State ============ */
 
@@ -104,7 +105,7 @@ void control_center_show(void);
 void control_center_hide(void);
 int control_center_is_visible(void);
 
-void control_center_render(uint32_t *fb, uint32_t pitch);
+void control_center_render(nxc_canvas_t *c);
 int control_center_handle_input(int mouse_x, int mouse_y, uint8_t buttons, uint8_t prev_buttons);
 
 /* Tick for animations */

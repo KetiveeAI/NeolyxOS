@@ -52,10 +52,19 @@ echo "  ESC     - Enter UEFI Firmware Setup"
 echo "  F2      - NeolyxOS Boot Options"
 echo "  Default - Boots NeolyxOS Desktop"
 echo ""
+# Use KVM hardware acceleration when this user can open /dev/kvm
+QEMU_ACCEL_ARGS=()
+if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+    QEMU_ACCEL_ARGS=(-enable-kvm -cpu host)
+    echo "Acceleration: KVM"
+else
+    echo "Acceleration: TCG (slow)"
+fi
+
 echo "Starting QEMU..."
 echo ""
 
-qemu-system-x86_64 -bios /usr/share/ovmf/OVMF.fd \
+qemu-system-x86_64 "${QEMU_ACCEL_ARGS[@]}" -bios /usr/share/ovmf/OVMF.fd \
   -machine usb=off \
   -device ahci,id=ahci0 \
   -drive file=neolyx.img,format=raw,if=none,id=boot \

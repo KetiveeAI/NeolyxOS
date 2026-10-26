@@ -6,7 +6,7 @@ AS = as
 OBJCOPY = objcopy
 
 # Flags for freestanding kernel
-CFLAGS = -ffreestanding -nostdlib -mno-red-zone -Wall -Wextra -m64 -fno-pie -no-pie \
+CFLAGS = -ffreestanding -nostdlib -mno-red-zone -Wall -Wextra -m64 -std=gnu11 -fno-pie -no-pie \
 	-Iinclude \
 	-I../include \
 	-I../include/core \

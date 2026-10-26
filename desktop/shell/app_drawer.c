@@ -8,6 +8,8 @@
  */
 
 #include "../include/app_drawer.h"
+#include "../include/nxui.h"
+#include "../include/nxevent.h"
 #include "../include/desktop_shell.h"
 #include <string.h>
 
@@ -372,62 +374,79 @@ static void render_search_bar(void) {
     }
 }
 
-void app_drawer_render(void) {
-    if (!g_drawer.visible && !g_drawer.animating) {
-        return;
+void app_drawer_render(nxc_canvas_t *c) {
+    if (!c || (!g_drawer.visible && !g_drawer.animating)) return;
+    const nxui_theme_t *th = nxui_theme();
+    float progress = nxui_ease_out_cubic(g_drawer.animation_progress);
+    float sw = (float)g_screen_width, sh = (float)g_screen_height;
+
+    /* Dim the desktop, then slide the sheet up */
+    nxc_fill_rect(c, nxc_rect(0, 0, sw, sh), NXC_ARGB((uint8_t)(progress * 130.0f), 0, 0, 8));
+    float offset_y = (1.0f - progress) * (float)g_drawer.drawer_height * 0.35f;
+    nxc_rect_t sheet = nxc_rect((float)g_drawer.drawer_x, (float)g_drawer.drawer_y + offset_y,
+                                (float)g_drawer.drawer_width, (float)g_drawer.drawer_height);
+    nxc_save(c);
+    nxc_set_alpha(c, (uint8_t)(progress * 255.0f));
+    nxui_panel(c, sheet, 24.0f, &th->mat_popover, 2);
+    nxc_stroke_rrect(c, sheet, 24.0f, 1.0f, th->window_border);
+    nxc_fill_rrect(c, nxc_rect(sheet.x + sheet.w * 0.5f - 20.0f, sheet.y + 8.0f, 40.0f, 4.0f), 2.0f, th->text_tertiary);
+
+    /* Search field */
+    nxc_rect_t sf = nxc_rect(sheet.x + 40.0f, sheet.y + 20.0f, sheet.w - 80.0f, 36.0f);
+    nxc_fill_rrect(c, sf, 18.0f, g_drawer.search_active ? th->control_fill_hover : th->control_fill);
+    nxsym_draw(c, NXSYM_SEARCH, sf.x + 20.0f, sf.y + 18.0f, 16.0f, th->text_secondary, 0.0f);
+    nxui_text_in_rect(c, NXUI_TEXT_BODY, nxc_rect(sf.x + 38.0f, sf.y, sf.w - 50.0f, sf.h),
+                      g_drawer.search_query[0] ? g_drawer.search_query : "Search apps",
+                      g_drawer.search_query[0] ? th->text_primary : th->text_tertiary, NXC_ALIGN_LEFT);
+
+    /* Category chips: same x advance as app_drawer_handle_mouse (8 px per char) */
+    float tx = sheet.x + 40.0f, ty = sheet.y + APP_DRAWER_SEARCH_HEIGHT + 16.0f;
+    for (int i = 0; i < APP_CAT_COUNT; i++) {
+        int len = drawer_strlen(APP_CAT_NAMES[i]);
+        float tw = (float)(len * 8 + 16);
+        nxc_rect_t chip = nxc_rect(tx, ty, tw, 24.0f);
+        int on = ((int)g_drawer.current_category == i);
+        nxc_fill_rrect(c, chip, 12.0f, on ? th->accent : th->control_fill);
+        nxui_text_in_rect(c, NXUI_TEXT_CAPTION, chip, APP_CAT_NAMES[i], on ? th->text_on_accent : th->text_secondary,
+                          NXC_ALIGN_CENTER);
+        tx += tw + 8.0f;
     }
-    
-    /* Apply animation offset (slide up from bottom) */
-    float progress = g_drawer.animation_progress;
-    int32_t offset_y = (int32_t)((1.0f - progress) * g_drawer.drawer_height);
-    
-    /* Backdrop (darken screen) */
-    uint8_t backdrop_alpha = (uint8_t)(progress * 160);
-    fill_rect_alpha(0, 0, g_screen_width, g_screen_height, (backdrop_alpha << 24) | 0x000000);
-    
-    /* Drawer background */
-    int32_t drawer_y = g_drawer.drawer_y + offset_y;
-    fill_rounded_rect(g_drawer.drawer_x, drawer_y, 
-                      g_drawer.drawer_width, g_drawer.drawer_height,
-                      20, APP_DRAWER_BG_COLOR);
-    
-    /* Handle bar at top (like Android) */
-    int32_t handle_x = g_drawer.drawer_x + (g_drawer.drawer_width - 40) / 2;
-    fill_rounded_rect(handle_x, drawer_y + 8, 40, 4, 2, 0x60FFFFFF);
-    
-    /* Only render content when fully open */
-    if (progress < 0.9f) return;
-    
-    /* Search bar */
-    render_search_bar();
-    
-    /* Category tabs */
-    render_category_tabs();
-    
+
     /* App grid */
     uint32_t apps_per_page = APP_DRAWER_COLS * APP_DRAWER_ROWS;
     uint32_t start_idx = g_drawer.current_page * apps_per_page;
     uint32_t cell_width = APP_DRAWER_ICON_SIZE + APP_DRAWER_ICON_GAP;
     uint32_t cell_height = APP_DRAWER_ICON_SIZE + APP_DRAWER_LABEL_HEIGHT + APP_DRAWER_ICON_GAP;
-    
     for (uint32_t i = 0; i < apps_per_page; i++) {
         uint32_t idx = start_idx + i;
         if (idx >= g_drawer.filtered_count) break;
-        
-        uint32_t col = i % APP_DRAWER_COLS;
-        uint32_t row = i / APP_DRAWER_COLS;
-        
-        int32_t x = g_drawer.grid_x + col * cell_width;
-        int32_t y = g_drawer.grid_y + row * cell_height;
-        
+        const app_entry_t *app = g_drawer.filtered[idx];
+        uint32_t col = i % APP_DRAWER_COLS, row = i / APP_DRAWER_COLS;
+        float x = (float)g_drawer.grid_x + (float)(col * cell_width);
+        float y = (float)g_drawer.grid_y + (float)(row * cell_height) + offset_y;
         int selected = ((int32_t)idx == g_drawer.selected_index);
         int hovered = ((int32_t)idx == g_drawer.hover_index);
-        
-        render_app_icon(g_drawer.filtered[idx], x, y, selected, hovered);
+        if (selected || hovered) {
+            nxc_fill_rrect(c, nxc_rect(x - 8.0f, y - 8.0f, APP_DRAWER_ICON_SIZE + 16.0f,
+                                       APP_DRAWER_ICON_SIZE + APP_DRAWER_LABEL_HEIGHT + 12.0f), 14.0f,
+                           selected ? th->control_fill_pressed : th->control_fill_hover);
+        }
+        nxapp_icon_draw(c, nxapp_icon_from_name(app->name), x, y, (float)APP_DRAWER_ICON_SIZE, 255);
+        nxui_text_in_rect(c, NXUI_TEXT_CAPTION, nxc_rect(x - 10.0f, y + APP_DRAWER_ICON_SIZE + 2.0f,
+                                                        APP_DRAWER_ICON_SIZE + 20.0f, 18.0f),
+                          app->name, th->text_primary, NXC_ALIGN_CENTER);
     }
-    
-    /* Page indicator dots */
-    render_page_dots();
+
+    /* Page dots */
+    if (g_drawer.total_pages > 1) {
+        float dw = (float)g_drawer.total_pages * 14.0f;
+        float dx = sheet.x + (sheet.w - dw) * 0.5f + 7.0f, dy = sheet.y + sheet.h - 16.0f;
+        for (uint32_t pg = 0; pg < g_drawer.total_pages && pg < APP_DRAWER_PAGE_DOTS; pg++) {
+            nxc_fill_circle(c, dx + (float)pg * 14.0f, dy, pg == g_drawer.current_page ? 3.5f : 2.5f,
+                            pg == g_drawer.current_page ? th->text_primary : th->text_tertiary);
+        }
+    }
+    nxc_restore(c);
 }
 
 /* ============ Input Handling ============ */
@@ -557,11 +576,8 @@ int app_drawer_launch_app(uint32_t index) {
     /* Mark as recently used */
     app->recent = 1;
     
-    /* TODO: Actually launch the app via process manager */
-    /* For now, just log */
-    /* serial_println("Launching app: "); */
-    /* serial_println(app->path); */
-    
+    /* Hand the launch to the shell (it opens or focuses the app window). */
+    nxevent_publish_app(NX_EVENT_APP_LAUNCHED, (uint32_t)(index + 100), app->name, app->path);
     return 0;
 }
 

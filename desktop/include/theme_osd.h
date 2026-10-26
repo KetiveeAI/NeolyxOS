@@ -11,6 +11,7 @@
 #define THEME_OSD_H
 
 #include <stdint.h>
+#include "nxcanvas.h"
 
 /* OSD State */
 typedef struct {
@@ -29,6 +30,6 @@ void theme_osd_show_dark_mode(int enabled);
 void theme_osd_hide(void);
 int theme_osd_is_visible(void);
 void theme_osd_tick(void);
-void theme_osd_render(uint32_t *fb, uint32_t pitch);
+void theme_osd_render(nxc_canvas_t *c);
 
 #endif /* THEME_OSD_H */

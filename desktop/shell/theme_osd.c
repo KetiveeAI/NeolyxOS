@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "../include/theme_osd.h"
+#include "../include/nxui.h"
 #include "../include/nxsyscall.h"
 
 /* OSD State */
@@ -128,7 +129,7 @@ static void draw_sun_icon(int32_t cx, int32_t cy, uint8_t alpha) {
 }
 
 /* Render */
-void theme_osd_render(uint32_t *fb, uint32_t pitch) {
+static void theme_osd_render_legacy(uint32_t *fb, uint32_t pitch) {
     if (!g_theme_osd.visible || g_theme_osd.opacity == 0) return;
     
     (void)fb;
@@ -158,4 +159,21 @@ void theme_osd_render(uint32_t *fb, uint32_t pitch) {
     uint32_t text_color = ((uint32_t)a << 24) | (THEME_TEXT_COLOR & 0x00FFFFFF);
     const char *text = g_theme_osd.dark_mode_on ? "Dark Mode On" : "Dark Mode Off";
     desktop_draw_text(x + 52, y + 18, text, text_color);
+}
+
+/* ============ Canvas renderer ============ */
+
+void theme_osd_render(nxc_canvas_t *c) {
+    if (!c || !g_theme_osd.visible || g_theme_osd.opacity == 0) return;
+    const nxui_theme_t *th = nxui_theme();
+    nxc_rect_t box = nxc_rect((float)g_theme_osd.x, (float)g_theme_osd.y, (float)g_theme_osd.width, (float)g_theme_osd.height);
+    nxc_save(c);
+    nxc_set_alpha(c, g_theme_osd.opacity);
+    nxui_elevation(c, box, 16.0f, 2);
+    nxui_material(c, box, 16.0f, &th->mat_hud);
+    float cy = box.y + box.h * 0.5f;
+    nxsym_draw(c, g_theme_osd.dark_mode_on ? NXSYM_MOON : NXSYM_SUN, box.x + 30.0f, cy, 24.0f, th->text_primary, 1.0f);
+    nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, nxc_rect(box.x + 56.0f, box.y, box.w - 68.0f, box.h),
+                      g_theme_osd.dark_mode_on ? "Dark appearance" : "Light appearance", th->text_primary, NXC_ALIGN_LEFT);
+    nxc_restore(c);
 }

@@ -30,45 +30,11 @@ CFLAGS = -Wall -Wextra -std=c11 -O2 \
 
 LDFLAGS = -nostdlib -T user.ld
 
-# Source files
-# Note: compositor.c is excluded - desktop_shell.c has all functionality
-# userspace_stubs.c provides syscall-based implementations of kernel functions
-# nxappearance.c provides theme/appearance preferences
-# nx_malloc.c provides global heap allocator (must be single TU, not inline!)
-SHELL_SRC = shell/main.c \
-            shell/desktop_shell.c \
-            shell/userspace_stubs.c \
-            shell/app_drawer.c \
-            shell/lock_screen.c \
-            shell/window_manager.c \
-            shell/dock.c \
-            shell/wallpaper.c \
-            shell/anveshan.c \
-            shell/vm_detect.c \
-            shell/control_center.c \
-            shell/notification_center.c \
-            shell/nxrender_bridge.c \
-            shell/volume_osd.c \
-            shell/keyboard_osd.c \
-            shell/theme_osd.c \
-            shell/battery_warning.c \
-            shell/network_indicator.c \
-            lib/nxappearance.c \
-            lib/nxconfig.c \
-            lib/nxevent.c \
-            lib/nx_arena.c \
-            lib/nx_malloc.c \
-            lib/libc_stubs.c \
-            lib/nxi_render.c \
-            apps/Calendar.app/calendar_utils.c \
-            ../config/nx_config.c
+# Source files (see sources.mk)
+include sources.mk
 
-WIDGET_SRC = widgets/widgets.c
-
-# Terminal is built as separate app in apps/Terminal.app/
-# TERMINAL_SRC = apps/terminal/terminal_window.c
-
-OBJS = $(SHELL_SRC:.c=.o) $(WIDGET_SRC:.c=.o)
+OBJS = $(ENTRY_SRC:.c=.o) $(STUBS_SRC:.c=.o) $(FREESTANDING_SRC:.c=.o) $(SHELL_SRC:.c=.o) $(WIDGET_SRC:.c=.o) \
+       $(NXCANVAS_SRC:.c=.o) $(NXICONS_SRC:.c=.o) $(ASM_SRC:.S=.o)
 TARGET = neolyx-desktop
 
 # NXRender graphics library + NXImage loader
@@ -86,6 +52,10 @@ $(TARGET): $(OBJS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
+
+# Assets reference files relative to desktop/ (.incbin)
+%.o: %.S
+	$(CC) -c $< -o $@
 
 clean:
 	rm -f $(OBJS) bin/$(TARGET)

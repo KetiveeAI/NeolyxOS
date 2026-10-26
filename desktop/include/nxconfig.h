@@ -56,14 +56,14 @@ typedef struct {
  * @param path Path to .nlc file
  * @return Config handle or NULL on error
  */
-nxc_config_t* nxc_load(const char *path);
+nxc_config_t* nxc_config_load(const char *path);
 
 /**
  * Save config to file
  * @param config Config handle
  * @return 0 on success, -1 on error
  */
-int nxc_save(nxc_config_t *config);
+int nxc_config_save(nxc_config_t *config);
 
 /**
  * Free config handle
