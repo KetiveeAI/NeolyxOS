@@ -1434,6 +1434,52 @@ void desktop_set_window_mouse_handler(uint32_t window_id,
     }
 }
 
+const desktop_window_t *desktop_window_slot(int i) {
+    if (i < 0 || i >= MAX_WINDOWS || g_windows[i].id == 0) return NULL;
+    return &g_windows[i];
+}
+
+uint32_t desktop_focused_window_id(void) {
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (g_windows[i].id != 0 && g_windows[i].visible && g_windows[i].focused) return g_windows[i].id;
+    }
+    return 0;
+}
+
+int desktop_activate_window(uint32_t window_id) {
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (g_windows[i].id == window_id && window_id != 0) {
+            if (g_windows[i].minimized) {
+                g_windows[i].minimized = 0;
+                g_windows[i].visible = 1;
+                wm_restore_window(window_id);
+            }
+            desktop_focus_window(window_id);
+            return 0;
+        }
+    }
+    return -1;
+}
+
+int desktop_close_window(uint32_t window_id) {
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (g_windows[i].id == window_id && window_id != 0) {
+            wm_close_window_animated(window_id);
+            return 0;
+        }
+    }
+    return -1;
+}
+
+void desktop_set_night_mode(float strength) {
+    if (!(strength >= 0.0f)) strength = 0.0f;   /* also rejects NaN */
+    if (strength > 1.0f) strength = 1.0f;
+    g_night_mode_strength = strength;
+    serial_puts("[DESKTOP] Night mode strength changed\n");
+}
+
+float desktop_get_night_mode(void) { return g_night_mode_strength; }
+
 /* ============ Input Handling ============ */
 
 /* Content mouse routing: the window whose content took a button press

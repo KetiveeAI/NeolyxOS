@@ -200,6 +200,23 @@ void desktop_set_window_mouse_handler(uint32_t window_id,
                                                       void *ctx),
                                       void *ctx);
 
+/* ============ Window queries (for dock, task manager, Stage) ============ */
+
+/* Window slot i (0..MAX_WINDOWS-1); NULL when the slot is empty. */
+const desktop_window_t *desktop_window_slot(int i);
+/* Id of the focused window, 0 if none. */
+uint32_t desktop_focused_window_id(void);
+/* Restore (if minimized) and focus a window. Returns 0, or -1 if unknown. */
+int desktop_activate_window(uint32_t window_id);
+/* Animated close, as the close button does. Returns 0, or -1 if unknown. */
+int desktop_close_window(uint32_t window_id);
+
+/* ============ Display ============ */
+
+/* Night Mode warmth 0 (off) .. 1 (full). Values are clamped. */
+void  desktop_set_night_mode(float strength);
+float desktop_get_night_mode(void);
+
 /* ============ Drawing Helpers ============ */
 
 /**
