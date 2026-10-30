@@ -62,7 +62,8 @@ AREA_SETTINGS_SRC = shell/views/settings_view.c \
                     shell/views/settings_panes_look.c \
                     shell/views/settings_panes_input.c
 
-AREA_FONTS_SRC    = shell/views/fonts_view.c
+AREA_FONTS_SRC    = shell/views/fonts_view.c \
+                    lib/nxfont_registry.c
 
 AREA_SETUP_SRC    = shell/views/setup_assistant.c shell/views/setup_pages.c shell/views/setup_store.c
 

@@ -3,8 +3,9 @@
  *
  * System typefaces linked into the desktop image (read-only data).
  * Paths are relative to desktop/, where the desktop Makefile runs.
- * Fonts: Source Sans 3 (NXSans) and Cascadia Mono (NXSans Mono), both
- * under the SIL Open Font License 1.1.
+ * Fonts: Source Sans 3 (NX Sans: Regular, Medium, Semibold, Bold,
+ * Italic) and Cascadia Mono (NX Sans Mono), both under the SIL Open Font
+ * License 1.1. Keep in sync with resources/fonts/nxsans-manifest.json.
  *
  * Copyright (c) 2025 KetiveeAI
  */
@@ -40,5 +41,11 @@ nxui_font_display_end:
 nxui_font_mono:
     .incbin "../resources/fonts/NXSansMono/NXSans-Mono.ttf"
 nxui_font_mono_end:
+
+    .balign 16
+    .global nxui_font_italic, nxui_font_italic_end
+nxui_font_italic:
+    .incbin "../resources/fonts/NXSans/NXSans-Italic.ttf"
+nxui_font_italic_end:
 
     .section .note.GNU-stack, "", @progbits

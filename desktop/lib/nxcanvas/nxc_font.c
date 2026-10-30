@@ -4,8 +4,10 @@
  * Parses TrueType (glyf) fonts following the Apple TrueType Reference
  * Manual and the OpenType specification: table directory, head, maxp,
  * hhea/hmtx, loca/glyf, cmap (formats 4 and 12), OS/2 vertical metrics,
- * the legacy 'kern' table (format 0) and the GPOS 'kern' feature (pair
- * adjustment lookups, directly or through extension lookups).
+ * the legacy 'kern' table (format 0), the GPOS 'kern' feature (pair
+ * adjustment lookups, directly or through extension lookups), and the
+ * descriptive data a font manager shows: 'name' strings, OS/2 weight and
+ * style bits, post.isFixedPitch and the head revision.
  *
  * Font data is untrusted. Every read goes through the bounds-checked
  * reader below, every offset is validated against the table it belongs
@@ -47,6 +49,35 @@
 #define GPOS_WORK_BUDGET (2u * NXC_FONT_MAX_KERN_ENTRIES)
 
 static uint32_t g_font_last_id;     /* source of unique font ids */
+
+/*
+ * Ids of live fonts. A fallback reference is only dereferenced while its
+ * id is listed here, so a caller that destroys a face still named in some
+ * chain gets a skipped fallback instead of a use-after-free.
+ */
+#define LIVE_FONTS_MAX 256
+static uint32_t g_live_ids[LIVE_FONTS_MAX];
+
+static int live_add(uint32_t id) {
+    for (uint32_t i = 0; i < LIVE_FONTS_MAX; i++) {
+        if (g_live_ids[i] == 0) { g_live_ids[i] = id; return 1; }
+    }
+    return 0;
+}
+
+static int live_has(uint32_t id) {
+    if (id == 0) return 0;
+    for (uint32_t i = 0; i < LIVE_FONTS_MAX; i++) {
+        if (g_live_ids[i] == id) return 1;
+    }
+    return 0;
+}
+
+static void live_remove(uint32_t id) {
+    for (uint32_t i = 0; i < LIVE_FONTS_MAX; i++) {
+        if (g_live_ids[i] == id) g_live_ids[i] = 0;
+    }
+}
 
 /* ============ Checked reader ============ */
 
@@ -119,7 +150,12 @@ static uint32_t str_append_u32(char *dst, uint32_t pos, uint32_t cap, uint32_t v
 }
 
 /* Log why a font was rejected and record NXC_ERR_BAD_FONT. */
+static const char *g_last_reject = "";   /* static string of the last rejection */
+
+const char *nxc_font_last_reject(void) { return g_last_reject; }
+
 static nxc_status_t font_reject(const char *why) {
+    g_last_reject = why ? why : "";
     char line[128];
     uint32_t n = str_append(line, 0, sizeof(line), "[NXC] font rejected: ");
     n = str_append(line, n, sizeof(line), why);
@@ -133,7 +169,7 @@ static nxc_status_t font_reject(const char *why) {
 typedef struct { uint32_t off, len; } tab_t;
 
 typedef struct {
-    tab_t head, maxp, hhea, hmtx, loca, glyf, cmap, os2, kern, gpos;
+    tab_t head, maxp, hhea, hmtx, loca, glyf, cmap, os2, kern, gpos, name, post;
 } tables_t;
 
 /*
@@ -173,6 +209,8 @@ static nxc_status_t parse_directory(const uint8_t *data, uint32_t size, tables_t
             case NXC_TAG('O', 'S', '/', '2'): dst = &t->os2;  break;
             case NXC_TAG('k', 'e', 'r', 'n'): dst = &t->kern; break;
             case NXC_TAG('G', 'P', 'O', 'S'): dst = &t->gpos; break;
+            case NXC_TAG('n', 'a', 'm', 'e'): dst = &t->name; break;
+            case NXC_TAG('p', 'o', 's', 't'): dst = &t->post; break;
             default: break;
         }
         if (dst && dst->len == 0 && len > 0) { dst->off = off; dst->len = len; }
@@ -190,7 +228,9 @@ static nxc_status_t parse_directory(const uint8_t *data, uint32_t size, tables_t
 
 static nxc_status_t parse_head_maxp(struct nxc_font *f, const tables_t *t) {
     rd_t r = rd_make(f->data, t->head.off, t->head.off + t->head.len);
+    uint32_t revision = rd_u32(&r, (uint64_t)t->head.off + 4);
     uint32_t magic = rd_u32(&r, (uint64_t)t->head.off + 12);
+    uint32_t mac_style = rd_u16(&r, (uint64_t)t->head.off + 44);
     uint32_t upem = rd_u16(&r, (uint64_t)t->head.off + 18);
     int32_t xmin = rd_s16(&r, (uint64_t)t->head.off + 36);
     int32_t ymin = rd_s16(&r, (uint64_t)t->head.off + 38);
@@ -205,6 +245,8 @@ static nxc_status_t parse_head_maxp(struct nxc_font *f, const tables_t *t) {
     }
     f->units_per_em = (uint16_t)upem;
     f->loc_long = (uint16_t)loc_format;
+    f->font_revision = revision;
+    f->is_italic = (uint16_t)((mac_style & 0x2u) != 0);
     f->bbox[0] = (int16_t)xmin; f->bbox[1] = (int16_t)ymin;
     f->bbox[2] = (int16_t)xmax; f->bbox[3] = (int16_t)ymax;
 
@@ -413,12 +455,14 @@ static nxc_status_t parse_cmap(struct nxc_font *f, const tables_t *t) {
 static void parse_metrics(struct nxc_font *f, const tables_t *t, const int32_t hhea[3]) {
     int32_t typo[3] = { 0, 0, 0 }, win[2] = { 0, 0 };
     int has_typo = 0, use_typo = 0;
+    f->weight_class = 400;
     f->cap_height = 0;
     f->x_height = 0;
     if (t->os2.len >= 78) {
         rd_t r = rd_make(f->data, t->os2.off, t->os2.off + t->os2.len);
         uint64_t o = t->os2.off;
         uint32_t version = rd_u16(&r, o);
+        uint32_t weight = rd_u16(&r, o + 4);
         uint32_t fs_selection = rd_u16(&r, o + 62);
         typo[0] = rd_s16(&r, o + 68);
         typo[1] = rd_s16(&r, o + 70);
@@ -432,6 +476,9 @@ static void parse_metrics(struct nxc_font *f, const tables_t *t, const int32_t h
         if (!r.bad) {
             has_typo = 1;
             use_typo = (fs_selection & 0x80u) != 0;
+            /* usWeightClass: 1..1000 per spec; anything else means "unknown". */
+            if (weight >= 1u && weight <= 1000u) f->weight_class = (uint16_t)weight;
+            if (fs_selection & 0x201u) f->is_italic = 1;    /* ITALIC or OBLIQUE */
         } else {
             f->x_height = 0;
             f->cap_height = 0;
@@ -930,6 +977,132 @@ static int kern_sub_value(rd_t *r, const nxc__kern_sub_t *ks, uint32_t val, uint
     return !r->bad;
 }
 
+/* ============ name / post (descriptive data) ============ */
+
+/*
+ * Validate the 'name' table header and record array. Strings are read
+ * later through the checked reader, each against the storage area, so a
+ * bad record only hides that string. A malformed table is not fatal for
+ * rendering: the font loads without names and the reason is logged.
+ */
+static void parse_name(struct nxc_font *f, const tables_t *t) {
+    f->name_count = 0;
+    if (t->name.len < 6) return;
+    uint32_t end = t->name.off + t->name.len;
+    rd_t r = rd_make(f->data, t->name.off, end);
+    uint64_t o = t->name.off;
+    uint32_t count = rd_u16(&r, o + 2);
+    uint32_t storage = rd_u16(&r, o + 4);
+    if (r.bad || !rd_has(&r, o + 6u, 12u * (uint64_t)count) || o + storage > end) {
+        nxc__log("[NXC] font: malformed 'name' table ignored\n");
+        return;
+    }
+    if (count > NXC_FONT_MAX_NAME_RECORDS) count = NXC_FONT_MAX_NAME_RECORDS;
+    f->name_off = (uint32_t)(o + 6u);
+    f->name_count = count;
+    f->name_storage = (uint32_t)(o + storage);
+    f->name_end = end;
+}
+
+static void parse_post(struct nxc_font *f, const tables_t *t) {
+    f->is_fixed_pitch = 0;
+    if (t->post.len < 16) return;
+    rd_t r = rd_make(f->data, t->post.off, t->post.off + t->post.len);
+    uint32_t fixed = rd_u32(&r, (uint64_t)t->post.off + 12);
+    if (!r.bad) f->is_fixed_pitch = (uint16_t)(fixed != 0);
+}
+
+/* Preference of a name record for display (0 = unusable): Windows
+ * Unicode en-US, any Windows Unicode, Unicode platform, Mac Roman. */
+static uint32_t name_score(uint32_t plat, uint32_t enc, uint32_t lang) {
+    if (plat == 3 && (enc == 1 || enc == 10)) return lang == 0x409u ? 4u : 3u;
+    if (plat == 0) return 2;
+    if (plat == 1 && enc == 0) return lang == 0 ? 1u : 0u;
+    return 0;
+}
+
+/* Append code point cp as UTF-8 if it fits entirely; 0 when it does not. */
+static int utf8_put(char *dst, uint32_t cap, uint32_t *pos, uint32_t cp) {
+    uint8_t b[4];
+    uint32_t n;
+    if (cp < 0x20u || cp == 0x7Fu || (cp >= 0x80u && cp < 0xA0u)) cp = ' ';   /* controls */
+    if (cp < 0x80u) { b[0] = (uint8_t)cp; n = 1; }
+    else if (cp < 0x800u) { b[0] = (uint8_t)(0xC0u | (cp >> 6)); b[1] = (uint8_t)(0x80u | (cp & 0x3Fu)); n = 2; }
+    else if (cp < 0x10000u) {
+        b[0] = (uint8_t)(0xE0u | (cp >> 12)); b[1] = (uint8_t)(0x80u | ((cp >> 6) & 0x3Fu));
+        b[2] = (uint8_t)(0x80u | (cp & 0x3Fu)); n = 3;
+    } else {
+        b[0] = (uint8_t)(0xF0u | (cp >> 18)); b[1] = (uint8_t)(0x80u | ((cp >> 12) & 0x3Fu));
+        b[2] = (uint8_t)(0x80u | ((cp >> 6) & 0x3Fu)); b[3] = (uint8_t)(0x80u | (cp & 0x3Fu)); n = 4;
+    }
+    if (*pos + n + 1u > cap) return 0;
+    for (uint32_t i = 0; i < n; i++) dst[(*pos)++] = (char)b[i];
+    return 1;
+}
+
+/*
+ * Copy name `id` into dst (cap >= 1) as UTF-8. UTF-16BE (platforms 0 and
+ * 3) is decoded with surrogate pairs (lone surrogates become U+FFFD);
+ * Mac Roman bytes above 0x7F become '?'. Runs of spaces collapse and the
+ * result is trimmed. Returns 1 when a usable record was found.
+ */
+static int name_get(const struct nxc_font *f, uint32_t id, char *dst, uint32_t cap) {
+    dst[0] = '\0';
+    if (f->name_count == 0 || cap < 2) return 0;
+    rd_t r = rd_make(f->data, f->name_off, f->name_end);
+    uint32_t best = 0, best_plat = 0;
+    uint64_t best_at = 0, best_len = 0;
+    for (uint32_t i = 0; i < f->name_count; i++) {
+        uint64_t rec = (uint64_t)f->name_off + 12u * (uint64_t)i;
+        uint32_t plat = rd_u16(&r, rec), enc = rd_u16(&r, rec + 2), lang = rd_u16(&r, rec + 4);
+        uint32_t nid = rd_u16(&r, rec + 6), len = rd_u16(&r, rec + 8), off = rd_u16(&r, rec + 10);
+        if (r.bad) return 0;
+        if (nid != id || len == 0) continue;
+        uint32_t sc = name_score(plat, enc, lang);
+        uint64_t at = (uint64_t)f->name_storage + off;
+        if (sc > best && rd_has(&r, at, len)) {
+            best = sc; best_plat = plat; best_at = at; best_len = len;
+        }
+    }
+    if (best == 0) return 0;
+    uint32_t pos = 0;
+    int last_space = 1;                  /* also trims leading spaces */
+    if (best_plat == 1) {
+        for (uint64_t k = 0; k < best_len; k++) {
+            uint32_t ch = rd_u8(&r, best_at + k);
+            if (ch >= 0x80u) ch = '?';
+            if (ch < 0x20u || ch == ' ') { if (last_space) continue; ch = ' '; }
+            if (!utf8_put(dst, cap, &pos, ch)) break;
+            last_space = ch == ' ';
+        }
+    } else {
+        for (uint64_t k = 0; k + 1u < best_len; k += 2u) {
+            uint32_t u = rd_u16(&r, best_at + k);
+            if (u >= 0xD800u && u <= 0xDBFFu && k + 3u < best_len) {
+                uint32_t lo = rd_u16(&r, best_at + k + 2u);
+                if (lo >= 0xDC00u && lo <= 0xDFFFu) {
+                    u = 0x10000u + ((u - 0xD800u) << 10) + (lo - 0xDC00u);
+                    k += 2u;
+                } else {
+                    u = 0xFFFDu;
+                }
+            } else if (u >= 0xD800u && u <= 0xDFFFu) {
+                u = 0xFFFDu;
+            }
+            if (u < 0x20u || u == ' ' || (u >= 0x80u && u < 0xA0u)) {
+                if (last_space) continue;
+                u = ' ';
+            }
+            if (!utf8_put(dst, cap, &pos, u)) break;
+            last_space = u == ' ';
+        }
+    }
+    if (r.bad) { dst[0] = '\0'; return 0; }
+    while (pos > 0 && dst[pos - 1] == ' ') pos--;
+    dst[pos] = '\0';
+    return pos > 0;
+}
+
 /* ============ Load / destroy ============ */
 
 static inline uint64_t align16(uint64_t v) { return (v + 15u) & ~(uint64_t)15u; }
@@ -972,6 +1145,7 @@ nxc_status_t nxc_font_load(nxc_font_t **out, const uint8_t *data, uint32_t size)
     *out = 0;
     if (!data || size == 0) return nxc__fail(NXC_ERR_INVALID_ARG, "nxc_font_load");
     if (!nxc__ready()) return nxc__fail(NXC_ERR_STATE, "nxc_font_load");
+    g_last_reject = "";
 
     struct nxc_font f;
     tables_t t;
@@ -988,6 +1162,8 @@ nxc_status_t nxc_font_load(nxc_font_t **out, const uint8_t *data, uint32_t size)
     if (st == NXC_OK) st = parse_kern(&f, &t);
     if (st != NXC_OK) return st;
     parse_metrics(&f, &t, hhea);
+    parse_name(&f, &t);
+    parse_post(&f, &t);
 
     /* GPOS pass A: count subtables and entries. */
     gpos_scan_t gs;
@@ -1060,6 +1236,10 @@ nxc_status_t nxc_font_load(nxc_font_t **out, const uint8_t *data, uint32_t size)
     font->id = ++g_font_last_id;
     if (font->id == 0) font->id = ++g_font_last_id;
     font->magic = NXC_FONT_MAGIC;
+    if (!live_add(font->id)) {
+        /* Still usable; it just cannot serve as a fallback face. */
+        nxc__log("[NXC] font: live table full, face cannot be used as a fallback\n");
+    }
     for (uint32_t c = 0; c < 256; c++) font->ascii_glyph[c] = (uint16_t)cmap_lookup(font, c);
     finish_metrics(font);
     log_loaded(font);
@@ -1073,6 +1253,7 @@ void nxc_font_destroy(nxc_font_t *font) {
         (void)nxc__fail(NXC_ERR_INVALID_ARG, "nxc_font_destroy");
         return;
     }
+    live_remove(font->id);
     font->magic = 0;
     font->id = 0;
     if (font->generation != nxc__generation()) {
@@ -1414,8 +1595,14 @@ static nxc_status_t outline_glyph(outline_t *o, uint32_t glyph, const xform_t *t
 
 nxc_status_t nxc__font_glyph_outline(const nxc_font_t *f, uint32_t glyph, nxc_path_t *out,
                                      float scale, float x, float y) {
+    return nxc__font_glyph_outline_xy(f, glyph, out, scale, scale, x, y);
+}
+
+nxc_status_t nxc__font_glyph_outline_xy(const nxc_font_t *f, uint32_t glyph, nxc_path_t *out,
+                                        float sx, float sy, float x, float y) {
     if (!nxc__font_valid(f) || !out || glyph >= f->num_glyphs ||
-        !nxc__finitef(scale) || !(scale > 0.0f) || scale > NXC_FONT_MAX_SCALE ||
+        !nxc__finitef(sx) || !(sx > 0.0f) || sx > NXC_FONT_MAX_SCALE ||
+        !nxc__finitef(sy) || !(sy > 0.0f) || sy > NXC_FONT_MAX_SCALE ||
         !nxc__finitef(x) || !nxc__finitef(y) ||
         nxc__absf(x) > NXC_FONT_MAX_COORD || nxc__absf(y) > NXC_FONT_MAX_COORD) {
         return nxc__fail(NXC_ERR_INVALID_ARG, "nxc__font_glyph_outline");
@@ -1423,8 +1610,8 @@ nxc_status_t nxc__font_glyph_outline(const nxc_font_t *f, uint32_t glyph, nxc_pa
     if (out->error != NXC_OK) return nxc__fail(out->error, "nxc__font_glyph_outline");
     uint32_t npts = out->npts, nverbs = out->nverbs;
     xform_t t;
-    t.xx = scale; t.xy = 0.0f; t.dx = x;
-    t.yx = 0.0f;  t.yy = -scale; t.dy = y;
+    t.xx = sx;   t.xy = 0.0f; t.dx = x;
+    t.yx = 0.0f; t.yy = -sy;  t.dy = y;
     outline_t o;
     o.f = f;
     o.out = out;
@@ -1458,4 +1645,104 @@ nxc_status_t nxc_font_glyph_path(const nxc_font_t *font, uint32_t codepoint,
     if (st != NXC_OK && st != NXC_ERR_UNSUPPORTED) return st;
     if (advance_out) *advance_out = (float)nxc__font_advance(font, g) * scale;
     return st;
+}
+
+/* ============ Information, coverage, fallback ============ */
+
+nxc_status_t nxc_font_info(const nxc_font_t *font, nxc_font_info_t *out) {
+    if (!out) return nxc__fail(NXC_ERR_INVALID_ARG, "nxc_font_info");
+    nxc__zero(out, sizeof(*out));
+    if (!nxc__font_valid(font)) return nxc__fail(NXC_ERR_INVALID_ARG, "nxc_font_info");
+    if (!name_get(font, 16, out->family, sizeof(out->family)))
+        (void)name_get(font, 1, out->family, sizeof(out->family));
+    if (!name_get(font, 17, out->style, sizeof(out->style)))
+        (void)name_get(font, 2, out->style, sizeof(out->style));
+    (void)name_get(font, 4, out->full_name, sizeof(out->full_name));
+    (void)name_get(font, 5, out->version, sizeof(out->version));
+    (void)name_get(font, 0, out->copyright, sizeof(out->copyright));
+    (void)name_get(font, 13, out->license, sizeof(out->license));
+    out->weight = font->weight_class ? font->weight_class : 400u;
+    out->italic = (uint8_t)(font->is_italic != 0);
+    out->monospace = (uint8_t)(font->is_fixed_pitch != 0);
+    out->num_glyphs = font->num_glyphs;
+    out->units_per_em = font->units_per_em;
+    out->file_size = font->size;
+    out->font_revision = font->font_revision;
+    out->kerning = (uint8_t)(font->kern_nsubs ? 2u : (font->kern_npairs ? 1u : 0u));
+    return NXC_OK;
+}
+
+int nxc_font_has_char(const nxc_font_t *font, uint32_t cp) {
+    if (!nxc__font_valid(font)) return 0;
+    return nxc__font_glyph_index(font, cp) != 0;
+}
+
+/* Iteration budget for one nxc_font_next_char call (cmap code reads). */
+#define NEXT_CHAR_BUDGET (1u << 20)
+
+/*
+ * Smallest mapped code point >= from. Segments/groups are scanned
+ * linearly (hostile tables need not be sorted); inside a segment only
+ * code points below the best candidate so far are probed.
+ */
+uint32_t nxc_font_next_char(const nxc_font_t *font, uint32_t from) {
+    if (!nxc__font_valid(font)) {
+        (void)nxc__fail(NXC_ERR_INVALID_ARG, "nxc_font_next_char");
+        return NXC_NO_CHAR;
+    }
+    if (from > 0x10FFFFu) return NXC_NO_CHAR;
+    const struct nxc_font *f = font;
+    rd_t r = rd_make(f->data, f->cmap_sub, f->cmap_end);
+    uint64_t base = f->cmap_sub;
+    uint32_t best = NXC_NO_CHAR, budget = NEXT_CHAR_BUDGET;
+    for (uint32_t i = 0; i < f->cmap_count && budget > 0; i++) {
+        uint32_t s, e;
+        if (f->cmap_format == 4) {
+            uint64_t ends = base + 14u;
+            uint64_t starts = ends + 2u * (uint64_t)f->cmap_count + 2u;
+            e = rd_u16(&r, ends + 2u * (uint64_t)i);
+            s = rd_u16(&r, starts + 2u * (uint64_t)i);
+        } else {
+            uint64_t g = base + 16u + 12u * (uint64_t)i;
+            s = rd_u32(&r, g);
+            e = rd_u32(&r, g + 4);
+        }
+        if (r.bad) return NXC_NO_CHAR;
+        if (e > 0x10FFFFu) e = 0x10FFFFu;
+        if (s < from) s = from;
+        if (s > e || s >= best) continue;
+        for (uint32_t cp = s; cp <= e && cp < best && budget > 0; cp++, budget--) {
+            if (cp >= 0xD800u && cp <= 0xDFFFu) continue;
+            if (cmap_lookup_raw(f, cp) != 0) { best = cp; break; }
+        }
+    }
+    return best;
+}
+
+nxc_status_t nxc_font_set_fallbacks(nxc_font_t *font, const nxc_font_t *const *chain,
+                                    uint32_t count) {
+    if (!nxc__font_valid(font) || count > NXC_FONT_MAX_FALLBACKS || (count > 0 && !chain)) {
+        return nxc__fail(NXC_ERR_INVALID_ARG, "nxc_font_set_fallbacks");
+    }
+    for (uint32_t i = 0; i < count; i++) {
+        if (!nxc__font_valid(chain[i]) || chain[i] == font) {
+            return nxc__fail(NXC_ERR_INVALID_ARG, "nxc_font_set_fallbacks");
+        }
+        if (!live_has(chain[i]->id)) return nxc__fail(NXC_ERR_UNSUPPORTED, "nxc_font_set_fallbacks");
+    }
+    for (uint32_t i = 0; i < NXC_FONT_MAX_FALLBACKS; i++) {
+        font->fallback[i] = i < count ? chain[i] : 0;
+        font->fallback_id[i] = i < count ? chain[i]->id : 0u;
+    }
+    font->nfallback = count;
+    return NXC_OK;
+}
+
+const nxc_font_t *nxc__font_fallback(const nxc_font_t *f, uint32_t i) {
+    if (!nxc__font_valid(f) || i >= f->nfallback || i >= NXC_FONT_MAX_FALLBACKS) return 0;
+    /* Check liveness by id before touching the face's memory. */
+    if (!live_has(f->fallback_id[i])) return 0;
+    const nxc_font_t *fb = f->fallback[i];
+    if (!nxc__font_valid(fb) || fb->id != f->fallback_id[i]) return 0;
+    return fb;
 }

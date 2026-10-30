@@ -36,6 +36,7 @@
 #define NXC_FONT_MAX_KERN_LOOKUPS   64           /* GPOS 'kern' lookups used */
 #define NXC_FONT_MAX_KERN_SUBTABLES 4096         /* PairPos subtables used */
 #define NXC_FONT_MAX_KERN_ENTRIES   (1u << 20)   /* first-glyph index entries */
+#define NXC_FONT_MAX_NAME_RECORDS   1024         /* 'name' records examined */
 
 /*
  * Path capacity a simple glyph outline needs: a contour of k points emits
@@ -129,6 +130,27 @@ struct nxc_font {
     const nxc__kern_entry_t *kern_entries;
     uint32_t                 kern_nentries;
 
+    /* 'name' table (validated header and record array; strings are
+     * bounds-checked per read against the storage area) */
+    uint32_t name_off;               /* absolute offset of the record array */
+    uint32_t name_count;             /* records (<= NXC_FONT_MAX_NAME_RECORDS) */
+    uint32_t name_storage;           /* absolute offset of string storage */
+    uint32_t name_end;               /* end of the name table */
+
+    /* style data from OS/2, post and head */
+    uint16_t weight_class;           /* OS/2 usWeightClass, 400 when absent */
+    uint16_t is_italic;              /* OS/2 fsSelection ITALIC or head macStyle */
+    uint16_t is_fixed_pitch;         /* post isFixedPitch != 0 */
+    uint16_t pad_style;
+    uint32_t font_revision;          /* head fontRevision (16.16) */
+
+    /* fallback faces consulted for code points this font does not map
+     * (one level: a fallback's own fallbacks are not followed). The id
+     * snapshot detects a fallback that was destroyed and reloaded. */
+    const struct nxc_font *fallback[NXC_FONT_MAX_FALLBACKS];
+    uint32_t               fallback_id[NXC_FONT_MAX_FALLBACKS];
+    uint32_t               nfallback;
+
     /* outline decoding scratch, sized by the largest simple glyph */
     uint32_t max_points;             /* points in the largest simple glyph */
     uint32_t max_contours;           /* contours in the largest simple glyph */
@@ -214,5 +236,17 @@ nxc_status_t nxc__font_glyph_bounds(const nxc_font_t *f, uint32_t glyph,
  */
 nxc_status_t nxc__font_glyph_outline(const nxc_font_t *f, uint32_t glyph, nxc_path_t *out,
                                      float scale, float x, float y);
+
+/*
+ * Same as nxc__font_glyph_outline with separate horizontal and vertical
+ * scales (font unit -> px). Used by vertical hinting, which stretches the
+ * outline slightly so the x-height lands on a pixel boundary. Both scales
+ * must be in (0, NXC_FONT_MAX_SCALE].
+ */
+nxc_status_t nxc__font_glyph_outline_xy(const nxc_font_t *f, uint32_t glyph, nxc_path_t *out,
+                                        float sx, float sy, float x, float y);
+
+/* Fallback i of f when it is still the same live font, else NULL. */
+const nxc_font_t *nxc__font_fallback(const nxc_font_t *f, uint32_t i);
 
 #endif /* NXC_FONT_INTERNAL_H */
