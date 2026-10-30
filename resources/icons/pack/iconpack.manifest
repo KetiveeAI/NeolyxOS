@@ -33,7 +33,7 @@ app-calendar    128 tile-w desktop/resources/icons/calendar.nxi           tile=#
 app-clock       128 tile-w desktop/resources/icons/clock.nxi               tile=#2E2745:#100C1D scale=0.62
 app-notes       128 tile   icons/feather.svg                               tile=#FFF8E8:#F2E2BC scale=0.74
 app-music       128 tile-w desktop/resources/icons/music.nxi               tile=#FF7FAE:#C2185B scale=0.58
-app-photos      128 tile   desktop/apps/Path.app/resources/icons/Gallery.svg tile=#FFFFFF:#EEE9F7 scale=0.74
+app-photos      128 tile   resources/icons/pack/figma/photos.svg          tile=#3A2C6E:#140F2B scale=0.80 render=browser
 app-mail        128 tile-w desktop/resources/icons/mail.nxi               tile=#7FB2FF:#3D5AFE scale=0.58
 app-messages    128 tile-w desktop/resources/icons/chat.nxi                tile=#6BE6A8:#14A06A scale=0.58
 app-fonts       128 tile-w icons/text.svg                                  tile=#B992FF:#6D28D9 scale=0.56

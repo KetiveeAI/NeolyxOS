@@ -15,7 +15,9 @@ committed. Re-run this after editing the manifest or the source art.
 Usage:  python3 tools/build_icon_pack.py [--check]
         --check  rebuild in memory and fail if any committed output differs
 
-Requires: Pillow, cairosvg (pip install pillow cairosvg)
+Requires: Pillow, cairosvg (pip install pillow cairosvg). Icons marked
+render=browser (Figma glass art with SVG filters, which cairosvg drops)
+also need Node.js with Playwright and a Chromium build.
 
 Copyright (c) 2025-2026 KetiveeAI
 """
@@ -88,8 +90,10 @@ def parse_manifest(path):
             if mode not in MODES:
                 raise PackError(f"{path}:{lineno}: mode must be one of {MODES}")
             for k in opts:
-                if k not in ("tile", "scale", "color"):
+                if k not in ("tile", "scale", "color", "render"):
                     raise PackError(f"{path}:{lineno}: unknown option '{k}'")
+            if opts.get("render", "svg") not in ("svg", "browser"):
+                raise PackError(f"{path}:{lineno}: render must be svg or browser")
             src_abs = os.path.normpath(os.path.join(ROOT, source))
             if not src_abs.startswith(ROOT + os.sep) or not os.path.isfile(src_abs):
                 raise PackError(f"{path}:{lineno}: source not found in repo: {source}")
@@ -170,6 +174,50 @@ def vector_nxi_to_svg(path):
     return "\n".join(out)
 
 
+BROWSER_JS = r"""
+const fs = require('fs');
+const { chromium } = require('playwright');
+(async () => {
+  const [svgPath, outPath, px] = [process.argv[2], process.argv[3], parseInt(process.argv[4], 10)];
+  const svg = fs.readFileSync(svgPath, 'utf8');
+  const b64 = Buffer.from(svg).toString('base64');
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: px, height: px } });
+    await page.setContent('<html><body style="margin:0;background:transparent">' +
+      '<img style="display:block;width:' + px + 'px;height:' + px + 'px;object-fit:contain" ' +
+      'src="data:image/svg+xml;base64,' + b64 + '"></body></html>');
+    await page.waitForFunction(() => document.images[0] && document.images[0].complete);
+    await page.screenshot({ path: outPath, omitBackground: true });
+  } finally {
+    await browser.close();
+  }
+})().catch(e => { console.error(e && e.message ? e.message : e); process.exit(1); });
+"""
+
+
+def render_svg_browser(entry, px):
+    """Rasterize an SVG in headless Chromium (full filter support).
+    The SVG is loaded as an <img>, so its scripts never run."""
+    import subprocess
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        js = os.path.join(tmp, "render.js")
+        out = os.path.join(tmp, "out.png")
+        with open(js, "w", encoding="utf-8") as f:
+            f.write(BROWSER_JS)
+        try:
+            res = subprocess.run(["node", js, entry["src_abs"], out, str(px)],
+                                 capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise PackError(f"{entry['source']}: browser render failed: {exc}")
+        if res.returncode != 0 or not os.path.isfile(out):
+            raise PackError(f"{entry['source']}: browser render failed "
+                            f"(needs node + playwright): {res.stderr.strip()[:300]}")
+        with Image.open(out) as im:
+            return im.convert("RGBA")
+
+
 def render_source(entry, px):
     """Render the source to a straight-alpha RGBA image fitted in px x px."""
     path = entry["src_abs"]
@@ -177,6 +225,10 @@ def render_source(entry, px):
         head = f.read(4)
     if head == NXIB_MAGIC:
         img = load_nxib(path)
+    elif entry["opts"].get("render") == "browser":
+        if not path.endswith(".svg"):
+            raise PackError(f"{entry['source']}: render=browser needs an .svg source")
+        img = render_svg_browser(entry, px * 2)
     else:
         if path.endswith(".nxi"):
             svg = vector_nxi_to_svg(path).encode()

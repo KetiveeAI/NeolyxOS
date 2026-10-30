@@ -64,7 +64,9 @@ Look icons up with `nxicon_pack_find()` / `nxicon_pack_draw()`
 (`desktop/include/nxicon_pack.h`); `nxapp_icon_draw()` and the NXI renderer
 already use the pack. To use exact Figma artwork for an icon, export the
 1024 x 1024 frame as SVG into `resources/icons/pack/figma/` and point its
-manifest line at it with mode `art`.
+manifest line at it with mode `art`. Figma glass icons (inner shadows,
+backdrop blur) need `render=browser` on their line: cairosvg drops SVG filters,
+so those are rasterized in headless Chromium (Node.js + Playwright).
 
 ## Theme Format
 
