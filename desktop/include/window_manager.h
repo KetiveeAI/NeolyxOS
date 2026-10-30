@@ -10,6 +10,16 @@
 #define WINDOW_MANAGER_H
 
 #include <stdint.h>
+#include "nxcanvas.h"
+
+/* Title bar height of every shell window (matches APP_VIEW_TITLE_H). */
+#define WM_TITLEBAR_H   24
+/* Minimum content size a user resize can reach. */
+#define WM_MIN_W        320
+#define WM_MIN_H        180
+/* Work area reserved for the menu bar (top) and the dock (bottom). */
+#define WM_MENUBAR_H    28
+#define WM_DOCK_RESERVE 80
 
 /* ============ Animation Types ============ */
 
@@ -125,7 +135,16 @@ typedef struct {
     
     /* Sidebar specific */
     int sidebar_expanded;       /* 1=center, 0=slid */
+
+    /* Spaces and visibility (see "Spaces" below) */
+    int space;                  /* index of the space the window lives on */
+    uint8_t hidden;             /* WM_HIDE_* reasons; 0 = may be shown */
 } wm_window_state_t;
+
+/* Reasons a window is hidden from the desktop (bit mask). */
+#define WM_HIDE_SPACE    0x01u  /* lives on another space */
+#define WM_HIDE_STAGE    0x02u  /* parked in the Stage strip */
+#define WM_HIDE_CLOSING  0x04u  /* close animation running */
 
 /* Quick access menu (3 icons) */
 typedef struct {
@@ -235,6 +254,87 @@ void wm_hide_quick_menu(void);
 wm_quick_menu_t* wm_get_quick_menu(void);
 int wm_quick_menu_hit_test(int32_t mouse_x, int32_t mouse_y);
 void wm_quick_menu_click(int32_t mouse_x, int32_t mouse_y);
+
+/* ============ Spaces (virtual desktops) ============ */
+
+#define WM_MAX_SPACES 6
+
+int  wm_space_count(void);
+int  wm_space_current(void);
+/* Append a space. Returns its index, or -1 when WM_MAX_SPACES exist. */
+int  wm_space_add(void);
+/* Remove space idx (never the last one); its windows move to the space
+ * before it. Returns 0, or -1 on a bad index. */
+int  wm_space_remove(int idx);
+/* Make idx current; updates WM_HIDE_SPACE on every window. Returns 0/-1. */
+int  wm_space_switch(int idx);
+/* Space of a window, or -1 if unknown. */
+int  wm_window_space(uint32_t window_id);
+/* Move a window to a space. Returns 0, or -1 on bad id/index. */
+int  wm_window_set_space(uint32_t window_id, int space);
+/* Hidden mask of a window (WM_HIDE_*), 0 if unknown. */
+uint8_t wm_window_hidden(uint32_t window_id);
+void wm_window_set_hidden(uint32_t window_id, uint8_t reason, int on);
+
+/* ============ Window snapshots ============ */
+/*
+ * Downscaled copies of whole windows (chrome + content) for Overview,
+ * Stage and the minimize animation. Captures run only on request, in
+ * wm_snapshot_service() at the start of a frame, by drawing the window
+ * into the (about to be overwritten) frame backbuffer at (0, 0) and
+ * area-averaging it into a slot surface of at most WM_SNAP_MAX_W x
+ * WM_SNAP_MAX_H. Slot surfaces are allocated on first use and reused
+ * for good (the shell heap is a bump allocator). With no consumer
+ * asking, the service does nothing.
+ */
+
+#define WM_SNAP_MAX_W  480
+#define WM_SNAP_MAX_H  340
+#define WM_SNAP_SLOTS  16
+
+/* Draws window `window_id` with its top-left corner at (0, 0) into c, at
+ * full size and without shadow. Writes the drawn size (title bar
+ * included) and returns 0, or -1 if the window cannot be drawn. */
+typedef int (*wm_snapshot_renderer_t)(uint32_t window_id, nxc_canvas_t *c,
+                                      int32_t *out_w, int32_t *out_h);
+void wm_snapshot_set_renderer(wm_snapshot_renderer_t renderer);
+
+/* Ask for a fresh capture on the next service pass. */
+void wm_snapshot_request(uint32_t window_id);
+/* Keep a window's snapshot no older than max_age_ms (call while the
+ * consumer is visible; captures are spread one per frame). */
+void wm_snapshot_keep_fresh(uint32_t window_id, uint32_t max_age_ms);
+/* The window's content changed: the next keep_fresh/request recaptures. */
+void wm_window_content_changed(uint32_t window_id);
+/* Run pending captures (urgent requests all, periodic ones at most one).
+ * Must be called before the frame's wallpaper is drawn. */
+void wm_snapshot_service(nxc_canvas_t *frame);
+/* Snapshot of a window. Returns 1 and sets *surf and *src (the used
+ * region) when one is available, else 0. */
+int  wm_snapshot_get(uint32_t window_id, const nxc_surface_t **surf, nxc_irect_t *src);
+/* Generation counter, bumped on every capture of this window (0 = none). */
+uint32_t wm_snapshot_generation(uint32_t window_id);
+
+/* ============ Shell hooks (implemented in desktop_shell.c) ============ */
+/*
+ * The window list lives in the desktop shell. Overview, Stage and the
+ * switcher use these to read and move windows. Frames are the window
+ * top-left (title bar included) and the CONTENT size (title excluded).
+ */
+
+/* Window ids in z-order, topmost first. Returns the count. */
+int  wm_shell_window_order(uint32_t *ids, int max);
+int  wm_shell_get_frame(uint32_t window_id, int32_t *x, int32_t *y, uint32_t *w, uint32_t *h);
+/* Move/resize a window; animate=1 springs there. Returns 0/-1. */
+int  wm_shell_set_frame(uint32_t window_id, int32_t x, int32_t y, uint32_t w, uint32_t h,
+                        int animate);
+/* Raise without changing focus rules elsewhere (focus + top of z-order). */
+void wm_shell_raise(uint32_t window_id);
+/* Animated minimize to the dock. Returns 0/-1. */
+int  wm_shell_minimize(uint32_t window_id);
+/* Draw a window snapshot (or a placeholder card when none exists) into
+ * rect r of c with alpha. Used by Overview, Stage and the switcher. */
+void wm_shell_draw_window_image(nxc_canvas_t *c, uint32_t window_id, nxc_rect_t r, uint8_t alpha);
 
 #endif /* WINDOW_MANAGER_H */
 

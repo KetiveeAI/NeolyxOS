@@ -65,7 +65,7 @@ AREA_NET_SRC      = shell/views/settings_network_pane.c
 
 AREA_TASKMGR_SRC  = shell/views/taskmgr_view.c
 
-AREA_WINDOWS_SRC  =
+AREA_WINDOWS_SRC  = shell/stage.c shell/overview.c shell/switcher.c
 
 SHELL_SRC += $(AREA_SHARED_SRC) $(AREA_GLASS_SRC) $(AREA_SETTINGS_SRC) $(AREA_FONTS_SRC) \
              $(AREA_SETUP_SRC) $(AREA_DOCK_SRC) $(AREA_NET_SRC) $(AREA_TASKMGR_SRC) \

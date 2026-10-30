@@ -35,6 +35,9 @@
 #include "../include/menubar.h"
 #include "../include/app_view.h"
 #include "../include/setup_assistant.h"
+#include "../include/overview.h"
+#include "../include/stage.h"
+#include "../include/switcher.h"
 #include "../lib/nxicons/nxicons_internal.h"
 #define nxc_cosf_shell nxc_cosf_pub
 #define nxc_sinf_shell nxc_sinf_pub
@@ -987,46 +990,137 @@ static inline void serial_putc(char c);
 static void serial_hex64(uint64_t val);
 
 /* Title bar height shared with the hit tests in desktop_handle_mouse. */
-#define WIN_TITLE_H 24
+#define WIN_TITLE_H WM_TITLEBAR_H
 
-static void render_window(desktop_window_t *win) {
-    if (!win->visible) return;
+/* ============ Windows: z-order, animation and drawing ============ */
+/*
+ * Z-order is an ordered list of window ids (bottom -> top). Every window's
+ * z_order field mirrors its index in that list, so values are unique and
+ * comparisons in hit tests stay correct however many windows come and go.
+ *
+ * Window motion uses NXUI springs:
+ *   - frame springs move/resize the live window (tiling, zoom, Stage);
+ *   - visual phases fade a new window in, and scale a closing, minimizing
+ *     or restoring window from its cached snapshot (no full re-render).
+ */
+
+static desktop_window_t *window_by_id(uint32_t id);   /* input section */
+static uint32_t g_mouse_capture_id;                    /* input section (tentative definition) */
+
+static uint32_t g_zorder[MAX_WINDOWS];   /* bottom -> top */
+static int g_zcount = 0;
+
+typedef enum { WA_NONE = 0, WA_OPEN, WA_CLOSE, WA_MINIMIZE, WA_RESTORE } win_phase_t;
+
+typedef struct {
+    /* Frame spring (live geometry) */
+    int geo;
+    float fx0, fy0, fw0, fh0, fx1, fy1, fw1, fh1;
+    nxui_spring_t gs;
+    /* Visual phase */
+    int phase;
+    nxui_spring_t vs;
+    nxc_rect_t dock;        /* minimize target */
+} win_anim_t;
+
+static win_anim_t g_wanim[MAX_WINDOWS];
+
+/* Pointer gesture on window chrome: move by title bar, resize by edges. */
+#define EDGE_L 0x1u
+#define EDGE_R 0x2u
+#define EDGE_T 0x4u
+#define EDGE_B 0x8u
+typedef enum { GES_NONE = 0, GES_MOVE, GES_RESIZE } ges_kind_t;
+static struct {
+    int kind;
+    uint32_t id;
+    uint32_t edges;
+    int32_t mx0, my0;
+    int32_t x0, y0;
+    uint32_t w0, h0;
+    int moved;
+    wm_tile_pos_t tile;     /* snap target under the pointer while moving */
+} g_ges;
+static uint32_t g_resize_hover = 0;          /* edges under the pointer (cursor hint) */
+
+/* Traffic light being pressed (window id, index 0..2), for the pressed tint. */
+static uint32_t g_light_press_id = 0;
+static int g_light_press_idx = -1;
+
+/* Set while a window is drawn for the snapshot cache (no hover, no shadow). */
+static int g_snapshot_pass = 0;
+
+/* Tile preview rect, sprung toward the suggested tile. */
+static nxc_rect_t g_tile_prev_rect;
+static float g_tile_prev_alpha = 0.0f;
+
+static win_anim_t *anim_of(const desktop_window_t *w) {
+    if (!w) return NULL;
+    long idx = (long)(w - g_windows);
+    if (idx < 0 || idx >= MAX_WINDOWS) return NULL;
+    return &g_wanim[idx];
+}
+
+static void z_reindex(void) {
+    for (int i = 0; i < g_zcount; i++) {
+        desktop_window_t *w = window_by_id(g_zorder[i]);
+        if (w) w->z_order = (uint8_t)i;
+    }
+}
+
+static void z_remove(uint32_t id) {
+    int o = 0;
+    for (int i = 0; i < g_zcount; i++) {
+        if (g_zorder[i] != id) g_zorder[o++] = g_zorder[i];
+    }
+    g_zcount = o;
+}
+
+static void z_push_top(uint32_t id) {
+    if (id == 0) return;
+    z_remove(id);
+    if (g_zcount < MAX_WINDOWS) g_zorder[g_zcount++] = id;
+    z_reindex();
+}
+
+/* Frame rect of a window (title bar included). */
+static nxc_rect_t window_frame_rect(const desktop_window_t *w) {
+    return nxc_rect((float)w->x, (float)w->y, (float)w->width, (float)w->height + (float)WIN_TITLE_H);
+}
+
+/* Center of traffic light i (0 close, 1 minimize, 2 zoom). */
+static void traffic_light_center(const desktop_window_t *w, int i, float *cx, float *cy) {
+    *cx = (float)w->x + 14.0f + 16.0f * (float)i;
+    *cy = (float)w->y + (float)WIN_TITLE_H * 0.5f;
+}
+
+/* Which traffic light (0..2) contains (x, y), or -1. */
+static int traffic_light_at(const desktop_window_t *w, int32_t x, int32_t y) {
+    if (!w || w->width <= 60) return -1;
+    for (int i = 0; i < 3; i++) {
+        float cx, cy;
+        traffic_light_center(w, i, &cx, &cy);
+        float dx = (float)x - cx, dy = (float)y - cy;
+        if (dx * dx + dy * dy <= 8.0f * 8.0f) return i;
+    }
+    return -1;
+}
+
+/*
+ * Draw a window's chrome and content at its current position.
+ * shadow: draw the drop shadow; hover_ok: traffic light hover glyphs.
+ */
+static void draw_window_body(desktop_window_t *win, int shadow, int hover_ok) {
     nxc_canvas_t *c = nxui_canvas();
+    if (!c || !win) return;
     const nxui_theme_t *th = nxui_theme();
-
-    int32_t wx = win->x, wy = win->y;
-    uint32_t ww = win->width, wh = win->height;
-    float opacity = 1.0f;
-    if (wm_is_animating(win->id)) {
-        if (!wm_get_animated_geometry(win->id, &wx, &wy, &ww, &wh, &opacity)) {
-            if (win->minimized) return;
-        }
-    } else if (win->minimized) {
-        return;
-    }
     wm_window_state_t *wstate = wm_get_window_state(win->id);
-    int is_tiled = 0;
-    if (wstate) {
-        is_tiled = wstate->is_tiled;
-        if (wstate->mode == WIN_MODE_PIP) {
-            ww = wstate->pip_w > 0 ? wstate->pip_w : 300;
-            wh = wstate->pip_h > 0 ? wstate->pip_h : 200;
-            opacity = wstate->opacity;
-        } else if (wstate->mode == WIN_MODE_SIDEBAR && !wstate->sidebar_expanded) {
-            wx = g_desktop.width - 40; ww = 36; wh = 80;
-        }
-        if (wstate->opacity < 1.0f && !wm_is_animating(win->id)) opacity = wstate->opacity;
-    }
-    if (opacity < 0.05f) return;
-    if (ww < 8 || wh < 2) return;
+    int flush = wstate && (wstate->is_tiled || wstate->is_maximized);
+    float radius = flush ? 8.0f : th->radius_window;
+    nxc_rect_t frame = window_frame_rect(win);
+    int focused = win->focused || g_snapshot_pass;
 
-    float radius = is_tiled ? 6.0f : th->radius_window;
-    nxc_rect_t frame = nxc_rect((float)wx, (float)wy, (float)ww, (float)wh + WIN_TITLE_H);
-    int focused = win->focused;
-
-    nxc_save(c);
-    nxc_set_alpha(c, (uint8_t)(opacity * 255.0f + 0.5f));
-    if (!is_tiled) nxui_elevation(c, frame, radius, focused ? 4 : 3);
+    if (shadow) nxui_elevation(c, frame, radius, focused ? 4 : 3);
 
     /* Body and title bar, clipped to the rounded frame */
     nxc_fill_rrect(c, frame, radius, th->window_bg);
@@ -1038,33 +1132,34 @@ static void render_window(desktop_window_t *win) {
     nxc_fill_rect(c, nxc_rect(frame.x, frame.y, frame.w, 1.0f), th->highlight);   /* top sheen */
     nxc_restore(c);
 
-    if (ww > 60 && wh > 30) {
-        /* Traffic lights at x 14 / 30 / 46, matching the 12 px hit boxes */
-        float cy = frame.y + WIN_TITLE_H * 0.5f;
-        nxc_color_t cc = focused ? th->traffic_close : th->traffic_inactive;
-        nxc_color_t cm = focused ? th->traffic_minimize : th->traffic_inactive;
-        nxc_color_t cz = focused ? th->traffic_zoom : th->traffic_inactive;
-        float bx[3] = { frame.x + 14.0f, frame.x + 30.0f, frame.x + 46.0f };
-        nxc_color_t bc[3] = { cc, cm, cz };
+    if (win->width > 60 && win->height > 6) {
+        /* Hovering the light group shows every light in color with its glyph */
+        int group_hover = 0;
+        if (hover_ok && !g_snapshot_pass) {
+            int32_t mx = g_desktop.mouse_x, my = g_desktop.mouse_y;
+            group_hover = mx >= win->x + 4 && mx < win->x + 56 && my >= win->y && my < win->y + WIN_TITLE_H;
+        }
+        nxc_color_t lit[3] = { th->traffic_close, th->traffic_minimize, th->traffic_zoom };
         for (int i = 0; i < 3; i++) {
-            nxc_fill_circle(c, bx[i], cy, 6.0f, bc[i]);
-            nxc_stroke_circle(c, bx[i], cy, 6.0f, 0.75f, NXC_ARGB(60, 0, 0, 0));
+            float cx, cy;
+            traffic_light_center(win, i, &cx, &cy);
+            nxc_color_t col = (focused || group_hover) ? lit[i] : th->traffic_inactive;
+            if (g_light_press_id == win->id && g_light_press_idx == i)
+                col = nxc_color_lerp(col, NXC_RGB(0, 0, 0), 0.25f);
+            nxc_fill_circle(c, cx, cy, 6.0f, col);
+            nxc_stroke_circle(c, cx, cy, 6.0f, 0.75f, NXC_ARGB(60, 0, 0, 0));
+            if (group_hover) {
+                static const nxsym_t glyph[3] = { NXSYM_CLOSE, NXSYM_MINIMIZE, NXSYM_MAXIMIZE };
+                nxsym_draw(c, glyph[i], cx, cy, i == 2 ? 6.5f : 7.0f, NXC_ARGB(160, 0x30, 0x10, 0x10), 0.0f);
+            }
         }
-        /* Hovered title bar shows the glyphs inside the lights */
-        int hover = g_desktop.mouse_x >= wx && g_desktop.mouse_x < wx + (int32_t)ww &&
-                    g_desktop.mouse_y >= wy && g_desktop.mouse_y < wy + WIN_TITLE_H;
-        if (hover && focused) {
-            nxc_color_t g = NXC_ARGB(150, 0x30, 0x10, 0x10);
-            nxsym_draw(c, NXSYM_CLOSE, bx[0], cy, 7.0f, g, 0.0f);
-            nxsym_draw(c, NXSYM_MINIMIZE, bx[1], cy, 7.0f, g, 0.0f);
-            nxsym_draw(c, NXSYM_MAXIMIZE, bx[2], cy, 6.5f, g, 0.0f);
-        }
-        nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, nxc_rect(frame.x + 62.0f, frame.y, frame.w - 124.0f, WIN_TITLE_H),
+        nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM,
+                          nxc_rect(frame.x + 62.0f, frame.y, frame.w - 124.0f, WIN_TITLE_H),
                           win->title, focused ? th->text_primary : th->text_tertiary, NXC_ALIGN_CENTER);
     }
 
-    /* Content callback: legacy callbacks draw in absolute coordinates */
-    if (win->render_content && ww > 100 && wh > 50) {
+    /* Content callback: draws in absolute coordinates inside the content rect */
+    if (win->render_content && win->width > 40 && win->height > 20) {
         nxc_save(c);
         nxc_clip_rrect(c, nxc_rect(frame.x, frame.y + WIN_TITLE_H, frame.w, frame.h - WIN_TITLE_H), radius);
         win->render_content(win, win->render_ctx);
@@ -1073,12 +1168,132 @@ static void render_window(desktop_window_t *win) {
 
     /* Hairline border keeps the edge crisp on any wallpaper */
     nxc_stroke_rrect(c, frame, radius, 1.0f, th->window_border);
+}
+
+/* Snapshot renderer registered with the window manager: draws the window
+ * at (0, 0) into the canvas the snapshot service hands over. */
+static int shell_snapshot_renderer(uint32_t id, nxc_canvas_t *c, int32_t *out_w, int32_t *out_h) {
+    desktop_window_t *win = window_by_id(id);
+    if (!win || !c || !out_w || !out_h || c != nxui_canvas()) return -1;
+    if (win->width == 0 || win->height == 0) return -1;
+    int32_t sx = win->x, sy = win->y;
+    win->x = 0;
+    win->y = 0;
+    g_snapshot_pass = 1;
+    nxc_fill_rect(c, nxc_rect(0.0f, 0.0f, (float)win->width, (float)win->height + WIN_TITLE_H), nxui_theme()->window_bg);
+    draw_window_body(win, 0, 0);
+    g_snapshot_pass = 0;
+    win->x = sx;
+    win->y = sy;
+    *out_w = (int32_t)win->width;
+    *out_h = (int32_t)win->height + WIN_TITLE_H;
+    return 0;
+}
+
+void wm_shell_draw_window_image(nxc_canvas_t *c, uint32_t window_id, nxc_rect_t r, uint8_t alpha) {
+    if (!c || r.w < 2.0f || r.h < 2.0f || alpha == 0) return;
+    const nxc_surface_t *surf = NULL;
+    nxc_irect_t src;
+    if (wm_snapshot_get(window_id, &surf, &src)) {
+        nxc_draw_surface(c, surf, src, r, alpha, NXC_FILTER_BILINEAR);
+        return;
+    }
+    /* Placeholder card: chrome, app icon and title (snapshot not available) */
+    const nxui_theme_t *th = nxui_theme();
+    desktop_window_t *win = window_by_id(window_id);
+    float sc = r.w / (win && win->width ? (float)win->width : r.w);
+    float rad = th->radius_window * sc;
+    if (rad < 3.0f) rad = 3.0f;
+    nxc_save(c);
+    nxc_set_alpha(c, alpha);
+    nxc_fill_rrect(c, r, rad, th->window_bg);
+    nxc_save(c);
+    nxc_clip_rrect(c, r, rad);
+    nxc_fill_rect(c, nxc_rect(r.x, r.y, r.w, (float)WIN_TITLE_H * sc), th->window_titlebar);
     nxc_restore(c);
+    nxc_stroke_rrect(c, r, rad, 1.0f, th->window_border);
+    if (win) {
+        float isz = r.h * 0.3f;
+        if (isz > 64.0f) isz = 64.0f;
+        if (isz >= 12.0f) {
+            nxapp_icon_draw(c, nxapp_icon_from_name(win->title), r.x + (r.w - isz) * 0.5f,
+                            r.y + (r.h - isz) * 0.5f, (float)(int)isz, 255);
+        }
+    }
+    nxc_restore(c);
+}
+
+/* Draw one window with its open/close/minimize/restore phase applied. */
+static void render_window(desktop_window_t *win) {
+    if (!win || win->id == 0) return;
+    win_anim_t *a = anim_of(win);
+    int phase = a ? a->phase : WA_NONE;
+    int animating_out = (phase == WA_CLOSE || phase == WA_MINIMIZE || phase == WA_RESTORE);
+    if (!animating_out && (!win->visible || win->minimized)) return;
+    if (win->width < 8 || win->height < 2) return;
+    nxc_canvas_t *c = nxui_canvas();
+    if (!c) return;
+
+    wm_window_state_t *wstate = wm_get_window_state(win->id);
+    float opacity = 1.0f;
+    if (wstate && wstate->opacity < 1.0f) opacity = wstate->opacity;   /* PiP */
+
+    nxc_rect_t frame = window_frame_rect(win);
+    if (animating_out && a) {
+        nxc_rect_t r = frame;
+        float alpha = opacity;
+        float v = a->vs.value;
+        if (v < 0.0f) v = 0.0f;
+        if (v > 1.0f) v = 1.0f;
+        if (phase == WA_CLOSE) {
+            float s = 0.90f + 0.10f * v;
+            r = nxc_rect(frame.x + frame.w * (1.0f - s) * 0.5f, frame.y + frame.h * (1.0f - s) * 0.5f,
+                         frame.w * s, frame.h * s);
+            alpha *= v;
+        } else {
+            /* Minimize (v: 0 -> 1) and restore (v: 1 -> 0) share the path */
+            float p = nxui_ease_in_out_cubic(v);
+            r = nxc_rect(frame.x + (a->dock.x - frame.x) * p, frame.y + (a->dock.y - frame.y) * p,
+                         frame.w + (a->dock.w - frame.w) * p, frame.h + (a->dock.h - frame.h) * p);
+            alpha *= 1.0f - 0.7f * p * p;
+        }
+        if (alpha < 0.02f || r.w < 2.0f) return;
+        uint8_t a8 = (uint8_t)(alpha * 255.0f + 0.5f);
+        if (wm_snapshot_get(win->id, NULL, NULL)) {
+            nxc_save(c);
+            nxc_set_alpha(c, a8);
+            nxui_elevation(c, r, nxui_theme()->radius_window * (r.w / frame.w), 3);
+            nxc_restore(c);
+            wm_shell_draw_window_image(c, win->id, r, a8);
+            return;
+        }
+        if (phase != WA_CLOSE) return;   /* no snapshot: minimize just vanishes */
+        opacity = alpha;                   /* close without snapshot: plain fade */
+    }
+
+    float yoff = 0.0f;
+    if (phase == WA_OPEN && a) {
+        float v = a->vs.value;
+        if (v < 0.0f) v = 0.0f;
+        if (v > 1.0f) v = 1.0f;
+        opacity *= v;
+        yoff = (1.0f - v) * 14.0f;
+    }
+    if (opacity < 0.02f) return;
+
+    int32_t saved_y = win->y;
+    win->y += (int32_t)yoff;
+    nxc_save(c);
+    nxc_set_alpha(c, (uint8_t)(opacity * 255.0f + 0.5f));
+    draw_window_body(win, 1, 1);
+    nxc_restore(c);
+    win->y = saved_y;
 }
 
 /* Collapsed sidebar window: a tab hugging the right screen edge. */
 static void render_sidebar_tab(desktop_window_t *win, wm_window_state_t *wstate) {
     if (!wstate || wstate->mode != WIN_MODE_SIDEBAR || wstate->sidebar_expanded) return;
+    if (!win->visible || win->minimized) return;
     nxc_canvas_t *c = nxui_canvas();
     const nxui_theme_t *th = nxui_theme();
     nxc_rect_t tab = nxc_rect((float)g_desktop.width - 40.0f, (float)win->y, 36.0f + 14.0f, 80.0f);
@@ -1090,34 +1305,170 @@ static void render_sidebar_tab(desktop_window_t *win, wm_window_state_t *wstate)
                       NXC_ALIGN_CENTER);
 }
 
+/* Normal windows bottom to top, then PiP windows (always on top). */
 static void render_windows(void) {
-    /* First pass: Render normal windows in z-order */
-    for (int z = 0; z < MAX_WINDOWS; z++) {
-        for (int i = 0; i < MAX_WINDOWS; i++) {
-            if (g_windows[i].id != 0 && g_windows[i].z_order == z) {
-                /* Skip PiP windows - they render last */
-                if (wm_is_pip(g_windows[i].id)) continue;
-                
-                /* Handle sidebar mode windows */
-                if (wm_is_sidebar(g_windows[i].id)) {
-                    wm_window_state_t *wstate = wm_get_window_state(g_windows[i].id);
-                    if (wstate && !wstate->sidebar_expanded) {
-                        /* Render collapsed sidebar as tab only */
-                        render_sidebar_tab(&g_windows[i], wstate);
-                        continue;
-                    }
-                }
-                
-                render_window(&g_windows[i]);
-            }
+    for (int zi = 0; zi < g_zcount; zi++) {
+        desktop_window_t *w = window_by_id(g_zorder[zi]);
+        if (!w || wm_is_pip(w->id)) continue;
+        wm_window_state_t *ws = wm_get_window_state(w->id);
+        if (ws && ws->mode == WIN_MODE_SIDEBAR && !ws->sidebar_expanded) {
+            render_sidebar_tab(w, ws);
+            continue;
+        }
+        render_window(w);
+    }
+    for (int zi = 0; zi < g_zcount; zi++) {
+        desktop_window_t *w = window_by_id(g_zorder[zi]);
+        if (w && wm_is_pip(w->id)) render_window(w);
+    }
+}
+
+/* Visible = not hidden by space, Stage or a close in progress. */
+static void windows_sync_visibility(void) {
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        desktop_window_t *w = &g_windows[i];
+        if (w->id == 0) continue;
+        w->visible = wm_window_hidden(w->id) == 0;
+        if (!w->visible && w->focused) w->focused = 0;
+    }
+}
+
+/* Focus the topmost shown window when nothing visible holds focus. */
+static void focus_top_visible(void) {
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (g_windows[i].id && g_windows[i].visible && !g_windows[i].minimized && g_windows[i].focused) return;
+    }
+    for (int i = 0; i < MAX_WINDOWS; i++) g_windows[i].focused = 0;
+    for (int zi = g_zcount - 1; zi >= 0; zi--) {
+        desktop_window_t *w = window_by_id(g_zorder[zi]);
+        if (w && w->visible && !w->minimized) {
+            win_anim_t *a = anim_of(w);
+            if (a && a->phase == WA_CLOSE) continue;
+            w->focused = 1;
+            return;
         }
     }
-    
-    /* Second pass: Render PiP windows (always on top) */
+}
+
+/* Start a frame spring from the window's current frame to the target. */
+static void window_animate_frame(desktop_window_t *w, int32_t x, int32_t y, uint32_t ww, uint32_t wh) {
+    win_anim_t *a = anim_of(w);
+    if (!a) return;
+    if (ww < WM_MIN_W / 2) ww = WM_MIN_W / 2;
+    if (wh < WM_MIN_H / 2) wh = WM_MIN_H / 2;
+    a->fx0 = (float)w->x; a->fy0 = (float)w->y; a->fw0 = (float)w->width; a->fh0 = (float)w->height;
+    a->fx1 = (float)x; a->fy1 = (float)y; a->fw1 = (float)ww; a->fh1 = (float)wh;
+    a->gs.value = 0.0f;
+    a->gs.velocity = 0.0f;
+    a->geo = 1;
+}
+
+static void window_destroy_now(desktop_window_t *w);
+
+/* Advance every window spring and finish completed phases. */
+static void windows_tick(float dt) {
     for (int i = 0; i < MAX_WINDOWS; i++) {
-        if (g_windows[i].id != 0 && wm_is_pip(g_windows[i].id)) {
-            render_window(&g_windows[i]);
+        desktop_window_t *w = &g_windows[i];
+        win_anim_t *a = &g_wanim[i];
+        if (w->id == 0) continue;
+        if (a->geo) {
+            nxui_spring_step(&a->gs, 1.0f, 320.0f, 34.0f, dt);
+            float t = a->gs.value;
+            if (t > 0.998f && a->gs.velocity < 0.05f && a->gs.velocity > -0.05f) {
+                t = 1.0f;
+                a->geo = 0;
+            }
+            w->x = (int32_t)(a->fx0 + (a->fx1 - a->fx0) * t + 0.5f);
+            w->y = (int32_t)(a->fy0 + (a->fy1 - a->fy0) * t + 0.5f);
+            float fw = a->fw0 + (a->fw1 - a->fw0) * t, fh = a->fh0 + (a->fh1 - a->fh0) * t;
+            w->width = fw > 1.0f ? (uint32_t)(fw + 0.5f) : 1u;
+            w->height = fh > 1.0f ? (uint32_t)(fh + 0.5f) : 1u;
         }
+        switch (a->phase) {
+            case WA_OPEN:
+                nxui_spring_step(&a->vs, 1.0f, 260.0f, 32.0f, dt);
+                if (a->vs.value > 0.995f) a->phase = WA_NONE;
+                break;
+            case WA_CLOSE:
+                nxui_spring_step(&a->vs, 0.0f, 300.0f, 35.0f, dt);
+                if (a->vs.value < 0.02f) {
+                    a->phase = WA_NONE;
+                    window_destroy_now(w);
+                }
+                break;
+            case WA_MINIMIZE:
+                nxui_spring_step(&a->vs, 1.0f, 170.0f, 26.0f, dt);
+                if (a->vs.value > 0.995f) a->phase = WA_NONE;
+                break;
+            case WA_RESTORE:
+                nxui_spring_step(&a->vs, 0.0f, 200.0f, 28.5f, dt);
+                if (a->vs.value < 0.005f) a->phase = WA_NONE;
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+/* Tile preview: springs toward the suggested tile, fades in and out. */
+static void render_tile_preview(nxc_canvas_t *frame, float dt) {
+    int32_t tx, ty;
+    uint32_t tw, th_;
+    int on = wm_get_tile_preview(&tx, &ty, &tw, &th_);
+    if (on) {
+        nxc_rect_t target = nxc_rect((float)tx, (float)ty, (float)tw, (float)th_);
+        if (g_tile_prev_alpha < 0.01f) {
+            /* Grow out of the pointer */
+            g_tile_prev_rect = nxc_rect((float)g_desktop.mouse_x - 20.0f, (float)g_desktop.mouse_y - 20.0f, 40.0f, 40.0f);
+        }
+        g_tile_prev_rect.x = nxui_approach(g_tile_prev_rect.x, target.x, 0.05f, dt);
+        g_tile_prev_rect.y = nxui_approach(g_tile_prev_rect.y, target.y, 0.05f, dt);
+        g_tile_prev_rect.w = nxui_approach(g_tile_prev_rect.w, target.w, 0.05f, dt);
+        g_tile_prev_rect.h = nxui_approach(g_tile_prev_rect.h, target.h, 0.05f, dt);
+    }
+    g_tile_prev_alpha = nxui_approach(g_tile_prev_alpha, on ? 1.0f : 0.0f, 0.06f, dt);
+    if (g_tile_prev_alpha < 0.02f) return;
+    const nxui_theme_t *th = nxui_theme();
+    nxc_rect_t r = g_tile_prev_rect;
+    nxc_save(frame);
+    nxc_set_alpha(frame, (uint8_t)(g_tile_prev_alpha * 255.0f));
+    nxui_material(frame, r, th->radius_window, &th->mat_hud);
+    nxc_fill_rrect(frame, r, th->radius_window, NXC_WITH_ALPHA(th->accent, 46));
+    nxc_stroke_rrect(frame, r, th->radius_window, 1.5f, NXC_WITH_ALPHA(th->accent, 190));
+    nxc_restore(frame);
+}
+
+/* Resize cursor hint: the system cursor has no shapes yet, so a small
+ * double-arrow badge rides next to the pointer over a resize edge. */
+static void render_resize_hint(nxc_canvas_t *c) {
+    uint32_t e = (g_ges.kind == GES_RESIZE) ? g_ges.edges : g_resize_hover;
+    if (!e || g_ges.kind == GES_MOVE) return;
+    const nxui_theme_t *th = nxui_theme();
+    float cx = (float)g_desktop.mouse_x + 18.0f, cy = (float)g_desktop.mouse_y + 20.0f;
+    float dx = 0.0f, dy = 0.0f;
+    int h = (e & (EDGE_L | EDGE_R)) != 0, v = (e & (EDGE_T | EDGE_B)) != 0;
+    if (h && v) {
+        int main_diag = ((e & EDGE_L) && (e & EDGE_T)) || ((e & EDGE_R) && (e & EDGE_B));
+        dx = 4.6f; dy = main_diag ? 4.6f : -4.6f;
+    } else if (h) {
+        dx = 6.5f;
+    } else {
+        dy = 6.5f;
+    }
+    nxc_fill_circle(c, cx, cy, 10.0f, NXC_WITH_ALPHA(th->window_bg, 230));
+    nxc_stroke_circle(c, cx, cy, 10.0f, 1.0f, th->window_border);
+    nxc_color_t ink = th->text_primary;
+    nxc_draw_line(c, cx - dx, cy - dy, cx + dx, cy + dy, 1.6f, ink);
+    /* Arrow heads: the shaft direction rotated +-45 degrees at each end
+     * (dx, dy always have length 6.5, so dividing normalizes it). */
+    const float len = 3.2f;
+    for (int s = -1; s <= 1; s += 2) {
+        float ex = cx + (float)s * dx, ey = cy + (float)s * dy;
+        float bx = -(float)s * dx / 6.5f, by = -(float)s * dy / 6.5f;
+        float r1x = (bx - by) * 0.7071f, r1y = (bx + by) * 0.7071f;
+        float r2x = (bx + by) * 0.7071f, r2y = (by - bx) * 0.7071f;
+        nxc_draw_line(c, ex, ey, ex + r1x * len, ey + r1y * len, 1.6f, ink);
+        nxc_draw_line(c, ex, ey, ex + r2x * len, ey + r2y * len, 1.6f, ink);
     }
 }
 
@@ -1173,7 +1524,20 @@ static void render_desktop(void) {
     
     /* Update window manager animations */
     wm_tick(dt);
-    
+
+    /* Window springs, Stage/Overview/switcher motion, then visibility */
+    windows_tick(dt);
+    stage_tick(dt);
+    overview_tick(dt);
+    switcher_tick(dt);
+    windows_sync_visibility();
+    focus_top_visible();
+
+    /* Window snapshots requested by Overview/Stage/minimize are drawn into
+     * the backbuffer here, before the wallpaper overwrites it. No requests,
+     * no work. */
+    wm_snapshot_service(nxui_canvas());
+
     /*
      * TEMPORARILY DISABLED: Static layer caching was causing missing UI issues.
      * Always render static elements every frame for now.
@@ -1191,29 +1555,34 @@ static void render_desktop(void) {
     render_desktop_icons();
     PF_MARK(PF_SEARCH);
     
-    /* Tile preview (below windows): translucent accent panel */
-    int32_t tile_x, tile_y;
-    uint32_t tile_w, tile_h;
-    if (wm_get_tile_preview(&tile_x, &tile_y, &tile_w, &tile_h)) {
-        const nxui_theme_t *th = nxui_theme();
-        nxc_rect_t tr = nxc_rect((float)tile_x + 4.0f, (float)tile_y + 4.0f, (float)tile_w - 8.0f, (float)tile_h - 8.0f);
-        nxc_fill_rrect(frame, tr, th->radius_window, NXC_WITH_ALPHA(th->accent, 56));
-        nxc_stroke_rrect(frame, tr, th->radius_window, 1.5f, NXC_WITH_ALPHA(th->accent, 200));
+    /* Tile preview (below windows): sprung glass panel with accent tint */
+    render_tile_preview(frame, dt);
+
+    /* Windows: Overview replaces the normal pass; Stage adds its strip
+     * below and its flying windows above. */
+    if (overview_active()) {
+        overview_render(frame);
+    } else {
+        stage_render(frame);
+        render_windows();
+        stage_render_overlay(frame);
     }
-    
-    render_windows();
     PF_MARK(PF_WINDOWS);
-    
+
     /* Modular dock rendering */
     dock_tick();  /* Update animations */
     dock_render(frame, g_desktop.mouse_x, g_desktop.mouse_y);
     PF_MARK(PF_DOCK);
-    
+
     /* Active search field and its results float above windows */
     if (anveshan_is_active()) render_search_bar();
 
     /* Menu bar dropdown (above windows and the dock) */
     menubar_render(frame);
+
+    /* NX+Tab app switcher HUD */
+    switcher_render(frame);
+    render_resize_hint(frame);
 
     /* App Drawer overlay (above everything except cursor) */
     app_drawer_update((uint32_t)(nxui_frame_dt() * 1000.0f));
@@ -1300,8 +1669,20 @@ static void render_desktop(void) {
 
 /* ============ Window Management ============ */
 
+/* Usable desktop area for windows (title bar top, between menu bar and dock). */
+static void work_area(int32_t *x, int32_t *y, int32_t *w, int32_t *h) {
+    *x = 0;
+    *y = WM_MENUBAR_H;
+    *w = (int32_t)g_desktop.width;
+    *h = (int32_t)g_desktop.height - WM_MENUBAR_H - WM_DOCK_RESERVE;
+}
+
 uint32_t desktop_create_window(const char *title, int32_t x, int32_t y,
                                uint32_t width, uint32_t height) {
+    if (width == 0 || height == 0) {
+        serial_puts("[DESKTOP] Error: window with zero size refused\n");
+        return 0;
+    }
     /* Find free slot */
     int slot = -1;
     for (int i = 0; i < MAX_WINDOWS; i++) {
@@ -1310,15 +1691,45 @@ uint32_t desktop_create_window(const char *title, int32_t x, int32_t y,
             break;
         }
     }
-    
+
     if (slot < 0) {
         serial_puts("[DESKTOP] Error: Max windows reached\n");
         return 0;
     }
-    
+
+    /* Fit the screen: never larger than the work area, title bar below
+     * the menu bar. */
+    int32_t ax, ay, aw, ah;
+    work_area(&ax, &ay, &aw, &ah);
+    if (width > (uint32_t)aw - 16u) width = (uint32_t)aw - 16u;
+    if (height > (uint32_t)(ah - WIN_TITLE_H - 8)) height = (uint32_t)(ah - WIN_TITLE_H - 8);
+    if (width < 120u) width = 120u;
+    if (height < 60u) height = 60u;
+
+    /* Cascade away from a window already sitting at the same spot */
+    for (int tries = 0; tries < 12; tries++) {
+        int clash = 0;
+        for (int i = 0; i < MAX_WINDOWS; i++) {
+            const desktop_window_t *o = &g_windows[i];
+            if (o->id == 0 || !o->visible || o->minimized) continue;
+            int32_t ddx = o->x - x, ddy = o->y - y;
+            if (ddx > -12 && ddx < 12 && ddy > -12 && ddy < 12) { clash = 1; break; }
+        }
+        if (!clash) break;
+        x += 30;
+        y += 26;
+        if (x + (int32_t)width > ax + aw - 8) x = ax + 40;
+        if (y + (int32_t)height + WIN_TITLE_H > ay + ah) y = ay + 12;
+    }
+    if (x < ax - (int32_t)width + 80) x = ax - (int32_t)width + 80;
+    if (x > ax + aw - 80) x = ax + aw - 80;
+    if (y < ay) y = ay;
+    if (y > ay + ah - WIN_TITLE_H) y = ay + ah - WIN_TITLE_H;
+
     desktop_window_t *win = &g_windows[slot];
     win->id = g_next_window_id++;
-    
+    if (g_next_window_id == 0) g_next_window_id = 1;   /* 0 means "no window" */
+
     /* Validate and copy title safely */
     if (title) {
         shell_strcpy(win->title, title, WINDOW_TITLE_MAX);
@@ -1333,40 +1744,77 @@ uint32_t desktop_create_window(const char *title, int32_t x, int32_t y,
     win->focused = 1;
     win->minimized = 0;
     win->dragging = 0;
-    win->z_order = g_desktop.window_count;
     win->render_content = NULL;
     win->render_ctx = NULL;
     win->key_handler = NULL;
     win->key_ctx = NULL;
     win->mouse_handler = NULL;
     win->mouse_ctx = NULL;
-    
+
     g_desktop.window_count++;
-    
-    /* Unfocus other windows */
+
+    /* Window manager state (space, tiling) and an opening fade */
+    wm_register_window(win->id);
+    win_anim_t *a = &g_wanim[slot];
+    a->geo = 0;
+    a->phase = WA_OPEN;
+    a->vs.value = 0.0f;
+    a->vs.velocity = 0.0f;
+
+    /* Unfocus other windows, put the new one on top */
     for (int i = 0; i < MAX_WINDOWS; i++) {
         if (g_windows[i].id != 0 && g_windows[i].id != win->id) {
             g_windows[i].focused = 0;
         }
     }
-    
+    z_push_top(win->id);
+    stage_on_window_created(win->id);
+
     serial_puts("[DESKTOP] Created window: ");
     serial_puts(win->title);  /* Use copied title, not raw pointer */
     serial_puts(" id=");
     serial_dec(win->id);
     serial_puts("\n");
-    
+
     return win->id;
 }
 
+/* Remove a window everywhere it is referenced. */
+static void window_destroy_now(desktop_window_t *w) {
+    if (!w || w->id == 0) return;
+    uint32_t id = w->id;
+    stage_on_window_destroyed(id);
+    overview_on_window_destroyed(id);
+    switcher_on_window_destroyed(id);
+    wm_unregister_window(id);
+    z_remove(id);
+    if (g_ges.id == id) {
+        g_ges.kind = GES_NONE;
+        g_ges.id = 0;
+        wm_clear_tile_preview();
+    }
+    if (g_light_press_id == id) g_light_press_id = 0;
+    if (g_mouse_capture_id == id) g_mouse_capture_id = 0;   /* no content capture on a dead window */
+    win_anim_t *a = anim_of(w);
+    if (a) {
+        a->geo = 0;
+        a->phase = WA_NONE;
+    }
+    w->id = 0;
+    w->focused = 0;
+    if (g_desktop.window_count > 0) g_desktop.window_count--;
+    z_reindex();
+    focus_top_visible();
+    serial_puts("[DESKTOP] Destroyed window id=");
+    serial_dec(id);
+    serial_puts("\n");
+}
+
 int desktop_destroy_window(uint32_t window_id) {
+    if (window_id == 0) return -1;
     for (int i = 0; i < MAX_WINDOWS; i++) {
         if (g_windows[i].id == window_id) {
-            g_windows[i].id = 0;
-            g_desktop.window_count--;
-            serial_puts("[DESKTOP] Destroyed window id=");
-            serial_dec(window_id);
-            serial_puts("\n");
+            window_destroy_now(&g_windows[i]);
             return 0;
         }
     }
@@ -1375,20 +1823,222 @@ int desktop_destroy_window(uint32_t window_id) {
 
 void desktop_focus_window(uint32_t window_id) {
     desktop_window_t *target = NULL;
-    
+
     for (int i = 0; i < MAX_WINDOWS; i++) {
-        if (g_windows[i].id == window_id) {
+        if (g_windows[i].id == window_id && window_id != 0) {
             target = &g_windows[i];
         }
-        if (g_windows[i].id != 0) {
-            g_windows[i].focused = 0;
+    }
+    if (!target) return;
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (g_windows[i].id != 0) g_windows[i].focused = 0;
+    }
+    target->focused = 1;
+    z_push_top(target->id);
+}
+
+/* ---- Window actions: minimize, close, zoom, tile ---- */
+
+/* Dock icon rect for a window title (falls back to the dock center). */
+static nxc_rect_t dock_target_for(const desktop_window_t *w) {
+    dock_state_t *ds = dock_get_state();
+    float cx = (float)g_desktop.width * 0.5f, cy = (float)g_desktop.height - 46.0f;
+    if (ds && ds->icon_count > 0 && ds->width > 0) {
+        cy = (float)ds->y + (float)ds->height * 0.5f;
+        for (int i = 0; i < ds->icon_count && i < DOCK_MAX_ICONS; i++) {
+            nxapp_icon_t a = nxapp_icon_from_name(ds->icons[i].label);
+            if (a != NXAPP_GENERIC && a == nxapp_icon_from_name(w->title)) {
+                cx = (float)ds->x + ((float)i + 0.5f) * (float)ds->width / (float)ds->icon_count;
+                break;
+            }
         }
     }
-    
-    if (target) {
-        target->focused = 1;
-        target->z_order = g_desktop.window_count;
+    float tw = 56.0f, th = 56.0f * ((float)w->height + WIN_TITLE_H) / (float)(w->width ? w->width : 1u);
+    if (th > 56.0f) th = 56.0f;
+    return nxc_rect(cx - tw * 0.5f, cy - th * 0.5f, tw, th);
+}
+
+static int window_minimize(desktop_window_t *w) {
+    if (!w || w->id == 0 || w->minimized) return -1;
+    win_anim_t *a = anim_of(w);
+    if (a && a->phase == WA_CLOSE) return -1;
+    if (a) {
+        a->dock = dock_target_for(w);
+        a->phase = WA_MINIMIZE;
+        a->vs.value = 0.0f;
+        a->vs.velocity = 0.0f;
     }
+    wm_snapshot_request(w->id);
+    wm_add_minimized(w->id, 0, w->title, (int32_t)(a ? a->dock.x : 0), (int32_t)(a ? a->dock.y : 0));
+    w->minimized = 1;
+    w->focused = 0;
+    focus_top_visible();
+    serial_puts("[WM] minimize id=");
+    serial_dec(w->id);
+    serial_puts("\n");
+    return 0;
+}
+
+static void window_restore_from_dock(desktop_window_t *w) {
+    if (!w || !w->minimized) return;
+    win_anim_t *a = anim_of(w);
+    w->minimized = 0;
+    wm_remove_minimized(w->id);
+    if (a) {
+        if (a->phase != WA_MINIMIZE) a->dock = dock_target_for(w);
+        a->phase = WA_RESTORE;
+        if (a->vs.value <= 0.0f || a->vs.value > 1.0f) a->vs.value = 1.0f;
+        a->vs.velocity = 0.0f;
+    }
+    wm_snapshot_request(w->id);
+}
+
+static int window_close(desktop_window_t *w) {
+    if (!w || w->id == 0) return -1;
+    win_anim_t *a = anim_of(w);
+    if (a && a->phase == WA_CLOSE) return 0;
+    if (w->minimized || !w->visible || !a) {
+        window_destroy_now(w);
+        return 0;
+    }
+    a->phase = WA_CLOSE;
+    a->vs.value = 1.0f;
+    a->vs.velocity = 0.0f;
+    a->geo = 0;
+    wm_snapshot_request(w->id);
+    wm_window_set_hidden(w->id, WM_HIDE_CLOSING, 1);
+    w->visible = 0;
+    w->focused = 0;
+    focus_top_visible();
+    serial_puts("[WM] close id=");
+    serial_dec(w->id);
+    serial_puts("\n");
+    return 0;
+}
+
+/* Remember the user's own frame before the first tile/zoom. */
+static void remember_user_frame(desktop_window_t *w, wm_window_state_t *ws) {
+    if (!ws || ws->is_tiled || ws->is_maximized) return;
+    ws->pre_tile_x = w->x;
+    ws->pre_tile_y = w->y;
+    ws->pre_tile_w = w->width;
+    ws->pre_tile_h = w->height;
+}
+
+static void window_tile(desktop_window_t *w, wm_tile_pos_t tile) {
+    if (!w || tile == TILE_NONE) return;
+    wm_window_state_t *ws = wm_get_window_state(w->id);
+    if (!ws) return;
+    int32_t tx = 0, ty = 0;
+    uint32_t tw = 0, th = 0;
+    wm_get_tile_geometry(tile, &tx, &ty, &tw, &th);
+    if (tw < 40 || th < (uint32_t)WIN_TITLE_H + 20) return;
+    remember_user_frame(w, ws);
+    ws->tile_pos = tile;
+    ws->is_tiled = (tile != TILE_MAXIMIZE);
+    ws->is_maximized = (tile == TILE_MAXIMIZE);
+    window_animate_frame(w, tx, ty, tw, th - WIN_TITLE_H);   /* tile height includes the title bar */
+    wm_window_content_changed(w->id);
+}
+
+/* Back to the user's frame after a tile or zoom. Returns 1 if it moved. */
+static int window_untile(desktop_window_t *w, int animate) {
+    wm_window_state_t *ws = w ? wm_get_window_state(w->id) : NULL;
+    if (!ws || !(ws->is_tiled || ws->is_maximized)) return 0;
+    ws->is_tiled = 0;
+    ws->is_maximized = 0;
+    ws->tile_pos = TILE_NONE;
+    if (ws->pre_tile_w == 0 || ws->pre_tile_h == 0) return 0;
+    if (animate) {
+        window_animate_frame(w, ws->pre_tile_x, ws->pre_tile_y, ws->pre_tile_w, ws->pre_tile_h);
+    } else {
+        w->width = ws->pre_tile_w;
+        w->height = ws->pre_tile_h;
+    }
+    wm_window_content_changed(w->id);
+    return 1;
+}
+
+/* Zoom (green light, title bar double-click, NX+Shift+Up): fill the work
+ * area or go back to the user's frame. */
+static void window_zoom(desktop_window_t *w) {
+    wm_window_state_t *ws = w ? wm_get_window_state(w->id) : NULL;
+    if (!ws) return;
+    if (ws->is_maximized) window_untile(w, 1);
+    else window_tile(w, TILE_MAXIMIZE);
+}
+
+/* Bring a window (and its space / Stage group) forward, restoring it. */
+static void window_activate(desktop_window_t *w) {
+    if (!w || w->id == 0) return;
+    int sp = wm_window_space(w->id);
+    if (sp >= 0 && sp != wm_space_current()) wm_space_switch(sp);
+    if (w->minimized) window_restore_from_dock(w);
+    stage_on_window_activated(w->id);
+    windows_sync_visibility();
+    desktop_focus_window(w->id);
+}
+
+/* ---- Shell hooks for Overview, Stage and the switcher (window_manager.h) ---- */
+
+int wm_shell_window_order(uint32_t *ids, int max) {
+    if (!ids || max <= 0) return 0;
+    int n = 0;
+    for (int zi = g_zcount - 1; zi >= 0 && n < max; zi--) {
+        desktop_window_t *w = window_by_id(g_zorder[zi]);
+        if (!w) continue;
+        win_anim_t *a = anim_of(w);
+        if (a && a->phase == WA_CLOSE) continue;
+        ids[n++] = w->id;
+    }
+    return n;
+}
+
+int wm_shell_get_frame(uint32_t window_id, int32_t *x, int32_t *y, uint32_t *w, uint32_t *h) {
+    desktop_window_t *win = window_by_id(window_id);
+    if (!win) return -1;
+    win_anim_t *a = anim_of(win);
+    if (a && a->geo) {
+        /* Report where the window is going, not a mid-flight frame */
+        if (x) *x = (int32_t)a->fx1;
+        if (y) *y = (int32_t)a->fy1;
+        if (w) *w = (uint32_t)a->fw1;
+        if (h) *h = (uint32_t)a->fh1;
+        return 0;
+    }
+    if (x) *x = win->x;
+    if (y) *y = win->y;
+    if (w) *w = win->width;
+    if (h) *h = win->height;
+    return 0;
+}
+
+int wm_shell_set_frame(uint32_t window_id, int32_t x, int32_t y, uint32_t w, uint32_t h, int animate) {
+    desktop_window_t *win = window_by_id(window_id);
+    if (!win || w == 0 || h == 0 || w > 8192u || h > 8192u) return -1;
+    if (animate) {
+        window_animate_frame(win, x, y, w, h);
+    } else {
+        win_anim_t *a = anim_of(win);
+        if (a) a->geo = 0;
+        win->x = x;
+        win->y = y;
+        win->width = w;
+        win->height = h;
+    }
+    wm_window_content_changed(window_id);
+    return 0;
+}
+
+void wm_shell_raise(uint32_t window_id) {
+    desktop_window_t *win = window_by_id(window_id);
+    if (!win) return;
+    windows_sync_visibility();
+    desktop_focus_window(window_id);
+}
+
+int wm_shell_minimize(uint32_t window_id) {
+    return window_minimize(window_by_id(window_id));
 }
 
 void desktop_set_window_render(uint32_t window_id,
@@ -1449,12 +2099,8 @@ uint32_t desktop_focused_window_id(void) {
 int desktop_activate_window(uint32_t window_id) {
     for (int i = 0; i < MAX_WINDOWS; i++) {
         if (g_windows[i].id == window_id && window_id != 0) {
-            if (g_windows[i].minimized) {
-                g_windows[i].minimized = 0;
-                g_windows[i].visible = 1;
-                wm_restore_window(window_id);
-            }
-            desktop_focus_window(window_id);
+            /* Restores (animated), switches space / Stage group, focuses */
+            window_activate(&g_windows[i]);
             return 0;
         }
     }
@@ -1464,8 +2110,7 @@ int desktop_activate_window(uint32_t window_id) {
 int desktop_close_window(uint32_t window_id) {
     for (int i = 0; i < MAX_WINDOWS; i++) {
         if (g_windows[i].id == window_id && window_id != 0) {
-            wm_close_window_animated(window_id);
-            return 0;
+            return window_close(&g_windows[i]);
         }
     }
     return -1;
@@ -1539,6 +2184,177 @@ static int route_content_mouse(uint8_t buttons, uint8_t prev_buttons) {
     return 0;
 }
 
+/* ============ Window move / resize gestures ============ */
+
+/* Resize edges of w under (x, y): a band 6 px outside to 3 px inside the
+ * frame, with 14 px corner zones. Sets *inside when the point is within
+ * the frame but not on an edge (the window covers the point). */
+static uint32_t resize_edges_at(const desktop_window_t *w, int32_t x, int32_t y, int *inside) {
+    *inside = 0;
+    int32_t fx = w->x, fy = w->y, fw = (int32_t)w->width, fh = (int32_t)w->height + WIN_TITLE_H;
+    if (x < fx - 6 || x >= fx + fw + 6 || y < fy - 6 || y >= fy + fh + 6) return 0;
+    uint32_t e = 0;
+    if (x < fx + 3) e |= EDGE_L;
+    if (x >= fx + fw - 3) e |= EDGE_R;
+    if (y < fy + 3) e |= EDGE_T;
+    if (y >= fy + fh - 3) e |= EDGE_B;
+    if (e & (EDGE_L | EDGE_R)) {
+        if (y < fy + 14) e |= EDGE_T;
+        if (y >= fy + fh - 14) e |= EDGE_B;
+    }
+    if (e & (EDGE_T | EDGE_B)) {
+        if (x < fx + 14) e |= EDGE_L;
+        if (x >= fx + fw - 14) e |= EDGE_R;
+    }
+    if (!e) *inside = (x >= fx && x < fx + fw && y >= fy && y < fy + fh);
+    return e;
+}
+
+/* Topmost resizable window with an edge under (x, y). */
+static desktop_window_t *resize_target_at(int32_t x, int32_t y, uint32_t *edges) {
+    for (int zi = g_zcount - 1; zi >= 0; zi--) {
+        desktop_window_t *w = window_by_id(g_zorder[zi]);
+        if (!w || !w->visible || w->minimized) continue;
+        wm_window_state_t *ws = wm_get_window_state(w->id);
+        if (ws && ws->mode != WIN_MODE_NORMAL && ws->mode != WIN_MODE_MAXIMIZED) continue;
+        int inside = 0;
+        uint32_t e = resize_edges_at(w, x, y, &inside);
+        if (e) {
+            /* Corners and edges over the traffic lights stay with the lights */
+            if (traffic_light_at(w, x, y) >= 0) return NULL;
+            *edges = e;
+            return w;
+        }
+        if (inside) return NULL;
+    }
+    return NULL;
+}
+
+static void gesture_update(desktop_window_t *w, int32_t mx, int32_t my) {
+    int32_t dx = mx - g_ges.mx0, dy = my - g_ges.my0;
+    int32_t sw = (int32_t)g_desktop.width, sh = (int32_t)g_desktop.height;
+    if (g_ges.kind == GES_MOVE) {
+        if (!g_ges.moved && dx < 3 && dx > -3 && dy < 3 && dy > -3) return;
+        if (!g_ges.moved) {
+            g_ges.moved = 1;
+            /* Pulling a tiled/zoomed window away restores its own size,
+             * keeping the pointer at the same relative spot on the title. */
+            wm_window_state_t *ws = wm_get_window_state(w->id);
+            if (ws && (ws->is_tiled || ws->is_maximized) && ws->pre_tile_w > 0) {
+                float rel = (float)(g_ges.mx0 - w->x) / (float)(w->width ? w->width : 1u);
+                window_untile(w, 0);
+                g_ges.w0 = w->width;
+                g_ges.h0 = w->height;
+                g_ges.x0 = g_ges.mx0 - (int32_t)(rel * (float)w->width);
+            }
+        }
+        int32_t nx = g_ges.x0 + dx, ny = g_ges.y0 + dy;
+        if (ny < WM_MENUBAR_H) ny = WM_MENUBAR_H;              /* title bar stays below the menu bar */
+        if (ny > sh - WIN_TITLE_H - 8) ny = sh - WIN_TITLE_H - 8;
+        if (nx < 80 - (int32_t)w->width) nx = 80 - (int32_t)w->width;   /* keep 80 px on screen */
+        if (nx > sw - 80) nx = sw - 80;
+        w->x = nx;
+        w->y = ny;
+        g_ges.tile = wm_suggest_tile(mx, my, nx, ny);
+        wm_set_tile_preview(g_ges.tile);
+        return;
+    }
+    /* Resize: move the grabbed edges, honoring the minimum and the screen */
+    int32_t L = g_ges.x0, T = g_ges.y0;
+    int32_t R = g_ges.x0 + (int32_t)g_ges.w0, B = g_ges.y0 + (int32_t)g_ges.h0 + WIN_TITLE_H;
+    const int32_t min_w = WM_MIN_W, min_h = WM_MIN_H + WIN_TITLE_H;
+    if (g_ges.edges & EDGE_L) {
+        L += dx;
+        if (L > R - min_w) L = R - min_w;
+        if (L < 0) L = 0;
+    }
+    if (g_ges.edges & EDGE_R) {
+        R += dx;
+        if (R < L + min_w) R = L + min_w;
+        if (R > sw) R = sw;
+    }
+    if (g_ges.edges & EDGE_T) {
+        T += dy;
+        if (T > B - min_h) T = B - min_h;
+        if (T < WM_MENUBAR_H) T = WM_MENUBAR_H;
+    }
+    if (g_ges.edges & EDGE_B) {
+        B += dy;
+        if (B < T + min_h) B = T + min_h;
+        if (B > sh) B = sh;
+    }
+    if (R - L < 1 || B - T <= WIN_TITLE_H) return;
+    w->x = L;
+    w->y = T;
+    w->width = (uint32_t)(R - L);
+    w->height = (uint32_t)(B - T - WIN_TITLE_H);
+    wm_window_content_changed(w->id);
+}
+
+static void gesture_finish(desktop_window_t *w) {
+    if (w && g_ges.kind == GES_MOVE && g_ges.moved && g_ges.tile != TILE_NONE) {
+        /* Remember the size the window had before this drag */
+        wm_window_state_t *ws = wm_get_window_state(w->id);
+        if (ws) {
+            if (!ws->is_tiled && !ws->is_maximized) {
+                ws->pre_tile_x = g_ges.x0;
+                ws->pre_tile_y = g_ges.y0;
+                ws->pre_tile_w = w->width;
+                ws->pre_tile_h = w->height;
+                ws->is_tiled = 1;   /* window_tile keeps an existing saved frame */
+            }
+            window_tile(w, g_ges.tile);
+        }
+    }
+    if (w) w->dragging = 0;
+    g_ges.kind = GES_NONE;
+    g_ges.id = 0;
+    g_ges.tile = TILE_NONE;
+    wm_clear_tile_preview();
+}
+
+/* Continue a move/resize, or start a resize from an edge press.
+ * Returns 1 when the event was used. */
+static int window_gesture_mouse(uint8_t buttons, uint8_t prev_buttons) {
+    int32_t mx = g_desktop.mouse_x, my = g_desktop.mouse_y;
+    if (g_ges.kind != GES_NONE) {
+        desktop_window_t *w = window_by_id(g_ges.id);
+        if (!w || w->minimized || !w->visible) {
+            gesture_finish(w);
+            return 0;
+        }
+        if (buttons & 0x01) gesture_update(w, mx, my);
+        else gesture_finish(w);
+        return 1;
+    }
+    g_resize_hover = 0;
+    if (g_mouse_capture_id != 0) return 0;          /* content drag in progress */
+    uint32_t edges = 0;
+    desktop_window_t *w = resize_target_at(mx, my, &edges);
+    if (!w) return 0;
+    g_resize_hover = edges;
+    if ((buttons & 0x01) && !(prev_buttons & 0x01)) {
+        desktop_focus_window(w->id);
+        wm_window_state_t *ws = wm_get_window_state(w->id);
+        if (ws) { ws->is_tiled = 0; ws->is_maximized = 0; ws->tile_pos = TILE_NONE; }
+        win_anim_t *a = anim_of(w);
+        if (a) a->geo = 0;
+        g_ges.kind = GES_RESIZE;
+        g_ges.id = w->id;
+        g_ges.edges = edges;
+        g_ges.mx0 = mx;
+        g_ges.my0 = my;
+        g_ges.x0 = w->x;
+        g_ges.y0 = w->y;
+        g_ges.w0 = w->width;
+        g_ges.h0 = w->height;
+        g_ges.moved = 1;
+        serial_puts("[WM] resize start\n");
+        return 1;
+    }
+    return 0;
+}
+
 /* Mouse smoothing state - exponential moving average */
 static int32_t g_smooth_mouse_x = 0;
 static int32_t g_smooth_mouse_y = 0;
@@ -1575,6 +2391,14 @@ void desktop_handle_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
     if (app_drawer_is_open()) {
         app_drawer_handle_mouse(g_desktop.mouse_x, g_desktop.mouse_y, buttons);
         return;  /* Drawer consumes all mouse events when open */
+    }
+
+    /* App switcher HUD and Overview own the pointer while shown */
+    if (switcher_handle_mouse(g_desktop.mouse_x, g_desktop.mouse_y, buttons, prev_buttons)) {
+        return;
+    }
+    if (overview_handle_mouse(g_desktop.mouse_x, g_desktop.mouse_y, buttons, prev_buttons)) {
+        return;
     }
     
     /* Menu bar menus take the pointer while open or when a title is hit */
@@ -1621,6 +2445,16 @@ void desktop_handle_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
         return;  /* Dock consumed the click */
     }
 
+    /* Stage strip (thumbnails, drags onto the stage) */
+    if (stage_handle_mouse(g_desktop.mouse_x, g_desktop.mouse_y, buttons, prev_buttons)) {
+        return;
+    }
+
+    /* Window move/resize in progress, or a press on a resize edge */
+    if (window_gesture_mouse(buttons, prev_buttons)) {
+        return;
+    }
+
     /* Shell-hosted app content (Settings, Task Manager, ...) */
     if (route_content_mouse(buttons, prev_buttons)) {
         return;
@@ -1628,224 +2462,125 @@ void desktop_handle_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
     
     /* Update quick menu hover state */
     wm_quick_menu_hit_test(g_desktop.mouse_x, g_desktop.mouse_y);
-    
+
+    int32_t mx = g_desktop.mouse_x, my = g_desktop.mouse_y;
+
+    /* Traffic light released: clear the pressed tint */
+    if (!(buttons & 0x01) && g_light_press_id) {
+        g_light_press_id = 0;
+        g_light_press_idx = -1;
+    }
+
     /* Handle left click */
     if ((buttons & 0x01) && !(prev_buttons & 0x01)) {
         /* Check quick menu click first */
         wm_quick_menu_t *qm = wm_get_quick_menu();
         if (qm && qm->visible) {
-            int hit = wm_quick_menu_hit_test(g_desktop.mouse_x, g_desktop.mouse_y);
+            int hit = wm_quick_menu_hit_test(mx, my);
             if (hit >= 0) {
-                wm_quick_menu_click(g_desktop.mouse_x, g_desktop.mouse_y);
+                wm_quick_menu_click(mx, my);
                 return;
             } else {
                 /* Click outside menu - hide it */
                 wm_hide_quick_menu();
             }
         }
-        
-        /* Left click - check window hit */
-        for (int i = MAX_WINDOWS - 1; i >= 0; i--) {
-            desktop_window_t *win = &g_windows[i];
-            if (win->id == 0 || !win->visible) continue;
-            
+
+        /* Collapsed sidebar tabs sit outside their window frame */
+        for (int zi = g_zcount - 1; zi >= 0; zi--) {
+            desktop_window_t *win = window_by_id(g_zorder[zi]);
+            if (!win || !win->visible || win->minimized) continue;
             wm_window_state_t *wstate = wm_get_window_state(win->id);
-            
-            /* Check sidebar tab click */
-            if (wstate && wstate->mode == WIN_MODE_SIDEBAR && !wstate->sidebar_expanded) {
-                /* Collapsed sidebar - check tab click */
-                int tab_x = g_desktop.width - 40;
-                int tab_y = win->y;
-                if (g_desktop.mouse_x >= tab_x && g_desktop.mouse_x < tab_x + 36 &&
-                    g_desktop.mouse_y >= tab_y && g_desktop.mouse_y < tab_y + 80) {
+            if (!wstate || wstate->mode != WIN_MODE_SIDEBAR) continue;
+            if (!wstate->sidebar_expanded) {
+                int tab_x = (int)g_desktop.width - 40;
+                if (mx >= tab_x && mx < tab_x + 36 && my >= win->y && my < win->y + 80) {
                     wm_toggle_sidebar_expand(win->id);
-                    break;
+                    return;
                 }
-                continue;
+            } else if (mx < win->x || mx >= win->x + (int32_t)win->width ||
+                       my < win->y || my >= win->y + (int32_t)win->height + WIN_TITLE_H) {
+                wm_toggle_sidebar_expand(win->id);   /* click outside collapses it */
             }
-            
-            /* Check expanded sidebar click outside - collapse it */
-            if (wstate && wstate->mode == WIN_MODE_SIDEBAR && wstate->sidebar_expanded) {
-                if (g_desktop.mouse_x < win->x || 
-                    g_desktop.mouse_x >= win->x + (int32_t)win->width ||
-                    g_desktop.mouse_y < win->y ||
-                    g_desktop.mouse_y >= win->y + (int32_t)win->height + 24) {
-                    wm_toggle_sidebar_expand(win->id);
-                    break;
-                }
+        }
+
+        /* Topmost window under the pointer */
+        desktop_window_t *win = window_at_point(mx, my);
+        if (win) {
+            wm_window_state_t *wstate = wm_get_window_state(win->id);
+            if (wstate && wstate->mode == WIN_MODE_SIDEBAR && !wstate->sidebar_expanded) return;
+
+            /* Traffic lights work on inactive windows too */
+            int light = traffic_light_at(win, mx, my);
+            if (light >= 0) {
+                g_light_press_id = win->id;
+                g_light_press_idx = light;
+                if (light == 0) window_close(win);
+                else if (light == 1) window_minimize(win);
+                else { desktop_focus_window(win->id); window_zoom(win); }
+                return;
             }
-            
-            int title_height = 24;
-            
-            /* Hit test */
-            if (g_desktop.mouse_x >= win->x && 
-                g_desktop.mouse_x < win->x + (int32_t)win->width &&
-                g_desktop.mouse_y >= win->y &&
-                g_desktop.mouse_y < win->y + (int32_t)win->height + title_height) {
-                
-                /* Check close button */
-                if (g_desktop.mouse_x >= win->x + 8 &&
-                    g_desktop.mouse_x < win->x + 20 &&
-                    g_desktop.mouse_y >= win->y + 6 &&
-                    g_desktop.mouse_y < win->y + 18) {
-                    wm_close_window_animated(win->id);
-                    /* Mark for delayed destruction after animation */
-                    break;
+
+            desktop_focus_window(win->id);
+
+            int in_title = my < win->y + WIN_TITLE_H;
+            int pip = wstate && wstate->mode == WIN_MODE_PIP;
+            if (in_title || pip) {
+                /* Double-click on the title bar zooms */
+                static uint32_t last_id = 0;
+                static uint64_t last_ms = 0;
+                static int32_t last_x = 0, last_y = 0;
+                uint64_t now = nx_gettime();
+                int dbl = in_title && last_id == win->id && now - last_ms < 400 &&
+                          mx - last_x < 5 && last_x - mx < 5 && my - last_y < 5 && last_y - my < 5;
+                last_id = win->id;
+                last_ms = now;
+                last_x = mx;
+                last_y = my;
+                if (dbl) {
+                    last_id = 0;
+                    window_zoom(win);
+                    return;
                 }
-                
-                /* Check minimize button */
-                if (g_desktop.mouse_x >= win->x + 24 &&
-                    g_desktop.mouse_x < win->x + 36 &&
-                    g_desktop.mouse_y >= win->y + 6 &&
-                    g_desktop.mouse_y < win->y + 18) {
-                    /* Start minimize animation towards dock center */
-                    int dock_center_x = g_desktop.width / 2;
-                    int dock_center_y = g_desktop.height - 50;
-                    
-                    wm_window_state_t *state = wm_get_window_state(win->id);
-                    if (state) {
-                        state->animation.start_x = win->x;
-                        state->animation.start_y = win->y;
-                        state->animation.start_w = win->width;
-                        state->animation.start_h = win->height;
-                        state->animation.end_x = dock_center_x;
-                        state->animation.end_y = dock_center_y;
-                        state->animation.end_w = 48;
-                        state->animation.end_h = 36;
-                    }
-                    wm_minimize_window(win->id, dock_center_x, dock_center_y);
-                    wm_add_minimized(win->id, 0, win->title, dock_center_x, dock_center_y);
-                    win->minimized = 1;
-                    break;
-                }
-                
-                /* Check maximize button */
-                if (g_desktop.mouse_x >= win->x + 40 &&
-                    g_desktop.mouse_x < win->x + 52 &&
-                    g_desktop.mouse_y >= win->y + 6 &&
-                    g_desktop.mouse_y < win->y + 18) {
-                    wm_window_state_t *state = wm_get_window_state(win->id);
-                    if (state) {
-                        if (state->is_maximized) {
-                            /* Restore from maximized */
-                            win->x = state->pre_max_x;
-                            win->y = state->pre_max_y;
-                            win->width = state->pre_max_w;
-                            win->height = state->pre_max_h;
-                            state->is_maximized = 0;
-                        } else {
-                            /* Save current position and maximize */
-                            state->pre_max_x = win->x;
-                            state->pre_max_y = win->y;
-                            state->pre_max_w = win->width;
-                            state->pre_max_h = win->height;
-                            
-                            state->animation.start_x = win->x;
-                            state->animation.start_y = win->y;
-                            state->animation.start_w = win->width;
-                            state->animation.start_h = win->height;
-                            wm_maximize_window(win->id);
-                            
-                            /* Apply immediately for now */
-                            win->x = 8;
-                            win->y = 28 + 8;
-                            win->width = g_desktop.width - 16;
-                            win->height = g_desktop.height - 28 - 80 - 16;
-                        }
-                    }
-                    break;
-                }
-                
-                /* Focus window */
-                desktop_focus_window(win->id);
-                
-                /* PiP windows can be dragged from anywhere */
-                if (wstate && wstate->mode == WIN_MODE_PIP) {
-                    win->dragging = 1;
-                    break;
-                }
-                
-                /* Start dragging if in title bar (normal windows) */
-                if (g_desktop.mouse_y < win->y + title_height) {
-                    win->dragging = 1;
-                }
-                
-                break;
+                /* Start a move; it begins once the pointer travels 3 px */
+                win_anim_t *a = anim_of(win);
+                if (a) a->geo = 0;
+                g_ges.kind = GES_MOVE;
+                g_ges.id = win->id;
+                g_ges.edges = 0;
+                g_ges.mx0 = mx;
+                g_ges.my0 = my;
+                g_ges.x0 = win->x;
+                g_ges.y0 = win->y;
+                g_ges.w0 = win->width;
+                g_ges.h0 = win->height;
+                g_ges.moved = 0;
+                g_ges.tile = TILE_NONE;
+                win->dragging = 1;
             }
         }
     }
-    
+
     /* Handle right click - show quick menu on title bar */
     if ((buttons & 0x02) && !(prev_buttons & 0x02)) {
-        for (int i = MAX_WINDOWS - 1; i >= 0; i--) {
-            desktop_window_t *win = &g_windows[i];
-            if (win->id == 0 || !win->visible || win->minimized) continue;
-            
-            int title_height = 24;
-            
-            /* Check if clicking in title bar area */
-            if (g_desktop.mouse_x >= win->x && 
-                g_desktop.mouse_x < win->x + (int32_t)win->width &&
-                g_desktop.mouse_y >= win->y &&
-                g_desktop.mouse_y < win->y + title_height) {
-                
-                /* Show quick menu centered on title bar */
-                int menu_w = 3 * 32 + 2 * 8 + 16;
-                int menu_x = win->x + (win->width - menu_w) / 2;
-                int menu_y = win->y + title_height + 4;
-                
-                wm_show_quick_menu(win->id, menu_x, menu_y);
-                break;
-            }
+        desktop_window_t *win = window_at_point(mx, my);
+        if (win && my < win->y + WIN_TITLE_H) {
+            /* Show quick menu centered below the title bar */
+            int menu_w = 3 * 40 + 16;
+            int menu_x = win->x + ((int32_t)win->width - menu_w) / 2;
+            int menu_y = win->y + WIN_TITLE_H + 4;
+            wm_show_quick_menu(win->id, menu_x, menu_y);
         }
-    }
-    
-    /* Handle drag with tile preview */
-    if (buttons & 0x01) {
-        for (int i = 0; i < MAX_WINDOWS; i++) {
-            if (g_windows[i].dragging) {
-                g_windows[i].x += dx;
-                g_windows[i].y += dy;
-                
-                /* Check for tile snap */
-                wm_tile_pos_t tile = wm_suggest_tile(
-                    g_desktop.mouse_x, g_desktop.mouse_y,
-                    g_windows[i].x, g_windows[i].y);
-                wm_set_tile_preview(tile);
-            }
-        }
-    } else {
-        /* Release drag - apply tile if preview was active */
-        for (int i = 0; i < MAX_WINDOWS; i++) {
-            if (g_windows[i].dragging) {
-                int32_t tx, ty;
-                uint32_t tw, th;
-                if (wm_get_tile_preview(&tx, &ty, &tw, &th)) {
-                    /* Apply tile position */
-                    wm_window_state_t *state = wm_get_window_state(g_windows[i].id);
-                    if (state) {
-                        state->pre_tile_x = g_windows[i].x;
-                        state->pre_tile_y = g_windows[i].y;
-                        state->pre_tile_w = g_windows[i].width;
-                        state->pre_tile_h = g_windows[i].height;
-                    }
-                    g_windows[i].x = tx;
-                    g_windows[i].y = ty;
-                    g_windows[i].width = tw;
-                    g_windows[i].height = th;
-                }
-            }
-            g_windows[i].dragging = 0;
-        }
-        wm_clear_tile_preview();
     }
 }
 
 /* ============ NX Key Long-Press Tracking (File Scope) ============ */
 
 static uint64_t g_nx_key_press_time = 0;
-static int g_nx_key_held = 0;
+static int g_nx_key_held = 0;     /* NX down and still a tap/long-press candidate */
 static int g_nx_help_shown = 0;
+static int g_nx_down = 0;         /* NX physically held (chords use this) */
+static int g_shift_down = 0;      /* either Shift held */
 #define NX_LONGPRESS_MS 500  /* 500ms threshold */
 
 /* Called every frame to check if NX key was held long enough */
@@ -1891,12 +2626,8 @@ static void desktop_on_app_launched(const nx_event_t *event, void *userdata) {
     /* Already open: focus and restore */
     for (int i = 0; i < MAX_WINDOWS; i++) {
         if (g_windows[i].id != 0 && shell_streq_ci(g_windows[i].title, name)) {
-            if (g_windows[i].minimized) {
-                g_windows[i].minimized = 0;
-                g_windows[i].visible = 1;
-                wm_restore_window(g_windows[i].id);
-            }
-            desktop_focus_window(g_windows[i].id);
+            /* Restore (animated), switch space / Stage group, focus */
+            window_activate(&g_windows[i]);
             dock_set_running(app->app_id, 1);
             return;
         }
@@ -1932,22 +2663,17 @@ static void desktop_menu_action(int menu, int action) {
             desktop_launch_app("File Manager");
             break;
         case 4: case 5:  /* Close Window, Quit */
-            if (fw) wm_close_window_animated(fw->id);
+            if (fw) window_close(fw);
             break;
         case 15: /* Toggle Appearance */
             nxui_set_appearance(nxui_appearance() == NXUI_APPEARANCE_DARK ? NXUI_APPEARANCE_LIGHT : NXUI_APPEARANCE_DARK);
             theme_osd_show_dark_mode(nxui_appearance() == NXUI_APPEARANCE_DARK);
             break;
         case 17: /* Minimize */
-            if (fw) {
-                int32_t dcx = g_desktop.width / 2, dcy = g_desktop.height - 50;
-                wm_minimize_window(fw->id, dcx, dcy);
-                wm_add_minimized(fw->id, 0, fw->title, dcx, dcy);
-                fw->minimized = 1;
-            }
+            if (fw) window_minimize(fw);
             break;
         case 18: /* Zoom */
-            if (fw) wm_maximize_window(fw->id);
+            if (fw) window_zoom(fw);
             break;
         case 22: /* Keyboard Shortcuts */
             keyboard_osd_help_show();
@@ -1966,6 +2692,18 @@ void desktop_handle_key(uint8_t scancode, uint8_t pressed) {
     /* First-run Setup Assistant owns all input while active */
     if (setup_assistant_active()) {
         setup_assistant_handle_key(scancode, pressed, g_key_ascii);
+        return;
+    }
+    /* Modifier state for window shortcuts */
+    if (scancode == 0x2A || scancode == 0x36) g_shift_down = pressed ? 1 : 0;
+    /* Switcher: Esc cancels while it is open */
+    if (switcher_open_now() && scancode == 0x01) {
+        if (pressed) switcher_cancel();
+        return;
+    }
+    /* Overview takes the keyboard (Esc/Return exit) except NX chords */
+    if (overview_active() && !g_nx_down && scancode != 0x5B && scancode != 0x5C) {
+        overview_handle_key(scancode, pressed);
         return;
     }
     /* Open menu or active search field take the keyboard first */
@@ -1999,13 +2737,21 @@ void desktop_handle_key(uint8_t scancode, uint8_t pressed) {
     /* NX key (left: 0x5B, right: 0x5C) - quick tap for App Drawer, long-press for help */
     if (scancode == 0x5B || scancode == 0x5C) {
         if (pressed) {
-            /* Key pressed - start tracking for long-press */
-            g_nx_key_press_time = nx_gettime();
-            g_nx_key_held = 1;
-            g_nx_help_shown = 0;
+            /* Key pressed - start tracking for long-press (auto-repeat
+             * presses while held do not restart it) */
+            if (!g_nx_down) {
+                g_nx_key_press_time = nx_gettime();
+                g_nx_key_held = 1;
+                g_nx_help_shown = 0;
+            }
+            g_nx_down = 1;
         } else {
             /* Key released */
-            if (g_nx_help_shown) {
+            g_nx_down = 0;
+            if (switcher_open_now()) {
+                /* NX+Tab: releasing NX activates the selected app */
+                switcher_commit();
+            } else if (g_nx_help_shown) {
                 /* Was showing help overlay - just hide it */
                 keyboard_osd_help_hide();
                 serial_puts("[KBD] NX key released, hiding help overlay\n");
@@ -2026,39 +2772,72 @@ void desktop_handle_key(uint8_t scancode, uint8_t pressed) {
         }
     }
     
-    /* Super+Arrow: keyboard tiling shortcuts
-     * 0x4B = Left, 0x4D = Right, 0x48 = Up, 0x50 = Down */
-    if (g_nx_key_held && pressed) {
-        /* Find focused window */
-        uint32_t focused_id = 0;
+    /* NX chords: window management and multitasking (see
+     * docs/desktop/multitasking.md for the full list). A chord cancels the
+     * NX tap (App Drawer) and the long-press help. */
+    if (g_nx_down && pressed) {
+        desktop_window_t *fw = NULL;
         for (int i = 0; i < MAX_WINDOWS; i++) {
             if (g_windows[i].id != 0 && g_windows[i].visible &&
                 g_windows[i].focused && !g_windows[i].minimized) {
-                focused_id = g_windows[i].id;
+                fw = &g_windows[i];
                 break;
             }
         }
-        if (focused_id != 0) {
-            wm_window_state_t *ws = wm_get_window_state(focused_id);
-            switch (scancode) {
-                case 0x4B:  /* Left arrow */
-                    wm_apply_tile(focused_id, TILE_LEFT_HALF);
-                    return;
-                case 0x4D:  /* Right arrow */
-                    wm_apply_tile(focused_id, TILE_RIGHT_HALF);
-                    return;
-                case 0x48:  /* Up arrow — maximize */
-                    wm_maximize_window(focused_id);
-                    return;
-                case 0x50:  /* Down arrow — restore from tile/maximize */
-                    if (ws && (ws->is_tiled || ws->is_maximized)) {
-                        wm_restore_window(focused_id);
-                    }
-                    return;
+        int used = 1;
+        switch (scancode) {
+            case 0x0F:  /* Tab: app switcher (Shift+Tab goes back) */
+                if (switcher_open_now()) switcher_step(g_shift_down);
+                else {
+                    if (overview_active()) overview_toggle();   /* switching apps leaves Overview */
+                    switcher_open(g_shift_down);
+                }
+                break;
+            case 0x48:  /* Up: Overview; Shift+Up zooms the window */
+                if (g_shift_down) { if (fw) window_zoom(fw); }
+                else overview_toggle();
+                break;
+            case 0x4B:  /* Left half */
+                if (fw) window_tile(fw, TILE_LEFT_HALF);
+                break;
+            case 0x4D:  /* Right half */
+                if (fw) window_tile(fw, TILE_RIGHT_HALF);
+                break;
+            case 0x50:  /* Down: back to the window's own frame */
+                if (fw) window_untile(fw, 1);
+                break;
+            case 0x32:  /* M: minimize */
+                if (fw) window_minimize(fw);
+                break;
+            case 0x11:  /* W: close */
+                if (fw) window_close(fw);
+                break;
+            case 0x1F:  /* S: Stage */
+                stage_toggle();
+                break;
+            case 0x29: { /* `: next window of the same app */
+                if (!fw) break;
+                for (int zi = 0; zi < g_zcount; zi++) {   /* bottom-most first */
+                    desktop_window_t *o = window_by_id(g_zorder[zi]);
+                    if (!o || o == fw || o->minimized) continue;
+                    if (wm_window_space(o->id) != wm_space_current()) continue;
+                    if (!shell_streq_ci(o->title, fw->title)) continue;
+                    window_activate(o);
+                    break;
+                }
+                break;
             }
+            default:
+                used = 0;
+                break;
+        }
+        if (used) {
+            g_nx_key_held = 0;
+            g_nx_help_shown = 0;
+            return;
         }
     }
-    
+
     /* Forward to focused window */
     for (int i = 0; i < MAX_WINDOWS; i++) {
         desktop_window_t *win = &g_windows[i];
@@ -2130,6 +2909,13 @@ int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pit
     
     /* Initialize Window Manager */
     wm_init(g_desktop.width, g_desktop.height);
+    wm_snapshot_set_renderer(shell_snapshot_renderer);
+    g_zcount = 0;
+    g_ges.kind = GES_NONE;
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        g_wanim[i].geo = 0;
+        g_wanim[i].phase = WA_NONE;
+    }
     yantra_grid_init(g_desktop.width, g_desktop.height);
     nx_debug_print("[DESKTOP] WM + grid initialized, booting to clean desktop...\n");
     
