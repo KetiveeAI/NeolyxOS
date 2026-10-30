@@ -1,12 +1,16 @@
 /*
  * NeolyxOS - NXIcons: application icons
  *
- * Each icon is a continuous-curvature tile (squircle) with a vertical
- * two-tone gradient, a soft inner top highlight and a darker bottom
- * edge, carrying an original glyph drawn in the same 24-unit frame as
- * the system symbols. Icons are rendered once per integer size into
- * cached surfaces and composited from the cache; fractional sizes scale
- * the next larger cached size down with smooth filtering.
+ * App icons come from the NeolyxOS icon pack (include/nxicon_pack.h):
+ * NXIB artwork named "app-<name>" linked into the desktop image. They
+ * are rendered once per integer size into cached surfaces and composited
+ * from the cache; fractional sizes scale the next larger cached size down
+ * with smooth filtering.
+ *
+ * Fallbacks, used only when a pack entry is missing or fails validation:
+ * the pack's "app-generic" icon, then a vector tile (squircle, vertical
+ * gradient, glyph on the 24-unit symbol grid) so the shell never draws
+ * an empty slot.
  *
  * Copyright (c) 2025 KetiveeAI
  */
@@ -14,6 +18,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "../../include/nxicons.h"
+#include "../../include/nxicon_pack.h"
 #include "nxicons_internal.h"
 
 /* ============ Cache ============ */
@@ -66,12 +71,15 @@ static const app_style_t g_styles[NXAPP_COUNT] = {
     [NXAPP_TRASH]      = { C(0xB6, 0xBC, 0xC7), C(0x7C, 0x83, 0x90), C(0xFF, 0xFF, 0xFF), C(0xFF, 0xFF, 0xFF) },
     [NXAPP_LAUNCHER]   = { C(0x3A, 0x40, 0x4F), C(0x1C, 0x20, 0x2A), C(0xFF, 0xFF, 0xFF), C(0xFF, 0xFF, 0xFF) },
     [NXAPP_GENERIC]    = { C(0x8E, 0x95, 0xA3), C(0x55, 0x5C, 0x6A), C(0xFF, 0xFF, 0xFF), C(0xD8, 0xDC, 0xE4) },
+    [NXAPP_REOLAB]     = { C(0xC0, 0x97, 0xF9), C(0x66, 0x43, 0xFF), C(0xFF, 0xFF, 0xFF), C(0xEB, 0xDC, 0xFF) },
+    [NXAPP_ROLECUT]    = { C(0xFF, 0x8A, 0x8A), C(0xE0, 0x4E, 0x5A), C(0xFF, 0xFF, 0xFF), C(0xFF, 0xE0, 0x66) },
+    [NXAPP_RIVEE]      = { C(0x5E, 0xD6, 0xC8), C(0x14, 0x8C, 0x8C), C(0xFF, 0xFF, 0xFF), C(0xDA, 0xF7, 0xF2) },
 };
 
 static const char *const g_app_names[NXAPP_COUNT] = {
     "files", "browser", "terminal", "settings", "calculator", "calendar", "clock", "notes",
     "music", "photos", "mail", "messages", "fonts", "monitor", "store", "trash", "launcher",
-    "generic",
+    "generic", "reolab", "rolecut", "rivee",
 };
 
 /* ============ Glyph frame ============ */
@@ -338,7 +346,7 @@ static void glyph_generic(app_ctx_t *a, const app_style_t *st) {
 
 /* ============ Tile ============ */
 
-static nxc_status_t render_icon(nxc_canvas_t *c, nxapp_icon_t id, float x, float y, float size) {
+static nxc_status_t render_icon_vector(nxc_canvas_t *c, nxapp_icon_t id, float x, float y, float size) {
     const app_style_t *st = &g_styles[id];
     nxc_rect_t r = nxc_rect(x, y, size, size);
     float radius = size * 0.225f;
@@ -400,6 +408,23 @@ static nxc_status_t render_icon(nxc_canvas_t *c, nxapp_icon_t id, float x, float
     return nxc_stroke_path(c, &tile, &edge, NXC_ARGB(46, 0, 0, 0));
 }
 
+/* Pack artwork for an app ("app-files", ...); generic art, then the
+ * vector tile, when the pack has nothing usable for this id. */
+static nxc_status_t render_icon(nxc_canvas_t *c, nxapp_icon_t id, float x, float y, float size) {
+    char name[NXICON_PACK_NAME_MAX];
+    const char *base = g_app_names[id];
+    int n = 0;
+    const char *prefix = "app-";
+    while (prefix[n]) { name[n] = prefix[n]; n++; }
+    for (int i = 0; base[i] && n < NXICON_PACK_NAME_MAX - 1; i++) name[n++] = base[i];
+    name[n] = 0;
+    nxc_status_t s = nxicon_pack_draw(c, name, x, y, size, 255);
+    if (s != NXC_ERR_NOT_FOUND) return s;
+    s = nxicon_pack_draw(c, "app-generic", x, y, size, 255);
+    if (s != NXC_ERR_NOT_FOUND) return s;
+    return render_icon_vector(c, id, x, y, size);
+}
+
 /* Uncached draw with a global alpha. */
 static nxc_status_t render_icon_alpha(nxc_canvas_t *c, nxapp_icon_t id, float x, float y, float size,
                                       uint8_t alpha) {
@@ -423,6 +448,10 @@ nxc_status_t nxicons_init(uint32_t cache_bytes) {
     g_app.used = 0;
     g_app.tick = 0;
     g_app.ready = 1;
+    /* Validate the linked icon pack up front; a damaged entry is reported
+     * so the caller can log it, and lookups skip it (vector fallback). */
+    int rejected = 0;
+    if (nxicon_pack_init(&rejected) == 0 || rejected > 0) return NXC_ERR_UNSUPPORTED;
     return NXC_OK;
 }
 
@@ -510,6 +539,8 @@ nxapp_icon_t nxapp_icon_from_name(const char *app_name) {
     /* Case-insensitive match on the leading word (e.g. "Files", "System Settings"). */
     static const struct { const char *key; nxapp_icon_t id; } map[] = {
         { "files", NXAPP_FILES }, { "file manager", NXAPP_FILES }, { "finder", NXAPP_FILES },
+        { "path", NXAPP_FILES },
+        { "reolab", NXAPP_REOLAB }, { "rolecut", NXAPP_ROLECUT }, { "rivee", NXAPP_RIVEE },
         { "browser", NXAPP_BROWSER }, { "zepra", NXAPP_BROWSER }, { "web", NXAPP_BROWSER },
         { "terminal", NXAPP_TERMINAL }, { "console", NXAPP_TERMINAL },
         { "settings", NXAPP_SETTINGS }, { "system settings", NXAPP_SETTINGS }, { "preferences", NXAPP_SETTINGS },

@@ -12,7 +12,7 @@ sdk/
   toolchain.env          REOX_ROOT, reoxc host/system paths (shell + make)
   reox.mk                GNU make include: %.c: %.rx rule, flags, support objects
   tools/reoxc-neolyx     front-end wrapper until reoxc has --target neolyx
-  crt/rx_crt0_neolyx.c   _start for REOX apps (calls int64_t main(void))
+  crt/rx_crt0_neolyx.c   _start for REOX apps (calls int main(void))
   crt/rx_mem_neolyx.c    memset/memcpy/memmove/strdup/... for freestanding apps
   nxui/nxui.h, nxui.c    NxUI: the REOX-visible UI API over gui/nxrender_c
 ```
@@ -22,22 +22,25 @@ sdk/
 ```
 app.rx --reoxc--> app.c --gcc (freestanding)--> app.o --ld user.ld--> bin/app
                    ^                                   |
-         reox_runtime.h (REOX repo)        libnxrender_neolyx.a  (gui/nxrender_c)
-                                           librx_neolyx.a         (REOX repo, Workstream D)
+         rx_core.h (REOX repo)             libnxrender_neolyx.a  (gui/nxrender_c)
+                                           librx_neolyx.a         (REOX repo, runtime/)
                                            crt0 + mem shims + NxUI (this sdk)
                                            libc_stubs.c + nx_malloc.c (desktop/lib)
 ```
 
-1. `reoxc` turns REOX into C11.  Today the SDK calls it through
-   `tools/reoxc-neolyx`, which presents the target command line
-   (`reoxc compile --emit c --target neolyx -o out.c in.rx`) and maps it onto
-   what reoxc 1.1.x accepts.  It never edits the generated C.
+1. `reoxc compile --emit c --target neolyx -o out.c in.rx` turns REOX into
+   freestanding C11 whose only includes are `<stdint.h>`, `<stdbool.h>`,
+   `<stddef.h>` and `rx_core.h`.  The SDK reaches reoxc through
+   `tools/reoxc-neolyx`, which finds it (toolchain.env), checks its version,
+   and calls it with that command line.  A reoxc without `--target` (1.1.x
+   before the NeolyxOS target) is driven with the legacy `reoxc in.rx -o
+   out.c` spelling instead.  The wrapper never edits the generated C.
 2. The C is compiled with the same flags as every NeolyxOS userspace binary
    (`desktop/Makefile`): `-ffreestanding -fno-stack-protector -mno-red-zone`,
    no libc, and linked with `ld -nostdlib -T desktop/user.ld`.
 3. The link pulls in `gui/nxrender_c/libnxrender_neolyx.a` (nxrender built
-   freestanding, `make -C gui/nxrender_c neolyx`) and, when it exists,
-   `librx_neolyx.a` from the REOX repository.
+   freestanding, `make -C gui/nxrender_c neolyx`) and `librx_neolyx.a` from
+   the REOX repository (`make reox-runtime`, below).
 
 ## Using the SDK in an app
 
@@ -65,21 +68,32 @@ bin/app: $(APP_OBJS) $(REOX_SUPPORT_OBJS) $(REOX_LDLIBS)
 |---|---|
 | `REOXC` | compiler front end (default: `tools/reoxc-neolyx`) |
 | `REOX_CFLAGS` | freestanding flags + nxrender, NxUI, desktop and REOX runtime include paths |
-| `REOX_LDLIBS` | `librx_neolyx.a` (if present) + `libnxrender_neolyx.a` |
+| `REOX_LDLIBS` | `librx_neolyx.a` + `libnxrender_neolyx.a` |
 | `REOX_SUPPORT_OBJS` | crt0, memory shims, NxUI, `libc_stubs.o`, `nx_malloc.o`, built under `build/` |
 | `REOX_RUNTIME_LIB` | expected path of `librx_neolyx.a`; override on the command line |
 | `REOX_RUNTIME_AVAILABLE` | `1` when that archive exists, else `0` |
 | `NEOLYX_USER_LDFLAGS` | `-nostdlib -T desktop/user.ld` |
 
-`make reox-info` prints the resolved paths.
+`make reox-info` prints the resolved paths; `make reox-runtime` builds
+`librx_neolyx.a` in the REOX checkout (`make -C $REOX_ROOT/reox-lang/runtime
+neolyx NEOLYX_ROOT=<this tree>`).
 
 ### When `librx_neolyx.a` is missing
 
-Workstream D (REOX repo) produces it.  Until then `REOX_LDLIBS` omits it and
-the link succeeds only if the generated C references no runtime symbol
-(the Calculator is written that way).  Any program that uses `print`,
-string interpolation, arrays, `panel`, `try` or the math builtins fails at
-link time with the exact missing symbol.  Nothing is stubbed.
+Every REOX program needs the runtime: `string` values are reference-counted
+`rx_string`s, layers and structs with reference fields use ARC, and
+`print`, interpolation, arrays and the math builtins live there.  The SDK
+never builds it implicitly (the REOX checkout is read-only to NeolyxOS);
+the link stops with
+
+```
+reox.mk: missing <path>/librx_neolyx.a
+reox.mk: build it with 'make reox-runtime' (runs: make -C ... neolyx NEOLYX_ROOT=...)
+```
+
+In the REOX repo, `make -C reox-lang/runtime symcheck` verifies that the
+archive needs nothing outside the link contract of
+`REOXC_REQUIREMENTS.md` section 2.
 
 Point the SDK at an archive built elsewhere with
 `make REOX_RUNTIME_LIB=/path/to/librx_neolyx.a`.
@@ -88,8 +102,9 @@ Point the SDK at an archive built elsewhere with
 
 ### Entry point and hooks
 
-* `fn main() -> int` becomes `int64_t main(void)`; `crt/rx_crt0_neolyx.c`
-  provides `_start`, calls it and exits with its status.
+* `fn main() -> int` (and `fn main()`, which returns 0) becomes
+  `int main(void)`; `crt/rx_crt0_neolyx.c` provides `_start`, calls it and
+  exits with its status.
 * `pub fn rx_ui_on_action(act: int)` is called when a button whose action
   id was set with `nxui_button_set_action` is clicked.
 * `pub fn rx_ui_on_key(key: int)` receives ASCII key presses.
@@ -99,8 +114,9 @@ logged diagnostic instead of a crash.
 
 ### NxUI (`nxui/nxui.h`)
 
-reoxc 1.1.x can declare `extern fn` with `int`, `float`, `bool` and
-`string` only, so NxUI uses validated 64-bit integer handles (0 is never
+`extern fn` parameters can be `int`, `float`, `bool` and `string` (passed
+to C as `const char*`; a returned `const char*` is copied into an
+`rx_string`), but not function types yet, so NxUI uses validated 64-bit integer handles (0 is never
 valid; stale or wrong-kind handles are rejected and logged).  Declare what
 you use:
 
@@ -119,27 +135,36 @@ the same binary is linked into the desktop shell and the shell has called
 `reox_ffi_init()`, `nxui_run` only registers the window and returns.
 
 Formatting helpers (`nxui_format_number`, `nxui_format_input`,
-`nxui_concat`) exist because REOX has no string operations yet; results
-live in a ring of 8 static buffers (see the header).
+`nxui_concat`) predate REOX string operations; new code can use string
+interpolation and `+` instead.  Their results live in a ring of 8 static
+buffers (see the header) and are copied into REOX strings on return.
 
-### REOX subset that compiles today
+### What compiles for `--target neolyx` today
 
-Verified against reoxc 1.1.1 on 2026-10-25 (see `REOXC_REQUIREMENTS.md`
-for the gaps): functions, `pub fn`, `const`, global `let mut`, `struct`,
-`layer` (fields incl. `@Bind let`, methods become `Layer_method`),
-`if / else if / else`, `while`, `break`, `return`, int/float/bool/string,
-arithmetic with implicit int-to-float, `extern fn`.
+Checked on 2026-10-30 against the REOX main branch with `--target neolyx`
+and `gcc -std=c11 -ffreestanding -nostdinc` (every `tests/spec` example of
+the REOX repo passes the same check in its test suite):
 
-Avoid: `match`, `as` casts, closures and `fn` types, string `+` and
-interpolation, arrays, `print`, `panel` (emits calls to a runtime API that
-does not exist yet), `try/catch`.  The identifiers `panel`, `layer`,
-`action`, `signal`, `bind`, `state` are keywords.
+* functions, `pub fn`, `const`, globals, `struct`, `variant`, `protocol`,
+  generics, `import`;
+* `layer` with fields and methods; a method without `self` is a
+  `static fn` and is called as `Keypad.key(...)` (C name `Keypad_key`);
+* `if`, `while`, `match` (lowered to `switch`/`if`), `break`, `return`;
+* string interpolation `"v=\(v)"` and `+`, `len(s)`, arrays with
+  `push(a, x)` / `len(a)`, `print` / `println` of any scalar,
+  `sqrt` / `floor` and the other math builtins.
 
-### Reserved identifier reminder
+Not yet (see `REOXC_REQUIREMENTS.md` section 3): `as` casts, `fn(...)`
+types in parameters (so no closures into NxUI), `.len()` / `.push()` method
+syntax, and `panel` (its generated C uses an `rx_app_t` API that the runtime
+does not declare, so the C build fails).  `panel`, `layer`, `action`,
+`signal` and `bind` are keywords.
 
-`reoxc` does not fail on parse or type errors (it exits 0 and writes a
-truncated C file).  `tools/reoxc-neolyx` turns its diagnostics into a build
-failure and deletes the output, so `make` never links stale C.
+### Diagnostics
+
+reoxc exits 1 on any error diagnostic and writes no output file, so `make`
+never links stale C.  `tools/reoxc-neolyx` still deletes the output on a
+failure, which covers older reoxc builds that exited 0.
 
 ## Logging
 
@@ -155,6 +180,7 @@ returns the number of bridge errors raised during the run.
 | `%.c: %.rx` rule, flags, support objects | done |
 | `reox_ffi.c` complete (no stubs) | done |
 | Calculator.app in REOX, freestanding ELF | builds (`make -C desktop/apps/Calculator.app`) |
-| `librx_neolyx.a` | not yet produced by Workstream D; not required by the Calculator |
-| `reoxc --target neolyx` | not yet; wrapper in place, spec in `REOXC_REQUIREMENTS.md` |
+| `librx_neolyx.a` | built by `make reox-runtime` (REOX `reox-lang/runtime`, `make neolyx`); linked by every app |
+| `reoxc --target neolyx` | done in REOX; the wrapper detects it and calls reoxc natively |
+| Calculator host engine test | `make -C desktop/apps/Calculator.app test` (needs `librx_linux.a`: `make -C $REOX_ROOT/reox-lang/runtime linux`) |
 | Launch from the desktop in QEMU | blocked: the desktop shell has no process launcher yet (`desktop/shell/app_drawer.c`, `app_drawer_launch_app` is a TODO) and the boot image carries only the kernel with the desktop ELF embedded |
