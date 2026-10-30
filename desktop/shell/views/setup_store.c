@@ -14,6 +14,7 @@
 #include "setup_internal.h"
 #include "nxconfig.h"
 #include "nxsyscall.h"
+#include "nxnet.h"
 
 /* ============ Logging ============ */
 
@@ -308,41 +309,91 @@ void setup_derive_account(const char *full_name, char *out, size_t cap) {
 
 /* ============ Network seam ============ */
 
+/* Security of each listed Wi-Fi network, kept so a join uses the scanned
+ * value instead of guessing from the "secured" flag. */
+static struct { char ssid[SETUP_SSID_CAP]; nxnet_wifi_security_t sec; } g_scan_sec[SETUP_NET_MAX];
+static int g_scan_sec_n;
+
+static void setup_copy_ssid(char *dst, const char *src) {
+    size_t i = 0;
+    for (; src[i] && i + 1 < SETUP_SSID_CAP; i++) dst[i] = src[i];
+    dst[i] = 0;
+}
+
+static int setup_streq(const char *a, const char *b) {
+    while (*a && *a == *b) { a++; b++; }
+    return *a == *b;
+}
+
 int setup_network_scan(setup_net_entry_t *out, int max) {
     if (!out || max <= 0) return SETUP_ERR_INVALID;
-#ifdef NX_HOST_PREVIEW
-    /* PREVIEW DEMO DATA ONLY - not compiled into the real system. */
-    static const setup_net_entry_t demo[] = {
-        { "Ethernet",        3, 0, 1 },
-        { "Ketivee Lab 5G",  3, 1, 0 },
-        { "Ketivee Guest",   2, 0, 0 },
-        { "Pharmacy-WLAN",   1, 1, 0 },
-    };
-    int n = (int)(sizeof(demo) / sizeof(demo[0]));
-    if (n > max) n = max;
-    for (int i = 0; i < n; i++) out[i] = demo[i];
-    setup_log("[SETUP] network scan: preview demo list\n");
+    if (max > SETUP_NET_MAX) max = SETUP_NET_MAX;
+    if (nxnet_init() != NXNET_OK) {
+        setup_log("[SETUP] network scan: no network service (unsupported)\n");
+        return SETUP_ERR_UNSUPPORTED;
+    }
+    int n = 0;
+    g_scan_sec_n = 0;
+
+    /* Wired interfaces with link first */
+    static nxnet_interface_t ifs[NXNET_MAX_INTERFACES];
+    uint32_t nif = 0;
+    if (nxnet_interfaces(ifs, NXNET_MAX_INTERFACES, &nif) == NXNET_OK) {
+        for (uint32_t i = 0; i < nif && n < max; i++) {
+            if (ifs[i].kind != NXNET_IF_ETHERNET || !ifs[i].link_up) continue;
+            setup_copy_ssid(out[n].ssid, "Ethernet");
+            out[n].bars = 3; out[n].secured = 0; out[n].wired = 1;
+            n++;
+        }
+    }
+
+    /* Wi-Fi scan results (the scan itself may be asynchronous) */
+    nxnet_wifi_scan();
+    static nxnet_wifi_network_t nets[NXNET_MAX_SCAN];
+    uint32_t nnet = 0;
+    if (nxnet_wifi_scan_results(nets, NXNET_MAX_SCAN, &nnet) == NXNET_OK) {
+        for (uint32_t i = 0; i < nnet && n < max; i++) {
+            if (!nets[i].ssid[0]) continue;              /* hidden networks */
+            if (nets[i].security == NXNET_WIFI_SEC_WEP) continue;   /* refused as insecure */
+            int r = nets[i].rssi_dbm;
+            setup_copy_ssid(out[n].ssid, nets[i].ssid);
+            out[n].bars = (uint8_t)(r >= -55 ? 3 : r >= -67 ? 2 : r >= -80 ? 1 : 0);
+            out[n].secured = nets[i].security != NXNET_WIFI_SEC_OPEN;
+            out[n].wired = 0;
+            setup_copy_ssid(g_scan_sec[g_scan_sec_n].ssid, nets[i].ssid);
+            g_scan_sec[g_scan_sec_n].sec = nets[i].security;
+            g_scan_sec_n++;
+            n++;
+        }
+    }
+    setup_log("[SETUP] network scan complete\n");
     return n;
-#else
-    /* LEAD: wire to nxnet.h (Networking area). Until then: honest state. */
-    setup_log("[SETUP] network scan: no network service (unsupported)\n");
-    return SETUP_ERR_UNSUPPORTED;
-#endif
 }
 
 int setup_network_join(const char *ssid, const char *password, size_t password_len) {
     if (!ssid || !ssid[0]) return SETUP_ERR_INVALID;
     if (password_len > 0 && !password) return SETUP_ERR_INVALID;
-#ifdef NX_HOST_PREVIEW
-    /* PREVIEW DEMO ONLY: pretend the join worked. Password not used. */
-    (void)password;
-    setup_log("[SETUP] network join: preview demo success\n");
-    return SETUP_OK;
-#else
-    (void)password;
-    setup_log("[SETUP] network join: no network service (unsupported)\n");
-    return SETUP_ERR_UNSUPPORTED;
-#endif
+    if (setup_streq(ssid, "Ethernet")) return SETUP_OK;   /* wired: nothing to join */
+    int found = -1;
+    for (int i = 0; i < g_scan_sec_n; i++) {
+        if (setup_streq(g_scan_sec[i].ssid, ssid)) { found = i; break; }
+    }
+    if (found < 0) {
+        setup_log("[SETUP] network join: network not in last scan\n");
+        return SETUP_ERR_INVALID;
+    }
+    nxnet_wifi_security_t sec = g_scan_sec[found].sec;
+    nxnet_status_t st = nxnet_wifi_join(ssid, sec == NXNET_WIFI_SEC_OPEN ? NULL : password, sec);
+    if (st == NXNET_OK) {
+        setup_log("[SETUP] network join: joined\n");
+        return SETUP_OK;
+    }
+    if (st == NXNET_ERR_UNSUPPORTED) {
+        setup_log("[SETUP] network join: no network service (unsupported)\n");
+        return SETUP_ERR_UNSUPPORTED;
+    }
+    setup_log("[SETUP] network join: failed\n");
+    return SETUP_ERR_INVALID;
 }
 
 /* ============ Accounts seam ============ */
