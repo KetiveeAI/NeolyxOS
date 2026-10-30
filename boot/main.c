@@ -395,12 +395,40 @@ static EFI_STATUS load_kernel(UINT64 *entry_point, UINTN *kernel_size_out) {
     
     update_progress(L"Allocating kernel memory...", 45);
     
+    /*
+     * Reserve the raw-kernel load window at 1 MB BEFORE the large file
+     * buffer is allocated. Otherwise the firmware may place that buffer
+     * inside [1 MB, 1 MB + kernel_size) and the later AllocateAddress at
+     * 1 MB fails ("Failed to allocate memory at 1MB") once the kernel is
+     * larger than a few MB. Prefer the whole window up to the 16 MB user
+     * region so the kernel's .bss (not part of the file) is also kept free
+     * of boot-services allocations such as the memory map; fall back to
+     * the file size alone.
+     */
+    EFI_PHYSICAL_ADDRESS raw_addr = 0x100000;
+    UINTN raw_pages = (0x1000000 - 0x100000) / 4096;
+    BOOLEAN raw_reserved = FALSE;
+    if (kernel_size <= raw_pages * 4096) {
+        status = uefi_call_wrapper(gNeoBS->AllocatePages, 4,
+            AllocateAddress, EfiLoaderData, raw_pages, &raw_addr);
+        if (!EFI_ERROR(status)) raw_reserved = TRUE;
+    }
+    if (!raw_reserved) {
+        raw_addr = 0x100000;
+        raw_pages = (kernel_size + 4095) / 4096;
+        status = uefi_call_wrapper(gNeoBS->AllocatePages, 4,
+            AllocateAddress, EfiLoaderData, raw_pages, &raw_addr);
+        if (!EFI_ERROR(status)) raw_reserved = TRUE;
+    }
+    if (!raw_reserved) Print(L"    Note: 1MB window busy; trying after read\n");
+    
     /* Allocate kernel buffer */
     VOID *kernel_buffer;
     status = uefi_call_wrapper(gNeoBS->AllocatePool, 3,
         EfiLoaderData, kernel_size, &kernel_buffer);
     if (EFI_ERROR(status)) {
         show_error(L"Failed to allocate kernel memory");
+        if (raw_reserved) uefi_call_wrapper(gNeoBS->FreePages, 2, raw_addr, raw_pages);
         uefi_call_wrapper(kernel_file->Close, 1, kernel_file);
         uefi_call_wrapper(root->Close, 1, root);
         return status;
@@ -419,6 +447,7 @@ static EFI_STATUS load_kernel(UINT64 *entry_point, UINTN *kernel_size_out) {
     if (EFI_ERROR(status) || read_size != kernel_size) {
         show_error(L"Failed to read kernel file");
         uefi_call_wrapper(gNeoBS->FreePool, 1, kernel_buffer);
+        if (raw_reserved) uefi_call_wrapper(gNeoBS->FreePages, 2, raw_addr, raw_pages);
         return EFI_DEVICE_ERROR;
     }
     
@@ -428,7 +457,11 @@ static EFI_STATUS load_kernel(UINT64 *entry_point, UINTN *kernel_size_out) {
     UINT32 *magic = (UINT32*)kernel_buffer;
     
     if (*magic == ELF_MAGIC) {
-        /* ELF kernel */
+        /* ELF kernel: segments are placed by their headers instead */
+        if (raw_reserved) {
+            uefi_call_wrapper(gNeoBS->FreePages, 2, raw_addr, raw_pages);
+            raw_reserved = FALSE;
+        }
         Elf64_Ehdr *elf;
         status = validate_elf(kernel_buffer, kernel_size, &elf);
         if (EFI_ERROR(status)) {
@@ -456,8 +489,11 @@ static EFI_STATUS load_kernel(UINT64 *entry_point, UINTN *kernel_size_out) {
         EFI_PHYSICAL_ADDRESS load_addr = 0x100000;
         UINTN pages = (kernel_size + 4095) / 4096;
         
-        status = uefi_call_wrapper(gNeoBS->AllocatePages, 4,
-            AllocateAddress, EfiLoaderData, pages, &load_addr);
+        status = EFI_SUCCESS;
+        if (!raw_reserved) {
+            status = uefi_call_wrapper(gNeoBS->AllocatePages, 4,
+                AllocateAddress, EfiLoaderData, pages, &load_addr);
+        }
         if (EFI_ERROR(status)) {
             show_error(L"Failed to allocate memory at 1MB");
             uefi_call_wrapper(gNeoBS->FreePool, 1, kernel_buffer);

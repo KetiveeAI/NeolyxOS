@@ -511,7 +511,7 @@ fs_init.o: src/fs/fs_init.c include/fs/fs_init.h include/fs/vfs.h
 	$(CC) $(CFLAGS) -c src/fs/fs_init.c -o fs_init.o
 
 # Filesystem - RAM Filesystem
-ramfs.o: src/fs/ramfs.c include/fs/ramfs.h
+ramfs.o: src/fs/ramfs.c include/fs/ramfs.h src/fs/ramfs_binaries.h src/fs/desktop_elf_data.h
 	$(CC) $(CFLAGS) -c src/fs/ramfs.c -o ramfs.o
 
 # Filesystem - NPA Archive
