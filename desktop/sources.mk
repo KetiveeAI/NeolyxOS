@@ -53,7 +53,14 @@ AREA_SHARED_SRC   = shell/app_views.c
 
 AREA_GLASS_SRC    = lib/nxglass.c
 
-AREA_SETTINGS_SRC = shell/views/settings_view.c
+AREA_SETTINGS_SRC = shell/views/settings_view.c \
+                    shell/views/settings_ui.c \
+                    shell/views/settings_prefs.c \
+                    shell/views/settings_dock_adapter.c \
+                    shell/views/settings_sysinfo.c \
+                    shell/views/settings_panes_system.c \
+                    shell/views/settings_panes_look.c \
+                    shell/views/settings_panes_input.c
 
 AREA_FONTS_SRC    = shell/views/fonts_view.c
 
