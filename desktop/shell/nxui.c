@@ -314,7 +314,7 @@ nxc_status_t nxui_elevation(nxc_canvas_t *c, nxc_rect_t r, float radius, int32_t
  * offset + spread, rounded up), matching nxui_elevation. */
 static int32_t panel_margin(int32_t level) {
     switch (level) {
-        case 0: return 0;
+        case 0: return 2;              /* room for the 1px outer edge of glass */
         case 1: return 8;
         case 2: return 66;
         case 3: return 58;
@@ -330,6 +330,10 @@ typedef struct {
     nxc_material_t mat;
     int32_t        elevation;
     nxui_appearance_t appearance;
+    nxui_panel_decor_fn decor;        /* optional overlay baked into the slot */
+    uint32_t       decor_key;
+    nxc_irect_t    solid;             /* opaque interior in slot coords (w 0 = none) */
+    nxc_irect_t    vis;               /* bounds of visible pixels (alpha > 1) in slot coords */
     nxc_surface_t  surf;              /* transparent, at least sw x sh */
     int32_t        cap_w, cap_h;      /* allocated size */
     uint32_t       last_use;
@@ -337,6 +341,7 @@ typedef struct {
 
 static nxui_panel_slot_t g_panels[NXUI_PANEL_CACHE_SLOTS];
 static uint32_t g_panel_tick;
+static uint32_t g_panel_hits, g_panel_misses;
 
 static int material_eq(const nxc_material_t *a, const nxc_material_t *b) {
     return a->blur_sigma == b->blur_sigma && a->saturation == b->saturation &&
@@ -363,12 +368,126 @@ static nxc_status_t panel_render(nxui_panel_slot_t *sl) {
     st = nxc_surface_wrap(&src, wb->pixels + (int64_t)sl->oy * wb->stride + sl->ox, sl->sw, sl->sh,
                           wb->stride, NXC_SURFACE_OPAQUE);
     if (st != NXC_OK) return st;
-    return nxc_draw_backdrop(&c, r, sl->radius, &src, &sl->mat);
+    st = nxc_draw_backdrop(&c, r, sl->radius, &src, &sl->mat);
+    if (st != NXC_OK || !sl->decor) return st;
+    /* Decoration (rim light, sheen, inner glow) is drawn with the slot
+     * view's origin, so it lands exactly where the uncached path puts it. */
+    return sl->decor(&c, r, sl->radius, sl->decor_key);
+}
+
+/* Analyze a freshly rendered slot once:
+ *  - vis: bounds of pixels with alpha > 1 (the far shadow tail below
+ *    1/255 contributes nothing visible), so blits skip empty margin;
+ *  - solid: the interior inset past the corner radius, verified fully
+ *    opaque pixel by pixel, which the blit copies instead of blending. */
+static void panel_find_solid(nxui_panel_slot_t *sl) {
+    int32_t vx0 = sl->sw, vy0 = sl->sh, vx1 = 0, vy1 = 0;
+    for (int32_t y = 0; y < sl->sh; y++) {
+        const uint32_t *row = sl->surf.pixels + (int64_t)y * sl->surf.stride;
+        int32_t a = -1, b = -1;
+        for (int32_t x = 0; x < sl->sw; x++) {
+            if ((row[x] >> 24) > 1u) { if (a < 0) a = x; b = x; }
+        }
+        if (a < 0) continue;
+        if (a < vx0) vx0 = a;
+        if (b + 1 > vx1) vx1 = b + 1;
+        if (y < vy0) vy0 = y;
+        vy1 = y + 1;
+    }
+    sl->vis = (vx1 > vx0 && vy1 > vy0) ? nxc_irect(vx0, vy0, vx1 - vx0, vy1 - vy0) : nxc_irect(0, 0, 0, 0);
+
+    sl->solid = nxc_irect(0, 0, 0, 0);
+    int32_t inset = (int32_t)(sl->radius + 0.999f) + 1;
+    int32_t x0 = sl->x - sl->ox + 1, x1 = sl->x - sl->ox + sl->w - 1;
+    int32_t y0 = sl->y - sl->oy + inset, y1 = sl->y - sl->oy + sl->h - inset;
+    if (x1 - x0 < 16 || y1 - y0 < 4) return;
+    for (int32_t y = y0; y < y1; y++) {
+        const uint32_t *row = sl->surf.pixels + (int64_t)y * sl->surf.stride;
+        for (int32_t x = x0; x < x1; x++) {
+            if ((row[x] >> 24) != 0xFFu) return;      /* not opaque: blend everything */
+        }
+    }
+    sl->solid = nxc_irect(x0, y0, x1 - x0, y1 - y0);
+}
+
+static void panel_blit_part(nxc_canvas_t *c, const nxui_panel_slot_t *sl, int32_t sx, int32_t sy,
+                            int32_t w, int32_t h) {
+    /* Restrict to the visible bounds. */
+    int32_t x0 = sx > sl->vis.x ? sx : sl->vis.x;
+    int32_t y0 = sy > sl->vis.y ? sy : sl->vis.y;
+    int32_t x1 = sx + w < sl->vis.x + sl->vis.w ? sx + w : sl->vis.x + sl->vis.w;
+    int32_t y1 = sy + h < sl->vis.y + sl->vis.h ? sy + h : sl->vis.y + sl->vis.h;
+    if (x1 <= x0 || y1 <= y0) return;
+    nxc_draw_surface(c, &sl->surf, nxc_irect(x0, y0, x1 - x0, y1 - y0),
+                     nxc_rect((float)(sl->ox + x0), (float)(sl->oy + y0), (float)(x1 - x0), (float)(y1 - y0)),
+                     255, NXC_FILTER_NEAREST);
+}
+
+/* Blit a cached panel. With full opacity, an integer translation and no
+ * rounded clip, the opaque interior is copied row by row (respecting the
+ * rect clip) and only the rim, corners and shadow are blended. */
+static nxc_status_t panel_blit(nxc_canvas_t *c, const nxui_panel_slot_t *sl) {
+    const nxc_irect_t in = sl->solid;
+    float tx = c->st.tx, ty = c->st.ty;
+    int fast = in.w > 0 && c->st.alpha == 255 && c->st.rclip_radius == 0.0f && c->target &&
+               c->target->pixels && tx == (float)(int32_t)tx && ty == (float)(int32_t)ty &&
+               tx > -16384.0f && tx < 16384.0f && ty > -16384.0f && ty < 16384.0f;
+    if (!fast) {
+        if (sl->vis.w <= 0) return NXC_OK;
+        return nxc_draw_surface(c, &sl->surf, sl->vis,
+                                nxc_rect((float)(sl->ox + sl->vis.x), (float)(sl->oy + sl->vis.y),
+                                         (float)sl->vis.w, (float)sl->vis.h),
+                                255, NXC_FILTER_NEAREST);
+    }
+    /* Blended parts: above, below, left of and right of the interior. */
+    panel_blit_part(c, sl, 0, 0, sl->sw, in.y);
+    panel_blit_part(c, sl, 0, in.y + in.h, sl->sw, sl->sh - (in.y + in.h));
+    panel_blit_part(c, sl, 0, in.y, in.x, in.h);
+    panel_blit_part(c, sl, in.x + in.w, in.y, sl->sw - (in.x + in.w), in.h);
+    /* Copied part, clipped to the canvas clip in device space. */
+    int32_t dx0 = sl->ox + in.x + (int32_t)tx, dy0 = sl->oy + in.y + (int32_t)ty;
+    nxc_irect_t cl = c->st.clip;
+    int32_t ax0 = dx0 > cl.x ? dx0 : cl.x;
+    int32_t ay0 = dy0 > cl.y ? dy0 : cl.y;
+    int32_t ax1 = dx0 + in.w < cl.x + cl.w ? dx0 + in.w : cl.x + cl.w;
+    int32_t ay1 = dy0 + in.h < cl.y + cl.h ? dy0 + in.h : cl.y + cl.h;
+    if (ax0 < 0) ax0 = 0;
+    if (ay0 < 0) ay0 = 0;
+    if (ax1 > c->target->width) ax1 = c->target->width;
+    if (ay1 > c->target->height) ay1 = c->target->height;
+    for (int32_t y = ay0; y < ay1; y++) {
+        const uint32_t *src = sl->surf.pixels + (int64_t)(y - dy0 + in.y) * sl->surf.stride + (ax0 - dx0 + in.x);
+        uint32_t *dst = c->target->pixels + (int64_t)y * c->target->stride + ax0;
+        for (int32_t x = 0; x < ax1 - ax0; x++) dst[x] = src[x];
+    }
+    return NXC_OK;
+}
+
+/* Uncached fallback: shadow, material, then the decoration in place. */
+static nxc_status_t panel_draw_direct(nxc_canvas_t *c, nxc_rect_t r, float radius,
+                                      const nxc_material_t *m, int32_t elevation,
+                                      nxui_panel_decor_fn decor, uint32_t decor_key) {
+    nxc_status_t st = nxui_elevation(c, r, radius, elevation);
+    if (st != NXC_OK) return st;
+    st = nxui_material(c, r, radius, m);
+    if (st != NXC_OK || !decor) return st;
+    return decor(c, r, radius, decor_key);
 }
 
 nxc_status_t nxui_panel(nxc_canvas_t *c, nxc_rect_t r, float radius, const nxc_material_t *m,
                         int32_t elevation) {
+    return nxui_panel_ex(c, r, radius, m, elevation, 0, 0);
+}
+
+void nxui_panel_stats(uint32_t *hits, uint32_t *misses) {
+    if (hits) *hits = g_panel_hits;
+    if (misses) *misses = g_panel_misses;
+}
+
+nxc_status_t nxui_panel_ex(nxc_canvas_t *c, nxc_rect_t r, float radius, const nxc_material_t *m,
+                           int32_t elevation, nxui_panel_decor_fn decor, uint32_t decor_key) {
     if (!c || !m || !g_ui.ready) return NXC_ERR_INVALID_ARG;
+    if (!(radius >= 0.0f) || radius > 4096.0f) return NXC_ERR_INVALID_ARG;
     if (!(r.w > 0.0f) || !(r.h > 0.0f) || r.w > 8192.0f || r.h > 8192.0f) return NXC_ERR_INVALID_ARG;
     int32_t x = (int32_t)(r.x + 0.5f), y = (int32_t)(r.y + 0.5f);
     int32_t w = (int32_t)(r.w + 0.5f), h = (int32_t)(r.h + 0.5f);
@@ -378,8 +497,8 @@ nxc_status_t nxui_panel(nxc_canvas_t *c, nxc_rect_t r, float radius, const nxc_m
     const nxc_surface_t *wb = nxui_wallpaper_blurred();
     nxc_rect_t ir = nxc_rect((float)x, (float)y, (float)w, (float)h);
     if (!wb || x < 0 || y < 0 || x + w > wb->width || y + h > wb->height) {
-        nxui_elevation(c, ir, radius, elevation);          /* partly off screen: uncached */
-        return nxui_material(c, ir, radius, m);
+        /* partly off screen: uncached */
+        return panel_draw_direct(c, ir, radius, m, elevation, decor, decor_key);
     }
     int32_t margin = panel_margin(elevation);
     int32_t ox = x - margin < 0 ? 0 : x - margin;
@@ -393,7 +512,8 @@ nxc_status_t nxui_panel(nxc_canvas_t *c, nxc_rect_t r, float radius, const nxc_m
     for (int32_t i = 0; i < NXUI_PANEL_CACHE_SLOTS; i++) {
         nxui_panel_slot_t *sl = &g_panels[i];
         if (sl->used && sl->x == x && sl->y == y && sl->w == w && sl->h == h && sl->radius == radius &&
-            sl->elevation == elevation && sl->appearance == g_ui.appearance && material_eq(&sl->mat, m)) {
+            sl->elevation == elevation && sl->appearance == g_ui.appearance && material_eq(&sl->mat, m) &&
+            sl->decor == decor && sl->decor_key == decor_key) {
             hit = sl;
             break;
         }
@@ -409,8 +529,8 @@ nxc_status_t nxui_panel(nxc_canvas_t *c, nxc_rect_t r, float radius, const nxc_m
             if (ch < sl->cap_h) ch = sl->cap_h;
             nxc_surface_t ns;
             if (nxc_surface_create(&ns, cw, ch, 0) != NXC_OK) {
-                nxui_elevation(c, ir, radius, elevation);
-                return nxui_material(c, ir, radius, m);
+                ui_log("[NXUI] panel cache: slot allocation failed, drawing uncached\n");
+                return panel_draw_direct(c, ir, radius, m, elevation, decor, decor_key);
             }
             sl->surf = ns;
             sl->cap_w = cw; sl->cap_h = ch;
@@ -420,14 +540,17 @@ nxc_status_t nxui_panel(nxc_canvas_t *c, nxc_rect_t r, float radius, const nxc_m
         sl->ox = ox; sl->oy = oy; sl->sw = sw; sl->sh = sh;
         sl->radius = radius; sl->mat = *m;
         sl->elevation = elevation; sl->appearance = g_ui.appearance;
+        sl->decor = decor; sl->decor_key = decor_key;
+        g_panel_misses++;
         nxc_status_t st = panel_render(sl);
         if (st != NXC_OK) { sl->used = 0; return st; }
+        panel_find_solid(sl);
         hit = sl;
+    } else {
+        g_panel_hits++;
     }
     hit->last_use = g_panel_tick;
-    return nxc_draw_surface(c, &hit->surf, nxc_irect(0, 0, hit->sw, hit->sh),
-                            nxc_rect((float)hit->ox, (float)hit->oy, (float)hit->sw, (float)hit->sh),
-                            255, NXC_FILTER_NEAREST);
+    return panel_blit(c, hit);
 }
 
 const nxc_surface_t *nxui_wallpaper(void) { return g_ui.wallpaper.pixels ? &g_ui.wallpaper : 0; }

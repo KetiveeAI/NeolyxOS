@@ -191,9 +191,27 @@ nxc_status_t nxui_elevation(nxc_canvas_t *c, nxc_rect_t r, float radius, int32_t
  * menu bar, widgets, dock, popovers and sheets; use nxui_material() for
  * panels that animate every frame.
  */
-#define NXUI_PANEL_CACHE_SLOTS 12
+#define NXUI_PANEL_CACHE_SLOTS 16
 nxc_status_t nxui_panel(nxc_canvas_t *c, nxc_rect_t r, float radius,
                         const nxc_material_t *m, int32_t elevation);
+
+/*
+ * Optional decoration baked into a cached panel: called once when the
+ * slot is (re)rendered, after the shadow and material, with r in the
+ * slot canvas' coordinates. It must draw only inside r (plus at most the
+ * shadow margin), depend only on (r, radius, key) and the current
+ * appearance, and balance nxc_save/nxc_restore. The (decor, key) pair is
+ * part of the cache key. NXGlass uses this for rim light, sheen and
+ * inner glow so static glass costs one blit per frame.
+ */
+typedef nxc_status_t (*nxui_panel_decor_fn)(nxc_canvas_t *c, nxc_rect_t r, float radius,
+                                            uint32_t key);
+nxc_status_t nxui_panel_ex(nxc_canvas_t *c, nxc_rect_t r, float radius,
+                           const nxc_material_t *m, int32_t elevation,
+                           nxui_panel_decor_fn decor, uint32_t decor_key);
+
+/* Panel cache counters since boot (for frame-cost measurements). */
+void nxui_panel_stats(uint32_t *hits, uint32_t *misses);
 
 /* The wallpaper and its pre-blurred copy (same size as the screen). */
 const nxc_surface_t *nxui_wallpaper(void);

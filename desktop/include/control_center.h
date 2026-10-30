@@ -90,7 +90,7 @@ typedef struct {
 /* ============ Panel Dimensions ============ */
 
 #define CC_WIDTH            340
-#define CC_HEIGHT           520
+#define CC_HEIGHT           500
 #define CC_MARGIN           20
 #define CC_SECTION_GAP      12
 #define CC_CORNER_R         16
