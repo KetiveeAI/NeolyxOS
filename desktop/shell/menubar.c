@@ -13,6 +13,13 @@
 #include <stddef.h>
 #include "../include/menubar.h"
 #include "../include/nxui.h"
+#include "../include/nxglass.h"
+#include "../include/desktop_shell.h"
+#include "../include/control_center.h"
+#include "../include/notification_center.h"
+#include "../include/network_indicator.h"
+
+extern void serial_puts(const char *s);
 
 /* ============ Menu definitions ============ */
 
@@ -272,5 +279,132 @@ int menubar_handle_key(uint8_t scancode, uint8_t pressed) {
             return 1;
         default:
             return 1;                                                    /* swallow while open */
+    }
+}
+
+/* ============ The whole bar (background, app name, status area) ============ */
+
+/* Power status for the battery item: -1 = no battery / unknown (hidden).
+ * There is no battery syscall yet; the shell or a power service reports it. */
+#ifdef NX_HOST_PREVIEW
+/* PREVIEW ONLY: demo battery so the host preview shows the item. */
+static int g_power_pct = 82;
+#else
+static int g_power_pct = -1;
+#endif
+static int g_power_charging = 0;
+
+int menubar_set_power_status(int percent, int charging) {
+    if (percent < -1 || percent > 100 || (charging != 0 && charging != 1)) {
+        serial_puts("[MENUBAR] rejected power status\n");
+        return -1;
+    }
+    if (percent != g_power_pct || charging != g_power_charging) {
+        g_power_pct = percent;
+        g_power_charging = charging;
+        serial_puts("[MENUBAR] power status updated\n");
+    }
+    return 0;
+}
+
+/* Focused app name, cached with its width (re-measured only on change). */
+static char  g_app_name[WINDOW_TITLE_MAX];
+static float g_app_name_w;
+static uint32_t g_app_name_win;
+
+static void str_copy(char *dst, const char *src, int cap) {
+    int i = 0;
+    while (src && src[i] && i < cap - 1) { dst[i] = src[i]; i++; }
+    dst[i] = '\0';
+}
+
+static int str_eq(const char *a, const char *b) {
+    while (*a && *a == *b) { a++; b++; }
+    return *a == *b;
+}
+
+static void refresh_app_name(void) {
+    uint32_t id = desktop_focused_window_id();
+    const char *name = "NeolyxOS";
+    if (id) {
+        for (int i = 0; i < MAX_WINDOWS; i++) {
+            const desktop_window_t *w = desktop_window_slot(i);
+            if (w && w->id == id) {
+                if (w->title[0] && !w->minimized) name = w->title;   /* a minimized window has no focus */
+                else id = 0;
+                break;
+            }
+        }
+    }
+    if (id == g_app_name_win && g_app_name[0] && str_eq(name, g_app_name)) return;
+    g_app_name_win = id;
+    str_copy(g_app_name, name, (int)sizeof(g_app_name));
+    g_app_name_w = nxui_text_width(NXUI_TEXT_MENU_BOLD, g_app_name);
+    if (g_app_name_w > 220.0f) g_app_name_w = 220.0f;
+}
+
+/* Pressed-state pill behind a status item that has its panel open. */
+static void status_pill(nxc_canvas_t *c, float cx, float h, float w) {
+    nxc_fill_rrect(c, nxc_rect(cx - w * 0.5f, 3.0f, w, h - 6.0f), 6.0f, nxui_theme()->control_fill_pressed);
+}
+
+void menubar_render_bar(nxc_canvas_t *c, float w, float h, const char *clock_text) {
+    if (!c || !(w > 0.0f) || !(h > 0.0f)) return;
+    if (!g_mb.initialized) menubar_init();
+    const nxui_theme_t *th = nxui_theme();
+    nxc_rect_t bar = nxc_rect(0.0f, 0.0f, w, h);
+    nxglass_panel(c, bar, 0.0f, NXGLASS_CHROME, 0, 0);
+    nxc_fill_rect(c, nxc_rect(0.0f, h - 1.0f, w, 1.0f), th->separator);
+
+    /* Left: focused app (bold), then the menus */
+    refresh_app_name();
+    float x = 14.0f;
+    nxui_text_in_rect(c, NXUI_TEXT_MENU_BOLD, nxc_rect(x, 0.0f, g_app_name_w + 2.0f, h), g_app_name,
+                      th->text_primary, NXC_ALIGN_LEFT);
+    x += g_app_name_w + 22.0f;
+    menubar_render_titles(c, x, h);
+
+    /* Right: Control Center and notifications at their fixed slots */
+    float cy = h * 0.5f;
+    nxc_color_t ic = th->text_primary;
+    if (control_center_is_visible()) status_pill(c, w - MENUBAR_CC_CENTER, h, 28.0f);
+    nxsym_draw(c, NXSYM_CONTROL_CENTER, w - MENUBAR_CC_CENTER, cy, 16.0f, ic, 0.0f);
+    if (notification_center_is_visible()) status_pill(c, w - MENUBAR_NC_CENTER, h, 28.0f);
+    nxsym_draw(c, NXSYM_BELL, w - MENUBAR_NC_CENTER, cy, 16.0f, ic, 0.0f);
+
+    /* Clock, right-aligned before the bell */
+    float right = w - MENUBAR_NC_CENTER - 20.0f;
+    if (clock_text && clock_text[0]) {
+        float cw = nxui_text_width(NXUI_TEXT_MENU, clock_text);
+        nxui_text_in_rect(c, NXUI_TEXT_MENU, nxc_rect(right - cw - 2.0f, 0.0f, cw + 2.0f, h), clock_text,
+                          ic, NXC_ALIGN_RIGHT);
+        right -= cw + 18.0f;
+    }
+
+    /* Wi-Fi / Ethernet */
+    const control_center_state_t *cc = control_center_get_state();
+    nxsym_t net = NXSYM_WIFI_OFF;
+    float net_v = 0.0f;
+    if (cc && cc->wifi.enabled) {
+        net = NXSYM_WIFI;
+        net_v = g_network_indicator.state == NET_STATE_WIFI_WEAK ? 0.5f : 1.0f;
+    } else if (g_network_indicator.state == NET_STATE_ETHERNET || (cc && cc->ethernet.enabled)) {
+        net = NXSYM_ETHERNET;    /* wired link (Wi-Fi off or unavailable) */
+    }
+    nxsym_draw(c, net, right - 8.0f, cy, 16.0f, net == NXSYM_WIFI_OFF ? th->text_secondary : ic, net_v);
+    right -= 28.0f;
+
+    /* Volume */
+    int vol = cc ? cc->volume : -1;
+    if (vol >= 0 && vol <= 100) {
+        nxsym_draw(c, vol == 0 ? NXSYM_VOLUME_MUTE : NXSYM_VOLUME, right - 8.0f, cy, 16.0f, ic,
+                   (float)vol / 100.0f);
+        right -= 30.0f;
+    }
+
+    /* Battery (only when one is reported) */
+    if (g_power_pct >= 0) {
+        nxsym_draw(c, g_power_charging ? NXSYM_BATTERY_CHARGING : NXSYM_BATTERY, right - 9.0f, cy, 18.0f,
+                   g_power_pct <= 10 && !g_power_charging ? th->destructive : ic, (float)g_power_pct / 100.0f);
     }
 }

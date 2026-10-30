@@ -59,7 +59,7 @@ AREA_FONTS_SRC    = shell/views/fonts_view.c
 
 AREA_SETUP_SRC    = shell/views/setup_assistant.c
 
-AREA_DOCK_SRC     =
+AREA_DOCK_SRC     = shell/dock_menu.c shell/taskbar_bar.c
 
 AREA_NET_SRC      = shell/views/settings_network_pane.c
 
