@@ -749,37 +749,7 @@ static void current_time(uint32_t *hour, uint32_t *minute, uint32_t *second,
 static void render_navigation_bar(void) {
     nxc_canvas_t *c = nxui_canvas();
     const nxui_theme_t *th = nxui_theme();
-    float w = (float)g_desktop.width, h = th->menubar_height;
-    nxc_rect_t bar = nxc_rect(0, 0, w, h);
-
-    nxui_panel(c, bar, 0.0f, &th->mat_menubar, 0);
-    nxc_fill_rect(c, nxc_rect(0, h - 1.0f, w, 1.0f), th->separator);
-
-    /* Left: app name and menus */
-    float x = 14.0f;
-    nxc_rect_t slot = nxc_rect(x, 0, 200, h);
-    nxui_text_in_rect(c, NXUI_TEXT_MENU_BOLD, slot, "NeolyxOS", th->text_primary, NXC_ALIGN_LEFT);
-    x += nxui_text_width(NXUI_TEXT_MENU_BOLD, "NeolyxOS") + 22.0f;
-    x = menubar_render_titles(c, x, h);
-
-    /* Right: status symbols */
-    float cy = h * 0.5f;
-    nxc_color_t ic = th->text_primary;
-    if (control_center_is_visible()) {
-        nxc_fill_rrect(c, nxc_rect(w - NAV_CC_CX - 13.0f, 3.0f, 26.0f, h - 6.0f), 6.0f, th->control_fill_pressed);
-    }
-    nxsym_draw(c, NXSYM_CONTROL_CENTER, w - NAV_CC_CX, cy, 16.0f, ic, 0.0f);
-    if (notification_center_is_visible()) {
-        nxc_fill_rrect(c, nxc_rect(w - NAV_BELL_CX - 13.0f, 3.0f, 26.0f, h - 6.0f), 6.0f, th->control_fill_pressed);
-    }
-    nxsym_draw(c, NXSYM_BELL, w - NAV_BELL_CX, cy, 16.0f, ic, 0.0f);
-    float sx = w - NAV_BELL_CX - NAV_ITEM_STEP;
-    nxsym_draw(c, NXSYM_BATTERY, sx, cy, 17.0f, ic, 0.82f);      sx -= NAV_ITEM_STEP;
-    nxsym_draw(c, NXSYM_VOLUME, sx, cy, 16.0f, ic, 0.6f);        sx -= NAV_ITEM_STEP - 2.0f;
-    nxsym_draw(c, NXSYM_WIFI, sx, cy, 16.0f, ic, 1.0f);          sx -= NAV_ITEM_STEP - 4.0f;
-    nxsym_draw(c, NXSYM_BLUETOOTH, sx, cy, 15.0f, ic, 0.0f);     sx -= 14.0f;
-
-    /* Clock: "Sun 25 Oct  22:10" right-aligned before the symbols */
+    /* Clock: "Sun 25 Oct   22:10"; the menu bar module draws everything else */
     uint32_t hh, mm, ss, dd, mo, yy, wd;
     current_time(&hh, &mm, &ss, &dd, &mo, &yy, &wd);
     char line[48], hm[8];
@@ -796,8 +766,7 @@ static void render_navigation_bar(void) {
     fmt_hhmm(hm, hh, mm);
     pos = str_app(line, pos, sizeof(line), hm);
     (void)pos;
-    nxui_text_in_rect(c, NXUI_TEXT_MENU, nxc_rect(sx - 220.0f, 0, 220.0f, h), line, th->text_primary,
-                      NXC_ALIGN_RIGHT);
+    menubar_render_bar(c, (float)g_desktop.width, th->menubar_height, line);
 }
 
 /* Clock widget - top left: analog face beside the date and digital time. */
@@ -1839,20 +1808,12 @@ void desktop_focus_window(uint32_t window_id) {
 
 /* ---- Window actions: minimize, close, zoom, tile ---- */
 
-/* Dock icon rect for a window title (falls back to the dock center). */
+/* Where a minimizing window flies to: the dock's minimized section. */
 static nxc_rect_t dock_target_for(const desktop_window_t *w) {
-    dock_state_t *ds = dock_get_state();
-    float cx = (float)g_desktop.width * 0.5f, cy = (float)g_desktop.height - 46.0f;
-    if (ds && ds->icon_count > 0 && ds->width > 0) {
-        cy = (float)ds->y + (float)ds->height * 0.5f;
-        for (int i = 0; i < ds->icon_count && i < DOCK_MAX_ICONS; i++) {
-            nxapp_icon_t a = nxapp_icon_from_name(ds->icons[i].label);
-            if (a != NXAPP_GENERIC && a == nxapp_icon_from_name(w->title)) {
-                cx = (float)ds->x + ((float)i + 0.5f) * (float)ds->width / (float)ds->icon_count;
-                break;
-            }
-        }
-    }
+    /* The dock's minimized section (or the taskbar) */
+    int tx = (int)g_desktop.width / 2, ty = (int)g_desktop.height - 46;
+    dock_minimize_target(&tx, &ty);
+    float cx = (float)tx, cy = (float)ty;
     float tw = 56.0f, th = 56.0f * ((float)w->height + WIN_TITLE_H) / (float)(w->width ? w->width : 1u);
     if (th > 56.0f) th = 56.0f;
     return nxc_rect(cx - tw * 0.5f, cy - th * 0.5f, tw, th);
@@ -1877,6 +1838,14 @@ static int window_minimize(desktop_window_t *w) {
     serial_dec(w->id);
     serial_puts("\n");
     return 0;
+}
+
+/* Dock "Hide": minimize one window (dock_set_hide_handler). */
+static int desktop_dock_hide_window(uint32_t id) {
+    for (int k = 0; k < MAX_WINDOWS; k++) {
+        if (g_windows[k].id == id && id != 0) return window_minimize(&g_windows[k]);
+    }
+    return -1;
 }
 
 static void window_restore_from_dock(desktop_window_t *w) {
@@ -2581,6 +2550,7 @@ static int g_nx_key_held = 0;     /* NX down and still a tap/long-press candidat
 static int g_nx_help_shown = 0;
 static int g_nx_down = 0;         /* NX physically held (chords use this) */
 static int g_shift_down = 0;      /* either Shift held */
+static int g_ctrl_down = 0;       /* either Ctrl held */
 #define NX_LONGPRESS_MS 500  /* 500ms threshold */
 
 /* Called every frame to check if NX key was held long enough */
@@ -2696,6 +2666,18 @@ void desktop_handle_key(uint8_t scancode, uint8_t pressed) {
     }
     /* Modifier state for window shortcuts */
     if (scancode == 0x2A || scancode == 0x36) g_shift_down = pressed ? 1 : 0;
+    if (scancode == 0x1D) g_ctrl_down = pressed ? 1 : 0;
+    /* Ctrl+Shift+Esc opens (or focuses) Task Manager */
+    if (scancode == 0x01 && pressed && g_ctrl_down && g_shift_down) {
+        for (int i = 0; i < MAX_WINDOWS; i++) {
+            if (g_windows[i].id != 0 && shell_streq_ci(g_windows[i].title, "Task Manager")) {
+                desktop_activate_window(g_windows[i].id);
+                return;
+            }
+        }
+        if (desktop_launch_app("Task Manager") != 0) serial_puts("[DESKTOP] Task Manager failed to open\n");
+        return;
+    }
     /* Switcher: Esc cancels while it is open */
     if (switcher_open_now() && scancode == 0x01) {
         if (pressed) switcher_cancel();
@@ -2708,6 +2690,7 @@ void desktop_handle_key(uint8_t scancode, uint8_t pressed) {
     }
     /* Open menu or active search field take the keyboard first */
     if (menubar_handle_key(scancode, pressed)) return;
+    if (dock_handle_key(scancode, pressed)) return;
     if (anveshan_handle_key(scancode, pressed, g_key_ascii)) return;
     /* NX + Space opens the search field */
     if (scancode == 0x39 && pressed && g_nx_key_held) {
@@ -2902,6 +2885,7 @@ int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pit
     
     /* Menu bar menus and the Anveshan search field */
     menubar_init();
+    network_indicator_init();
     menubar_set_handler(desktop_menu_action);
     anveshan_init(g_desktop.width, g_desktop.height);
     
@@ -2929,6 +2913,7 @@ int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pit
     
     /* Initialize Dock */
     dock_init(g_desktop.width, g_desktop.height);
+    dock_set_hide_handler(desktop_dock_hide_window);
     nx_debug_print("[DESKTOP] Dock done, control center init...\n");
     
     /* Initialize Control Center */

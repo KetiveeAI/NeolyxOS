@@ -381,17 +381,17 @@ void menubar_render_bar(nxc_canvas_t *c, float w, float h, const char *clock_tex
         right -= cw + 18.0f;
     }
 
-    /* Wi-Fi / Ethernet */
+    /* Wi-Fi / Ethernet (nxnet-backed indicator, refreshed about once a second) */
     const control_center_state_t *cc = control_center_get_state();
-    nxsym_t net = NXSYM_WIFI_OFF;
-    float net_v = 0.0f;
-    if (cc && cc->wifi.enabled) {
-        net = NXSYM_WIFI;
-        net_v = g_network_indicator.state == NET_STATE_WIFI_WEAK ? 0.5f : 1.0f;
-    } else if (g_network_indicator.state == NET_STATE_ETHERNET || (cc && cc->ethernet.enabled)) {
-        net = NXSYM_ETHERNET;    /* wired link (Wi-Fi off or unavailable) */
+    {
+        static float last_net_update = -10.0f;
+        float now = nxui_time();
+        if (now - last_net_update >= 1.0f || now < last_net_update) {
+            network_indicator_update();
+            last_net_update = now;
+        }
     }
-    nxsym_draw(c, net, right - 8.0f, cy, 16.0f, net == NXSYM_WIFI_OFF ? th->text_secondary : ic, net_v);
+    network_indicator_draw_icon(c, right - 8.0f, cy, 16.0f, ic);
     right -= 28.0f;
 
     /* Volume */
