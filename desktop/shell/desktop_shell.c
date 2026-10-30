@@ -33,6 +33,8 @@
 #include "../include/network_indicator.h"
 #include "../include/nxui.h"
 #include "../include/menubar.h"
+#include "../include/app_view.h"
+#include "../include/setup_assistant.h"
 #include "../lib/nxicons/nxicons_internal.h"
 #define nxc_cosf_shell nxc_cosf_pub
 #define nxc_sinf_shell nxc_sinf_pub
@@ -1254,6 +1256,12 @@ static void render_desktop(void) {
         }
     }
 
+    /* First-run Setup Assistant covers the whole desktop while active */
+    if (setup_assistant_active()) {
+        setup_assistant_tick(nxui_frame_dt());
+        setup_assistant_render(frame);
+    }
+
     /* Night Mode blue-light filter — last pass before flip.
      * Reduces eye strain in low-light by warming the display.
      * Set g_night_mode_strength via Settings or API. */
@@ -1330,6 +1338,8 @@ uint32_t desktop_create_window(const char *title, int32_t x, int32_t y,
     win->render_ctx = NULL;
     win->key_handler = NULL;
     win->key_ctx = NULL;
+    win->mouse_handler = NULL;
+    win->mouse_ctx = NULL;
     
     g_desktop.window_count++;
     
@@ -1408,7 +1418,80 @@ void desktop_set_window_key_handler(uint32_t window_id,
     }
 }
 
+void desktop_set_window_mouse_handler(uint32_t window_id,
+                                      void (*handler)(desktop_window_t *win,
+                                                      int32_t lx, int32_t ly,
+                                                      uint8_t buttons,
+                                                      uint8_t prev_buttons,
+                                                      void *ctx),
+                                      void *ctx) {
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (g_windows[i].id == window_id) {
+            g_windows[i].mouse_handler = handler;
+            g_windows[i].mouse_ctx = ctx;
+            break;
+        }
+    }
+}
+
 /* ============ Input Handling ============ */
+
+/* Content mouse routing: the window whose content took a button press
+ * keeps receiving the pointer until every button is released. */
+static uint32_t g_mouse_capture_id = 0;
+
+static desktop_window_t *window_by_id(uint32_t id) {
+    if (id == 0) return NULL;
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (g_windows[i].id == id) return &g_windows[i];
+    }
+    return NULL;
+}
+
+/* Topmost visible window whose frame (title bar + content) contains (x, y). */
+static desktop_window_t *window_at_point(int32_t x, int32_t y) {
+    desktop_window_t *best = NULL;
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        desktop_window_t *w = &g_windows[i];
+        if (w->id == 0 || !w->visible || w->minimized) continue;
+        if (x < w->x || x >= w->x + (int32_t)w->width) continue;
+        if (y < w->y || y >= w->y + WIN_TITLE_H + (int32_t)w->height) continue;
+        if (!best || w->z_order >= best->z_order) best = w;
+    }
+    return best;
+}
+
+static void deliver_content_mouse(desktop_window_t *w, uint8_t buttons, uint8_t prev_buttons) {
+    if (!w || !w->mouse_handler) return;
+    w->mouse_handler(w, g_desktop.mouse_x - w->x, g_desktop.mouse_y - (w->y + WIN_TITLE_H),
+                     buttons, prev_buttons, w->mouse_ctx);
+}
+
+/* Returns 1 if a window content area consumed this pointer event. */
+static int route_content_mouse(uint8_t buttons, uint8_t prev_buttons) {
+    desktop_window_t *cap = window_by_id(g_mouse_capture_id);
+    if (cap) {
+        if (cap->minimized || !cap->visible) {
+            g_mouse_capture_id = 0;
+        } else {
+            deliver_content_mouse(cap, buttons, prev_buttons);
+            if ((buttons & 0x07) == 0) g_mouse_capture_id = 0;
+            return 1;
+        }
+    }
+    desktop_window_t *w = window_at_point(g_desktop.mouse_x, g_desktop.mouse_y);
+    if (!w || !w->mouse_handler) return 0;
+    if (g_desktop.mouse_y < w->y + WIN_TITLE_H) return 0;   /* title bar: shell handles */
+    uint8_t pressed_now = (uint8_t)(buttons & ~prev_buttons & 0x07);
+    if (pressed_now) {
+        if (!w->focused) desktop_focus_window(w->id);
+        g_mouse_capture_id = w->id;
+        deliver_content_mouse(w, buttons, prev_buttons);
+        return 1;
+    }
+    if (w->focused) deliver_content_mouse(w, buttons, prev_buttons);   /* hover */
+    return 0;
+}
 
 /* Mouse smoothing state - exponential moving average */
 static int32_t g_smooth_mouse_x = 0;
@@ -1436,6 +1519,12 @@ void desktop_handle_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
     uint8_t prev_buttons = g_desktop.mouse_buttons;
     g_desktop.mouse_buttons = buttons;
     
+    /* First-run Setup Assistant owns all input while active */
+    if (setup_assistant_active()) {
+        setup_assistant_handle_mouse(g_desktop.mouse_x, g_desktop.mouse_y, buttons, prev_buttons);
+        return;
+    }
+
     /* If App Drawer is open, forward mouse to it first */
     if (app_drawer_is_open()) {
         app_drawer_handle_mouse(g_desktop.mouse_x, g_desktop.mouse_y, buttons);
@@ -1484,6 +1573,11 @@ void desktop_handle_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
     /* Check dock clicks FIRST - dock is above most things */
     if (dock_handle_mouse(g_desktop.mouse_x, g_desktop.mouse_y, buttons, prev_buttons)) {
         return;  /* Dock consumed the click */
+    }
+
+    /* Shell-hosted app content (Settings, Task Manager, ...) */
+    if (route_content_mouse(buttons, prev_buttons)) {
+        return;
     }
     
     /* Update quick menu hover state */
@@ -1747,6 +1841,7 @@ static void desktop_on_app_launched(const nx_event_t *event, void *userdata) {
     if (shell_streq_ci(name, "Files")) name = "File Manager";
     else if (shell_streq_ci(name, "Settings")) name = "System Settings";
     else if (shell_streq_ci(name, "Fonts")) name = "Font Manager";
+    else if (shell_streq_ci(name, "Activity") || shell_streq_ci(name, "Tasks")) name = "Task Manager";
     /* Already open: focus and restore */
     for (int i = 0; i < MAX_WINDOWS; i++) {
         if (g_windows[i].id != 0 && shell_streq_ci(g_windows[i].title, name)) {
@@ -1822,6 +1917,11 @@ static void desktop_menu_action(int menu, int action) {
 }
 
 void desktop_handle_key(uint8_t scancode, uint8_t pressed) {
+    /* First-run Setup Assistant owns all input while active */
+    if (setup_assistant_active()) {
+        setup_assistant_handle_key(scancode, pressed, g_key_ascii);
+        return;
+    }
     /* Open menu or active search field take the keyboard first */
     if (menubar_handle_key(scancode, pressed)) return;
     if (anveshan_handle_key(scancode, pressed, g_key_ascii)) return;
@@ -2019,6 +2119,9 @@ int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pit
     theme_osd_init(g_desktop.width, g_desktop.height);
     battery_warning_init(g_desktop.width, g_desktop.height);
     nx_debug_print("[DESKTOP] OSD components initialized\n");
+
+    /* First-run Setup Assistant (active only until setup completes) */
+    setup_assistant_init();
     
     nx_debug_print("[DESKTOP] All init done! Starting main loop...\n");
     
@@ -2118,6 +2221,29 @@ void desktop_start_apps(void) {
 
 /* Launch a specific app by name */
 int desktop_launch_app(const char *name) {
+    /* Shell-hosted app views (app_view.h) */
+    const app_view_t *view = app_view_find(name);
+    if (view) {
+        uint32_t w = view->default_w, h = view->default_h;
+        if (w > g_desktop.width - 40) w = g_desktop.width - 40;
+        if (h > g_desktop.height - 160) h = g_desktop.height - 160;
+        int32_t x = ((int32_t)g_desktop.width - (int32_t)w) / 2;
+        int32_t y = 28 + ((int32_t)g_desktop.height - 28 - 90 - (int32_t)h - WIN_TITLE_H) / 2;
+        if (y < 36) y = 36;
+        uint32_t win_id = desktop_create_window(view->name, x, y, w, h);
+        if (win_id == 0) return -1;
+        if (view->open && view->open(win_id) != 0) {
+            serial_puts("[DESKTOP] App view failed to open: ");
+            serial_puts(view->name);
+            serial_puts("\n");
+            desktop_destroy_window(win_id);
+            return -1;
+        }
+        desktop_set_window_render(win_id, view->render, NULL);
+        if (view->key) desktop_set_window_key_handler(win_id, view->key, NULL);
+        if (view->mouse) desktop_set_window_mouse_handler(win_id, view->mouse, NULL);
+        return 0;
+    }
     for (int i = 0; g_startup_apps[i].name != NULL; i++) {
         startup_app_t *app = &g_startup_apps[i];
         

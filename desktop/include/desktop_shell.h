@@ -114,6 +114,12 @@ typedef struct desktop_shell_window {
     void (*key_handler)(struct desktop_shell_window *win, uint8_t scancode,
                         uint8_t pressed, void *ctx);
     void *key_ctx;
+
+    /* Content mouse handler (optional). Local coordinates: (0,0) is the
+     * top-left of the content area below the title bar. */
+    void (*mouse_handler)(struct desktop_shell_window *win, int32_t lx, int32_t ly,
+                          uint8_t buttons, uint8_t prev_buttons, void *ctx);
+    void *mouse_ctx;
 } desktop_window_t;
 
 /* ============ Desktop API ============ */
@@ -182,6 +188,17 @@ void desktop_set_window_key_handler(uint32_t window_id,
                                                     uint8_t pressed, 
                                                     void *ctx),
                                     void *ctx);
+
+/**
+ * desktop_set_window_mouse_handler - Set content-area mouse handler for a window
+ */
+void desktop_set_window_mouse_handler(uint32_t window_id,
+                                      void (*handler)(desktop_window_t *win,
+                                                      int32_t lx, int32_t ly,
+                                                      uint8_t buttons,
+                                                      uint8_t prev_buttons,
+                                                      void *ctx),
+                                      void *ctx);
 
 /* ============ Drawing Helpers ============ */
 
