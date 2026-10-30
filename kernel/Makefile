@@ -222,7 +222,7 @@ kernel.bin: kernel.elf
 	objcopy -O binary kernel.elf kernel.bin
 
 # Boot Firmware (provides kernel_main entry point with boot menu UI)
-boot_firmware.o: boot_firmware.c include/ui/disk_icons.h
+boot_firmware.o: boot_firmware.c include/ui/disk_icons.h include/video/splash.h
 	$(CC) $(CFLAGS) -c boot_firmware.c -o boot_firmware.o
 
 # Core kernel rules
@@ -413,7 +413,7 @@ video.o: src/video/video.c include/video/video.h
 console.o: src/video/console.c src/video/font.h include/video/console.h
 	$(CC) $(CFLAGS) -c src/video/console.c -o console.o
 
-splash.o: src/video/splash.c include/video/splash.h
+splash.o: src/video/splash.c src/video/splash_assets.h include/video/splash.h
 	$(CC) $(CFLAGS) -c src/video/splash.c -o splash.o
 
 fbuffer.o: src/video/framebuffer.c
