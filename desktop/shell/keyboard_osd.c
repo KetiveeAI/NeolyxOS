@@ -11,6 +11,7 @@
 #include <stddef.h>
 #include "../include/keyboard_osd.h"
 #include "../include/nxui.h"
+#include "../include/nxglass.h"
 #include "../include/nxsyscall.h"
 
 /* OSD State */
@@ -18,8 +19,8 @@ static keyboard_osd_state_t g_kbd_osd = {0};
 static int g_kbd_osd_initialized = 0;
 
 /* Configuration */
-#define KBD_OSD_WIDTH       180
-#define KBD_OSD_HEIGHT      50
+#define KBD_OSD_WIDTH       240
+#define KBD_OSD_HEIGHT      56
 #define KBD_OSD_MARGIN      20
 #define KBD_OSD_DURATION    2000    /* 2 seconds */
 #define KBD_OSD_FADE_TIME   500     /* 0.5 second fade */
@@ -30,11 +31,6 @@ static int g_kbd_osd_initialized = 0;
 #define KBD_TEXT_COLOR      0xFFFFFFFF
 #define KBD_ICON_ON         0xFF4AE04A  /* Green for ON */
 #define KBD_ICON_OFF        0xFF505050  /* Gray for OFF */
-
-/* External drawing functions */
-extern void desktop_draw_text(int32_t x, int32_t y, const char *text, uint32_t color);
-extern void fill_rounded_rect(int32_t x, int32_t y, uint32_t w, uint32_t h, int32_t r, uint32_t color);
-extern void fill_circle(int32_t cx, int32_t cy, int32_t r, uint32_t color);
 
 /* Safe string copy */
 static void kbd_strcpy(char *dst, const char *src, int max) {
@@ -54,9 +50,10 @@ void keyboard_osd_init(uint32_t screen_w, uint32_t screen_h) {
     g_kbd_osd.show_time = 0;
     g_kbd_osd.opacity = 255;
     
-    /* Position at top right */
-    g_kbd_osd.x = screen_w - KBD_OSD_WIDTH - KBD_OSD_MARGIN;
-    g_kbd_osd.y = 40 + KBD_OSD_MARGIN;  /* Below nav bar */
+    /* Centered in the upper third, just below the appearance HUD: clear
+     * of the menu bar, the search bar and the right-side panels. */
+    g_kbd_osd.x = ((int32_t)screen_w - KBD_OSD_WIDTH) / 2;
+    g_kbd_osd.y = (int32_t)(screen_h / 4) + 72;
     g_kbd_osd.width = KBD_OSD_WIDTH;
     g_kbd_osd.height = KBD_OSD_HEIGHT;
     
@@ -152,64 +149,6 @@ void keyboard_osd_tick(void) {
     }
 }
 
-/* Render keyboard OSD */
-static void keyboard_osd_render_legacy(uint32_t *fb, uint32_t pitch) {
-    if (!g_kbd_osd.visible || g_kbd_osd.opacity == 0) return;
-    
-    (void)fb;
-    (void)pitch;
-    
-    uint8_t a = g_kbd_osd.opacity;
-    int32_t x = g_kbd_osd.x;
-    int32_t y = g_kbd_osd.y;
-    uint32_t w = g_kbd_osd.width;
-    uint32_t h = g_kbd_osd.height;
-    
-    /* Background */
-    uint32_t bg = ((uint32_t)((a * 0xD0) / 255) << 24) | (KBD_BG_COLOR & 0x00FFFFFF);
-    fill_rounded_rect(x, y, w, h, KBD_OSD_RADIUS, bg);
-    
-    /* Icon based on type */
-    int icon_x = x + 16;
-    int icon_y = y + 17;
-    
-    if (g_kbd_osd.type == KBD_OSD_CAPS_LOCK) {
-        /* Caps Lock icon - A with up arrow */
-        uint32_t icon_color;
-        if (g_kbd_osd.text[10] == 'N') {  /* "ON" */
-            icon_color = (a << 24) | (KBD_ICON_ON & 0x00FFFFFF);
-        } else {
-            icon_color = (a << 24) | (KBD_ICON_OFF & 0x00FFFFFF);
-        }
-        fill_rounded_rect(icon_x, icon_y, 16, 16, 3, icon_color);
-        fill_rounded_rect(icon_x + 4, icon_y - 4, 8, 8, 2, icon_color);
-    } else if (g_kbd_osd.type == KBD_OSD_NUM_LOCK) {
-        /* Num Lock icon - # symbol */
-        uint32_t icon_color;
-        if (g_kbd_osd.text[9] == 'N') {  /* "ON" */
-            icon_color = (a << 24) | (KBD_ICON_ON & 0x00FFFFFF);
-        } else {
-            icon_color = (a << 24) | (KBD_ICON_OFF & 0x00FFFFFF);
-        }
-        fill_rounded_rect(icon_x + 2, icon_y, 12, 16, 2, icon_color);
-    } else {
-        /* Shortcut - keyboard icon */
-        uint32_t kbd_color = (a << 24) | 0x00808090;
-        fill_rounded_rect(icon_x, icon_y + 2, 18, 12, 2, kbd_color);
-        /* Keys */
-        for (int r = 0; r < 2; r++) {
-            for (int c = 0; c < 3; c++) {
-                fill_rounded_rect(icon_x + 2 + c * 5, icon_y + 4 + r * 4, 4, 3, 1, 
-                                 (a << 24) | 0x00FFFFFF);
-            }
-        }
-    }
-    
-    /* Text */
-    uint32_t text_color = (a << 24) | (KBD_TEXT_COLOR & 0x00FFFFFF);
-    desktop_draw_text(x + 40, y + 18, g_kbd_osd.text, text_color);
-}
-
 /* ============ Help Overlay (Full-Screen Shortcut Help) ============ */
 
 /* Help overlay state */
@@ -253,100 +192,64 @@ int keyboard_osd_help_visible(void) {
     return g_help_visible;
 }
 
-/* Render help overlay - called from desktop render loop */
-static void keyboard_osd_help_render_legacy(uint32_t *fb, uint32_t pitch, uint32_t sw, uint32_t sh) {
-    if (!g_help_visible) return;
-    
-    /* Semi-transparent full-screen background */
-    uint32_t bg_color = 0xD0101020;
-    for (uint32_t y = 0; y < sh; y++) {
-        for (uint32_t x = 0; x < sw; x++) {
-            uint32_t idx = y * (pitch / 4) + x;
-            uint32_t bg = fb[idx];
-            /* Blend */
-            uint8_t a = (bg_color >> 24) & 0xFF;
-            uint8_t r = ((((bg_color >> 16) & 0xFF) * a) + (((bg >> 16) & 0xFF) * (255 - a))) / 255;
-            uint8_t g = ((((bg_color >> 8) & 0xFF) * a) + (((bg >> 8) & 0xFF) * (255 - a))) / 255;
-            uint8_t b = (((bg_color & 0xFF) * a) + ((bg & 0xFF) * (255 - a))) / 255;
-            fb[idx] = 0xFF000000 | (r << 16) | (g << 8) | b;
-        }
-    }
-    
-    /* Panel in center */
-    int panel_w = 400;
-    int panel_h = 360;
-    int panel_x = (sw - panel_w) / 2;
-    int panel_y = (sh - panel_h) / 2;
-    
-    fill_rounded_rect(panel_x, panel_y, panel_w, panel_h, 16, 0xE8252535);
-    
-    /* Title */
-    desktop_draw_text(panel_x + 16, panel_y + 16, "Keyboard Shortcuts", 0xFFFFFFFF);
-    
-    /* Shortcut list */
-    int row_y = panel_y + 50;
-    int row_h = 24;
-    int key_x = panel_x + 20;
-    int action_x = panel_x + 180;
-    
-    for (int i = 0; g_shortcuts[i].keys != NULL; i++) {
-        /* Key combination */
-        fill_rounded_rect(key_x, row_y, 140, 20, 4, 0x60404050);
-        desktop_draw_text(key_x + 8, row_y + 4, g_shortcuts[i].keys, 0xFF89B4FA);
-        
-        /* Action description */
-        desktop_draw_text(action_x, row_y + 4, g_shortcuts[i].action, 0xFFCDD6F4);
-        
-        row_y += row_h;
-        if (row_y > panel_y + panel_h - 40) break;  /* Don't overflow panel */
-    }
-    
-    /* Footer hint */
-    desktop_draw_text(panel_x + 16, panel_y + panel_h - 24, "Release NX to close", 0x80FFFFFF);
-}
-
 /* ============ Canvas renderer ============ */
 
+/* Lock / shortcut HUD on ultrathin glass (cached panel, faded by alpha). */
 void keyboard_osd_render(nxc_canvas_t *c) {
     if (!c || !g_kbd_osd.visible || g_kbd_osd.opacity == 0) return;
-    const nxui_theme_t *th = nxui_theme();
     nxc_rect_t box = nxc_rect((float)g_kbd_osd.x, (float)g_kbd_osd.y, (float)g_kbd_osd.width, (float)g_kbd_osd.height);
-    nxc_save(c);
-    nxc_set_alpha(c, g_kbd_osd.opacity);
-    nxui_elevation(c, box, 16.0f, 2);
-    nxui_material(c, box, 16.0f, &th->mat_hud);
-    nxsym_t sym = (g_kbd_osd.type == KBD_OSD_CAPS_LOCK || g_kbd_osd.type == KBD_OSD_NUM_LOCK) ? NXSYM_LOCK : NXSYM_KEYBOARD;
-    nxsym_draw(c, sym, box.x + 28.0f, box.y + box.h * 0.5f, 22.0f, th->text_primary, 0.0f);
-    nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, nxc_rect(box.x + 52.0f, box.y, box.w - 64.0f, box.h), g_kbd_osd.text,
-                      th->text_primary, NXC_ALIGN_LEFT);
-    nxc_restore(c);
+    int lock = g_kbd_osd.type == KBD_OSD_CAPS_LOCK || g_kbd_osd.type == KBD_OSD_NUM_LOCK;
+    const char *title = g_kbd_osd.text;
+    const char *sub = 0;
+    if (g_kbd_osd.type == KBD_OSD_CAPS_LOCK) {
+        int on = g_kbd_osd.text[10] == 'O' && g_kbd_osd.text[11] == 'N';   /* "CAPS LOCK ON" */
+        title = "Caps Lock";
+        sub = on ? "On" : "Off";
+    } else if (g_kbd_osd.type == KBD_OSD_NUM_LOCK) {
+        int on = g_kbd_osd.text[9] == 'O' && g_kbd_osd.text[10] == 'N';    /* "NUM LOCK ON" */
+        title = "Num Lock";
+        sub = on ? "On" : "Off";
+    }
+    nxglass_hud(c, box, lock ? NXSYM_LOCK : NXSYM_KEYBOARD, 0.0f, title, sub, -1.0f, 0, g_kbd_osd.opacity);
 }
 
-/* Full-screen shortcut sheet: dimmed desktop, centered glass card. */
+/* A keycap on glass: a raised glass button with a bottom lip. */
+static void kbd_keycap(nxc_canvas_t *c, nxc_rect_t key, const char *label) {
+    const nxglass_tokens_t *t = nxglass_tokens();
+    int light = nxui_appearance() == NXUI_APPEARANCE_LIGHT;
+    nxc_fill_rrect(c, nxc_rect(key.x, key.y + 1.5f, key.w, key.h), t->radius_small,
+                   light ? NXC_ARGB(40, 0, 0, 0x10) : NXC_ARGB(80, 0, 0, 0x08));
+    nxglass_button(c, key, label, NXGLASS_BUTTON_DEFAULT, 0);
+}
+
+/* Full-screen shortcut sheet: scrim, centered glass card (cached). Also
+ * the hook for the NXGlass design gallery, drawn last in the frame. */
 void keyboard_osd_help_render(nxc_canvas_t *c) {
-    if (!c || !g_help_visible) return;
-    const nxui_theme_t *th = nxui_theme();
-    float sw = (float)nxui_width(), sh = (float)nxui_height();
-    nxc_fill_rect(c, nxc_rect(0, 0, sw, sh), NXC_ARGB(120, 0, 0, 8));
-    int count = 0;
-    while (g_shortcuts[count].keys && count < 64) count++;   /* table is NULL-terminated */
-    float row_h = 30.0f, cw = 460.0f, ch = 64.0f + (float)count * row_h + 16.0f;
-    nxc_rect_t card = nxc_rect((sw - cw) * 0.5f, (sh - ch) * 0.5f, cw, ch);
-    nxui_elevation(c, card, 18.0f, 2);
-    nxui_material(c, card, 18.0f, &th->mat_popover);
-    nxui_text_in_rect(c, NXUI_TEXT_TITLE2, nxc_rect(card.x + 24.0f, card.y + 12.0f, cw - 48.0f, 36.0f), "Keyboard shortcuts",
-                      th->text_primary, NXC_ALIGN_LEFT);
-    for (int i = 0; i < count; i++) {
-        float y = card.y + 60.0f + (float)i * row_h;
-        if (i & 1) nxc_fill_rrect(c, nxc_rect(card.x + 16.0f, y, cw - 32.0f, row_h), 8.0f, NXC_WITH_ALPHA(th->text_primary, 10));
-        float kw = nxui_text_width(NXUI_TEXT_BODY_MEDIUM, g_shortcuts[i].keys) + 16.0f;
-        nxc_rect_t key = nxc_rect(card.x + 24.0f, y + 5.0f, kw, row_h - 10.0f);
-        nxc_fill_rrect(c, key, 6.0f, th->control_fill);
-        nxc_stroke_rrect(c, key, 6.0f, 1.0f, th->separator);
-        nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, key, g_shortcuts[i].keys, th->text_primary, NXC_ALIGN_CENTER);
-        nxui_text_in_rect(c, NXUI_TEXT_BODY, nxc_rect(card.x + 200.0f, y, cw - 224.0f, row_h), g_shortcuts[i].action,
-                          th->text_secondary, NXC_ALIGN_LEFT);
+    if (!c) return;
+    if (g_help_visible) {
+        const nxglass_tokens_t *t = nxglass_tokens();
+        float sw = (float)nxui_width(), sh = (float)nxui_height();
+        nxglass_scrim(c, nxc_rect(0, 0, sw, sh), 1.0f);
+        int count = 0;
+        while (g_shortcuts[count].keys && count < 64) count++;   /* table is NULL-terminated */
+        float row_h = 32.0f, cw = 480.0f, ch = 72.0f + (float)count * row_h + 40.0f;
+        nxc_rect_t card = nxc_rect((float)(int32_t)((sw - cw) * 0.5f), (float)(int32_t)((sh - ch) * 0.5f), cw, ch);
+        nxglass_panel(c, card, t->radius_sheet, NXGLASS_REGULAR, 4, 0);
+        nxsym_draw(c, NXSYM_KEYBOARD, card.x + 38.0f, card.y + 36.0f, 24.0f, t->accent, 0.0f);
+        nxui_text_in_rect(c, NXUI_TEXT_TITLE2, nxc_rect(card.x + 60.0f, card.y + 18.0f, cw - 84.0f, 36.0f),
+                          "Keyboard shortcuts", t->label, NXC_ALIGN_LEFT);
+        nxglass_separator(c, card.x + 20.0f, card.y + 62.0f, cw - 40.0f);
+        for (int i = 0; i < count; i++) {
+            float y = card.y + 70.0f + (float)i * row_h;
+            float kw = nxui_text_width(NXUI_TEXT_BODY_MEDIUM, g_shortcuts[i].keys) + 18.0f;
+            if (kw > 170.0f) kw = 170.0f;
+            kbd_keycap(c, nxc_rect(card.x + 24.0f, y + 5.0f, kw, row_h - 11.0f), g_shortcuts[i].keys);
+            nxui_text_in_rect(c, NXUI_TEXT_BODY, nxc_rect(card.x + 210.0f, y, cw - 234.0f, row_h), g_shortcuts[i].action,
+                              t->label_secondary, NXC_ALIGN_LEFT);
+        }
+        nxui_text_in_rect(c, NXUI_TEXT_CAPTION, nxc_rect(card.x, card.y + ch - 30.0f, cw, 18.0f), "Release NX to close",
+                          t->label_tertiary, NXC_ALIGN_CENTER);
     }
-    nxui_text_in_rect(c, NXUI_TEXT_CAPTION, nxc_rect(card.x, card.y + ch - 24.0f, cw, 16.0f), "Release NX to close",
-                      th->text_tertiary, NXC_ALIGN_CENTER);
+    /* Design review gallery (nxglass_gallery_toggle); no-op unless shown. */
+    nxglass_gallery_render(c);
 }

@@ -122,12 +122,25 @@ void nxui_set_appearance(nxui_appearance_t appearance);
 
 /* ============ Typography ============ */
 
+/*
+ * The NX Sans family (resources/fonts, see nxsans-manifest.json):
+ *   Regular 400 (NXSans-Text), Medium 500 (NXSans-UI), Semibold 600
+ *   (NXSans-Display), Bold 700, Italic 400 and NX Sans Mono 400.
+ * DISPLAY and SEMIBOLD are the same face: the Semibold cut is the one the
+ * system uses for large display text. Every face falls back to NX Sans
+ * Mono (box drawing, technical symbols) and Mono falls back to Regular,
+ * so missing glyphs resolve before .notdef. All faces are listed in the
+ * font registry (nxfont_registry.h) as families "NX Sans" and
+ * "NX Sans Mono".
+ */
 typedef enum {
-    NXUI_FONT_REGULAR = 0,   /* NXSans Text  */
-    NXUI_FONT_MEDIUM  = 1,   /* NXSans UI    */
-    NXUI_FONT_BOLD    = 2,   /* NXSans Bold  */
-    NXUI_FONT_DISPLAY = 3,   /* NXSans Display (large sizes) */
-    NXUI_FONT_MONO    = 4,   /* NXSans Mono  */
+    NXUI_FONT_REGULAR  = 0,   /* NX Sans Text      400 */
+    NXUI_FONT_MEDIUM   = 1,   /* NX Sans UI        500 */
+    NXUI_FONT_BOLD     = 2,   /* NX Sans Bold      700 */
+    NXUI_FONT_DISPLAY  = 3,   /* NX Sans Display   600 (large sizes) */
+    NXUI_FONT_MONO     = 4,   /* NX Sans Mono      400 */
+    NXUI_FONT_SEMIBOLD = 5,   /* NX Sans Semibold  600 (same face as DISPLAY) */
+    NXUI_FONT_ITALIC   = 6,   /* NX Sans Italic    400 */
     NXUI_FONT_COUNT
 } nxui_font_id_t;
 
@@ -146,6 +159,12 @@ typedef enum {
     NXUI_TEXT_LARGE_TITLE,   /* Bold    28 */
     NXUI_TEXT_CLOCK,         /* Display 56, tight tracking (widgets, lock screen) */
     NXUI_TEXT_MONO,          /* Mono    12.5 */
+    NXUI_TEXT_SUBHEADLINE,   /* Semibold 12 (section headers, chips) */
+    NXUI_TEXT_CALLOUT,       /* Regular 15 (secondary content) */
+    NXUI_TEXT_BODY_SEMIBOLD, /* Semibold 13 */
+    NXUI_TEXT_BODY_ITALIC,   /* Italic  13 */
+    NXUI_TEXT_DISPLAY,       /* Display 40, tight tracking (hero numbers, specimens) */
+    NXUI_TEXT_MONO_SMALL,    /* Mono    11 (code points, hex) */
     NXUI_TEXT_COUNT
 } nxui_text_style_t;
 
@@ -157,6 +176,8 @@ typedef struct {
 
 const nxc_font_t *nxui_font(nxui_font_id_t id);
 nxui_type_t nxui_type(nxui_text_style_t style);
+/* Registry id of a system face (0 when not registered). */
+uint32_t nxui_font_registry_id(nxui_font_id_t id);
 
 /* Draw text in a style at a baseline. opts may be NULL. */
 nxc_status_t nxui_text(nxc_canvas_t *c, nxui_text_style_t style, float x, float baseline_y,
@@ -169,6 +190,22 @@ float nxui_text_descent(nxui_text_style_t style);
  * truncated with an ellipsis to the rect width. */
 nxc_status_t nxui_text_in_rect(nxc_canvas_t *c, nxui_text_style_t style, nxc_rect_t r,
                                const char *utf8, nxc_color_t color, nxc_align_t align);
+/* Recommended baseline-to-baseline distance for the style (px, whole). */
+float nxui_text_line_height(nxui_text_style_t style);
+
+/*
+ * Word-wrapped text in a rect: breaks at spaces (and hard breaks at
+ * '\n'), splits words wider than the rect, starts at the top of r and
+ * stops at its bottom; the last visible line ends with an ellipsis when
+ * text remains. line_height <= 0 uses nxui_text_line_height. Returns the
+ * height used (px). Also measures without drawing when c is NULL.
+ */
+float nxui_text_wrapped(nxc_canvas_t *c, nxui_text_style_t style, nxc_rect_t r,
+                        const char *utf8, nxc_color_t color, float line_height);
+
+/* The same for any face and size (font manager specimens, user fonts). */
+float nxui_text_wrapped_font(nxc_canvas_t *c, const nxc_font_t *font, float px, nxc_rect_t r,
+                             const char *utf8, nxc_color_t color, float line_height);
 
 /* ============ Surfaces, materials, elevation ============ */
 
@@ -191,9 +228,27 @@ nxc_status_t nxui_elevation(nxc_canvas_t *c, nxc_rect_t r, float radius, int32_t
  * menu bar, widgets, dock, popovers and sheets; use nxui_material() for
  * panels that animate every frame.
  */
-#define NXUI_PANEL_CACHE_SLOTS 12
+#define NXUI_PANEL_CACHE_SLOTS 16
 nxc_status_t nxui_panel(nxc_canvas_t *c, nxc_rect_t r, float radius,
                         const nxc_material_t *m, int32_t elevation);
+
+/*
+ * Optional decoration baked into a cached panel: called once when the
+ * slot is (re)rendered, after the shadow and material, with r in the
+ * slot canvas' coordinates. It must draw only inside r (plus at most the
+ * shadow margin), depend only on (r, radius, key) and the current
+ * appearance, and balance nxc_save/nxc_restore. The (decor, key) pair is
+ * part of the cache key. NXGlass uses this for rim light, sheen and
+ * inner glow so static glass costs one blit per frame.
+ */
+typedef nxc_status_t (*nxui_panel_decor_fn)(nxc_canvas_t *c, nxc_rect_t r, float radius,
+                                            uint32_t key);
+nxc_status_t nxui_panel_ex(nxc_canvas_t *c, nxc_rect_t r, float radius,
+                           const nxc_material_t *m, int32_t elevation,
+                           nxui_panel_decor_fn decor, uint32_t decor_key);
+
+/* Panel cache counters since boot (for frame-cost measurements). */
+void nxui_panel_stats(uint32_t *hits, uint32_t *misses);
 
 /* The wallpaper and its pre-blurred copy (same size as the screen). */
 const nxc_surface_t *nxui_wallpaper(void);

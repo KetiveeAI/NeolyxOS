@@ -46,6 +46,39 @@ SHELL_SRC = shell/desktop_shell.c \
             apps/Calendar.app/calendar_utils.c \
             ../config/nx_config.c
 
+# ---- Desktop subsystem areas ----
+# One line per area so parallel work merges cleanly. Each area appends
+# its own new files to its own line only.
+AREA_SHARED_SRC   = shell/app_views.c
+
+AREA_GLASS_SRC    = lib/nxglass.c
+
+AREA_SETTINGS_SRC = shell/views/settings_view.c \
+                    shell/views/settings_ui.c \
+                    shell/views/settings_prefs.c \
+                    shell/views/settings_dock_adapter.c \
+                    shell/views/settings_sysinfo.c \
+                    shell/views/settings_panes_system.c \
+                    shell/views/settings_panes_look.c \
+                    shell/views/settings_panes_input.c
+
+AREA_FONTS_SRC    = shell/views/fonts_view.c \
+                    lib/nxfont_registry.c
+
+AREA_SETUP_SRC    = shell/views/setup_assistant.c shell/views/setup_pages.c shell/views/setup_store.c
+
+AREA_DOCK_SRC     = shell/dock_menu.c shell/taskbar_bar.c
+
+AREA_NET_SRC      = shell/views/settings_network_pane.c lib/nxnet.c
+
+AREA_TASKMGR_SRC  = shell/views/taskmgr_view.c lib/nxproc.c
+
+AREA_WINDOWS_SRC  = shell/stage.c shell/overview.c shell/switcher.c
+
+SHELL_SRC += $(AREA_SHARED_SRC) $(AREA_GLASS_SRC) $(AREA_SETTINGS_SRC) $(AREA_FONTS_SRC) \
+             $(AREA_SETUP_SRC) $(AREA_DOCK_SRC) $(AREA_NET_SRC) $(AREA_TASKMGR_SRC) \
+             $(AREA_WINDOWS_SRC)
+
 WIDGET_SRC = widgets/widgets.c
 
 # NXCanvas rendering engine and the vector icon set

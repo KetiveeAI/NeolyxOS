@@ -11,6 +11,7 @@
 #include <stddef.h>
 #include "../include/battery_warning.h"
 #include "../include/nxui.h"
+#include "../include/nxglass.h"
 #include "../include/nxsyscall.h"
 
 /* Warning State */
@@ -19,7 +20,7 @@ static int g_bw_initialized = 0;
 
 /* Configuration */
 #define BW_WIDTH        320
-#define BW_HEIGHT       120
+#define BW_HEIGHT       104
 #define BW_DURATION     8000    /* 8 seconds */
 #define BW_FADE_TIME    500     /* 0.5 second fade */
 #define BW_RADIUS       16
@@ -30,11 +31,6 @@ static int g_bw_initialized = 0;
 #define BW_YELLOW       0xFFF9E2AF  /* 20% warning */
 #define BW_ORANGE       0xFFFFA500  /* 10% warning */
 #define BW_RED          0xFFFF453A  /* 5% urgent */
-
-/* External drawing functions */
-extern void desktop_draw_text(int32_t x, int32_t y, const char *text, uint32_t color);
-extern void fill_rounded_rect(int32_t x, int32_t y, uint32_t w, uint32_t h, int32_t r, uint32_t color);
-extern void fill_circle(int32_t cx, int32_t cy, int32_t r, uint32_t color);
 
 /* Initialize */
 void battery_warning_init(uint32_t screen_w, uint32_t screen_h) {
@@ -129,128 +125,42 @@ void battery_warning_tick(void) {
     }
 }
 
-/* Draw battery icon */
-static void draw_battery_icon(int32_t x, int32_t y, uint8_t alpha, int percent) {
-    uint32_t outline = ((uint32_t)alpha << 24) | 0x00FFFFFF;
-    
-    /* Battery body outline */
-    fill_rounded_rect(x, y, 40, 20, 4, outline);
-    fill_rounded_rect(x + 2, y + 2, 36, 16, 3, (alpha << 24) | 0x00181820);
-    
-    /* Battery tip */
-    fill_rounded_rect(x + 40, y + 6, 4, 8, 2, outline);
-    
-    /* Fill based on percent */
-    uint32_t fill_color;
-    if (percent <= BATTERY_URGENT_THRESHOLD) {
-        fill_color = BW_RED;
-    } else if (percent <= BATTERY_CRITICAL_THRESHOLD) {
-        fill_color = BW_ORANGE;
-    } else {
-        fill_color = BW_YELLOW;
-    }
-    fill_color = ((uint32_t)alpha << 24) | (fill_color & 0x00FFFFFF);
-    
-    int fill_w = (32 * percent) / 100;
-    if (fill_w < 4) fill_w = 4;
-    fill_rounded_rect(x + 4, y + 4, fill_w, 12, 2, fill_color);
-}
-
-/* Render warning popup */
-static void battery_warning_render_legacy(uint32_t *fb, uint32_t pitch) {
-    if (!g_bw.visible || g_bw.opacity == 0) return;
-    
-    (void)fb;
-    (void)pitch;
-    
-    uint8_t a = g_bw.opacity;
-    int32_t x = g_bw.x;
-    int32_t y = g_bw.y;
-    uint32_t w = g_bw.width;
-    uint32_t h = g_bw.height;
-    
-    /* Background */
-    uint32_t bg = ((uint32_t)((a * 0xE8) / 255) << 24) | (BW_BG_COLOR & 0x00FFFFFF);
-    fill_rounded_rect(x, y, w, h, BW_RADIUS, bg);
-    
-    /* Warning color based on level */
-    uint32_t accent;
-    const char *title;
-    if (g_bw.battery_percent <= BATTERY_URGENT_THRESHOLD) {
-        accent = BW_RED;
-        title = "Battery Critically Low";
-    } else if (g_bw.battery_percent <= BATTERY_CRITICAL_THRESHOLD) {
-        accent = BW_ORANGE;
-        title = "Battery Very Low";
-    } else {
-        accent = BW_YELLOW;
-        title = "Low Battery";
-    }
-    
-    /* Accent bar at top */
-    uint32_t bar_color = ((uint32_t)a << 24) | (accent & 0x00FFFFFF);
-    fill_rounded_rect(x, y, w, 6, BW_RADIUS, bar_color);
-    fill_rounded_rect(x, y + 3, w, 3, 0, bar_color);
-    
-    /* Battery icon */
-    draw_battery_icon(x + 20, y + 30, a, g_bw.battery_percent);
-    
-    /* Title text */
-    uint32_t text_color = ((uint32_t)a << 24) | (BW_TEXT_COLOR & 0x00FFFFFF);
-    desktop_draw_text(x + 72, y + 32, title, text_color);
-    
-    /* Percentage and message */
-    char pct_str[16];
-    int pos = 0;
-    int pct = g_bw.battery_percent;
-    if (pct >= 10) { pct_str[pos++] = '0' + (pct / 10); }
-    pct_str[pos++] = '0' + (pct % 10);
-    pct_str[pos++] = '%';
-    pct_str[pos++] = ' ';
-    pct_str[pos++] = 'r';
-    pct_str[pos++] = 'e';
-    pct_str[pos++] = 'm';
-    pct_str[pos++] = 'a';
-    pct_str[pos++] = 'i';
-    pct_str[pos++] = 'n';
-    pct_str[pos++] = 'i';
-    pct_str[pos++] = 'n';
-    pct_str[pos++] = 'g';
-    pct_str[pos] = '\0';
-    
-    uint32_t dim_color = ((uint32_t)(a * 0x99 / 255) << 24) | 0x00FFFFFF;
-    desktop_draw_text(x + 72, y + 52, pct_str, dim_color);
-    
-    /* Hint */
-    desktop_draw_text(x + 20, y + 88, "Connect to power soon", dim_color);
-}
-
 /* ============ Canvas renderer ============ */
 
+/* Low battery alert: regular glass card, tinted symbol well, level bar. */
 void battery_warning_render(nxc_canvas_t *c) {
     if (!c || !g_bw.visible || g_bw.opacity == 0) return;
-    const nxui_theme_t *th = nxui_theme();
+    const nxglass_tokens_t *t = nxglass_tokens();
     nxc_rect_t box = nxc_rect((float)g_bw.x, (float)g_bw.y, (float)g_bw.width, (float)g_bw.height);
-    nxc_save(c);
-    nxc_set_alpha(c, g_bw.opacity);
-    nxui_elevation(c, box, 16.0f, 2);
-    nxui_material(c, box, 16.0f, &th->mat_hud);
-    float level = (float)(g_bw.battery_percent < 0 ? 0 : g_bw.battery_percent > 100 ? 100 : g_bw.battery_percent) / 100.0f;
-    nxc_color_t col = g_bw.battery_percent <= 10 ? th->destructive : th->warning;
-    nxsym_draw(c, g_bw.is_charging ? NXSYM_BATTERY_CHARGING : NXSYM_BATTERY, box.x + 30.0f, box.y + box.h * 0.5f, 26.0f, col, level);
-    char line[40];
+    int pct = g_bw.battery_percent < 0 ? 0 : (g_bw.battery_percent > 100 ? 100 : g_bw.battery_percent);
+    float level = (float)pct / 100.0f;
+    nxc_color_t col = pct <= BATTERY_CRITICAL_THRESHOLD ? t->destructive : t->warning;
+    char line[48];
     int n = 0;
     {
-        int v = g_bw.battery_percent; char tmp[8]; int t = 0;
-        if (v <= 0) tmp[t++] = '0';
-        while (v > 0 && t < 7) { tmp[t++] = (char)('0' + v % 10); v /= 10; }
-        while (t > 0) line[n++] = tmp[--t];
-        const char *b = "% battery remaining"; while (*b && n < 38) line[n++] = *b++;
+        char tmp[8]; int k = 0, v = pct;
+        if (v == 0) tmp[k++] = '0';
+        while (v > 0 && k < 7) { tmp[k++] = (char)('0' + v % 10); v /= 10; }
+        while (k > 0) line[n++] = tmp[--k];
+        const char *b = g_bw.is_charging ? "% \xC2\xB7 charging" : "% remaining \xC2\xB7 connect to power soon";
+        while (*b && n < 46) line[n++] = *b++;
         line[n] = '\0';
     }
-    nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, nxc_rect(box.x + 58.0f, box.y + 8.0f, box.w - 70.0f, 20.0f), "Low battery",
-                      th->text_primary, NXC_ALIGN_LEFT);
-    nxui_text_in_rect(c, NXUI_TEXT_CAPTION, nxc_rect(box.x + 58.0f, box.y + 28.0f, box.w - 70.0f, 18.0f), line,
-                      th->text_secondary, NXC_ALIGN_LEFT);
+    nxc_save(c);
+    nxc_set_alpha(c, g_bw.opacity);
+    nxglass_panel(c, box, t->radius_sheet, NXGLASS_REGULAR, 3, 0);
+    float cy = box.y + 40.0f;
+    nxc_fill_circle(c, box.x + 40.0f, cy, 22.0f, NXC_WITH_ALPHA(col, 46));
+    nxsym_draw(c, g_bw.is_charging ? NXSYM_BATTERY_CHARGING : NXSYM_BATTERY, box.x + 40.0f, cy, 26.0f, col, level);
+    nxui_text_in_rect(c, NXUI_TEXT_HEADLINE, nxc_rect(box.x + 76.0f, cy - 19.0f, box.w - 92.0f, 20.0f),
+                      pct <= BATTERY_URGENT_THRESHOLD ? "Battery critically low" : "Low battery", t->label, NXC_ALIGN_LEFT);
+    nxui_text_in_rect(c, NXUI_TEXT_FOOTNOTE, nxc_rect(box.x + 76.0f, cy + 1.0f, box.w - 92.0f, 18.0f), line,
+                      t->label_secondary, NXC_ALIGN_LEFT);
+    nxc_rect_t bar = nxc_rect(box.x + 20.0f, box.y + box.h - 22.0f, box.w - 40.0f, 6.0f);
+    nxc_fill_rrect(c, bar, 3.0f, t->fill_pressed);
+    float fw = bar.w * level;
+    if (fw < bar.h) fw = bar.h;
+    nxc_paint_t p = nxc_paint_linear(bar.x, 0.0f, bar.x + bar.w, 0.0f, nxc_color_lerp(col, NXC_RGB(0xFF, 0xFF, 0xFF), 0.2f), col);
+    nxc_fill_rrect_paint(c, nxc_rect(bar.x, bar.y, fw, bar.h), 3.0f, &p);
     nxc_restore(c);
 }
