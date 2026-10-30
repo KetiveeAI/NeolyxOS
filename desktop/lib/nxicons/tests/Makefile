@@ -8,7 +8,9 @@ ENGINE_SRCS = $(wildcard $(ENG)/nxc_*.c)
 .PHONY: run clean
 run:
 	@mkdir -p $(OUT)/bin
-	$(HOSTCC) $(CFLAGS) -o $(OUT)/bin/test_icons test_icons.c $(ENG)/tests/nxc_test.c $(ENGINE_SRCS) ../nxicons.c ../nxapp_icons.c -fsanitize=address,undefined -lm
+	cd ../../.. && $(HOSTCC) -c shell/nxicon_pack.S -o $(abspath $(OUT))/nxicon_pack.o
+	$(HOSTCC) $(CFLAGS) -o $(OUT)/bin/test_icons test_icons.c $(ENG)/tests/nxc_test.c $(ENGINE_SRCS) ../nxicons.c ../nxapp_icons.c ../nxicon_pack.c \
+		$(OUT)/nxicon_pack.o -fsanitize=address,undefined -lm
 	NXC_TEST_OUT=$(OUT) $(OUT)/bin/test_icons
 clean:
 	rm -rf $(OUT)

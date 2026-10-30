@@ -100,6 +100,10 @@ typedef enum {
     NXAPP_TRASH,
     NXAPP_LAUNCHER,
     NXAPP_GENERIC,
+    /* Added after GENERIC so existing values keep their numbers. */
+    NXAPP_REOLAB,
+    NXAPP_ROLECUT,
+    NXAPP_RIVEE,
     NXAPP_COUNT
 } nxapp_icon_t;
 
@@ -107,6 +111,9 @@ typedef enum {
  * Initialize the icon cache (requires an initialized NXCanvas engine).
  * cache_bytes bounds the memory used for rendered app icons; 0 selects
  * 4 MiB. Without a cache, app icons render directly every time.
+ * Also validates the linked icon pack (nxicon_pack.h); returns
+ * NXC_ERR_UNSUPPORTED when any pack entry is damaged. Icons still draw
+ * in that case, with the damaged ones replaced by fallbacks.
  */
 nxc_status_t nxicons_init(uint32_t cache_bytes);
 
