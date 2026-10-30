@@ -381,13 +381,16 @@ void nx_kernel_start(void) {
              * The desktop shell is embedded in the kernel image and starts as
              * a system process in its own address space. Programs it launches
              * are loaded from disk with sys_spawn and run alongside it.
+             * The image is the file-scope copy defined in fs/ramfs.c; including
+             * desktop_elf_data.h here would make it a multi-MB stack local.
              */
-            #include "../fs/desktop_elf_data.h"
+            extern unsigned char desktop_elf_data[];
+            extern unsigned int desktop_elf_data_len;
             static const char *const desktop_argv[1] = { "desktop" };
             
             serial_puts("[KERNEL] Starting desktop process from embedded ELF...\n");
             int32_t desktop_pid = process_spawn_image("desktop", desktop_elf_data,
-                                                      sizeof(desktop_elf_data),
+                                                      desktop_elf_data_len,
                                                       1, desktop_argv,
                                                       PROC_FLAG_SYSTEM | PROC_FLAG_DETACHED);
             if (desktop_pid > 0) {
