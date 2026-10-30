@@ -61,7 +61,7 @@ AREA_SETUP_SRC    = shell/views/setup_assistant.c
 
 AREA_DOCK_SRC     =
 
-AREA_NET_SRC      = shell/views/settings_network_pane.c
+AREA_NET_SRC      = shell/views/settings_network_pane.c lib/nxnet.c
 
 AREA_TASKMGR_SRC  = shell/views/taskmgr_view.c
 
