@@ -34,6 +34,7 @@
 #include "../include/nxui.h"
 #include "../include/menubar.h"
 #include "../lib/nxicons/nxicons_internal.h"
+#include "../include/nxicon_pack.h"
 #define nxc_cosf_shell nxc_cosf_pub
 #define nxc_sinf_shell nxc_sinf_pub
 
@@ -870,9 +871,13 @@ static void render_desktop_icons(void) {
     const nxui_theme_t *th = nxui_theme();
     float sz = 56.0f;
     nxc_rect_t tile = nxc_rect((float)g_desktop.width - 100.0f, 170.0f, sz, sz);
-    nxui_elevation(c, tile, 12.0f, 1);
-    nxui_material(c, tile, 12.0f, &th->mat_widget);
-    nxsym_draw(c, NXSYM_FOLDER, tile.x + sz * 0.5f, tile.y + sz * 0.5f, 30.0f, th->text_primary, 0.0f);
+    /* NeolyxOS device art from the icon pack; a plain symbol tile only if
+     * the pack entry is missing or damaged. */
+    if (nxicon_pack_draw(c, "device-external", tile.x, tile.y, sz, 255) != NXC_OK) {
+        nxui_elevation(c, tile, 12.0f, 1);
+        nxui_material(c, tile, 12.0f, &th->mat_widget);
+        nxsym_draw(c, NXSYM_FOLDER, tile.x + sz * 0.5f, tile.y + sz * 0.5f, 30.0f, th->text_primary, 0.0f);
+    }
     nxui_text_in_rect(c, NXUI_TEXT_CAPTION, nxc_rect(tile.x - 20.0f, tile.y + sz + 4.0f, sz + 40.0f, 16.0f),
                       "External", th->text_primary, NXC_ALIGN_CENTER);
 }

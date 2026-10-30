@@ -57,6 +57,14 @@ $(TARGET): $(OBJS)
 %.o: %.S
 	$(CC) -c $< -o $@
 
+# The icon pack has no header/asset tracking from the pattern rules above:
+# rebuild it whenever tools/build_icon_pack.py regenerates its inputs.
+ICON_PACK_FILES = $(wildcard ../System/Desktop/Icons/app-*.nxi ../System/Desktop/Icons/folder-*.nxi \
+                             ../System/Desktop/Icons/device-*.nxi)
+shell/nxicon_pack.o: $(ICON_PACK_FILES)
+lib/nxicons/nxicon_pack.o: lib/nxicons/nxicon_pack_index.h include/nxicon_pack.h
+lib/nxicons/nxapp_icons.o lib/nxi_render.o shell/desktop_shell.o: include/nxicon_pack.h include/nxicons.h
+
 clean:
 	rm -f $(OBJS) bin/$(TARGET)
 	@echo "Cleaned desktop build"

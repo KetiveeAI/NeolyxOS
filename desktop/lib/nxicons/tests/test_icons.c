@@ -4,8 +4,10 @@
  * Copyright (c) 2025 KetiveeAI
  */
 
+#include <string.h>
 #include "../../nxcanvas/tests/nxc_test.h"
 #include "../../../include/nxicons.h"
+#include "../../../include/nxicon_pack.h"
 
 static void sheet(nxc_color_t bg, nxc_color_t fg, const char *name) {
     nxc_surface_t s;
@@ -64,6 +66,72 @@ static void zoom(void) {
     nxc_surface_destroy(&s);
 }
 
+/* The linked NeolyxOS icon pack: every entry valid, lookups exact,
+ * folder names mapped, and app icons drawn from pack art (not the
+ * vector fallback). */
+static void pack_checks(void) {
+    int rejected = -1;
+    int ok = nxicon_pack_init(&rejected);
+    NXC_CHECK(rejected == 0);
+    NXC_CHECK(ok == nxicon_pack_count() && ok > 0);
+    nxicon_pack_image_t img;
+    for (int i = 0; i < NXAPP_COUNT; i++) {
+        char name[NXICON_PACK_NAME_MAX] = "app-";
+        const char *b = nxapp_icon_name((nxapp_icon_t)i);
+        int n = 4;
+        while (*b && n < NXICON_PACK_NAME_MAX - 1) name[n++] = *b++;
+        name[n] = 0;
+        if (nxicon_pack_find(name, &img) != 0) fprintf(stderr, "pack missing %s\n", name);
+        NXC_CHECK(nxicon_pack_find(name, &img) == 0 && img.width == img.height && img.width >= 96);
+    }
+    NXC_CHECK(nxicon_pack_find("app-file", &img) == -1);      /* exact names only */
+    NXC_CHECK(nxicon_pack_find("", &img) == -1);
+    NXC_CHECK(nxicon_pack_find(NULL, &img) == -1);
+    NXC_CHECK(nxicon_pack_find("folder-generic", &img) == 0);
+    NXC_CHECK(nxicon_pack_find("device-external", &img) == 0);
+
+    static const struct { const char *path, *icon; } dirs[] = {
+        { "/Users/swa/Documents", "folder-documents" }, { "/Users/swa/Downloads/", "folder-downloads" },
+        { "Music", "folder-music" }, { "/Users/swa/Movies", "folder-video" },
+        { "/Users/swa/Pictures", "folder-camera" }, { "/System", "folder-system" },
+        { "/Users", "folder-user" }, { "/projects/neolyx", "folder-generic" },
+        { "/", "folder-generic" }, { "", "folder-generic" }, { NULL, "folder-generic" },
+        { "/Users/swa/DocumentsOld", "folder-generic" },
+    };
+    for (unsigned i = 0; i < sizeof(dirs) / sizeof(dirs[0]); i++) {
+        const char *got = nxicon_pack_folder_name(dirs[i].path);
+        if (strcmp(got, dirs[i].icon) != 0)
+            fprintf(stderr, "folder %s -> %s (want %s)\n", dirs[i].path ? dirs[i].path : "(null)", got, dirs[i].icon);
+        NXC_CHECK(strcmp(got, dirs[i].icon) == 0);
+        NXC_CHECK(nxicon_pack_find(got, &img) == 0);
+    }
+
+    /* App icon pixels come from the pack: centre of the 128 px Files icon
+     * matches the pack art closely (the vector fallback is blue). */
+    nxc_surface_t s;
+    NXC_CHECK_OK(nxc_surface_create(&s, 128, 128, 0));
+    nxc_canvas_t c;
+    NXC_CHECK_OK(nxc_canvas_init(&c, &s));
+    NXC_CHECK_OK(nxc_surface_clear(&s, 0));
+    NXC_CHECK_OK(nxapp_icon_draw(&c, NXAPP_FILES, 0, 0, 128, 255));
+    NXC_CHECK(nxicon_pack_find("app-files", &img) == 0);
+    int worst = 0;
+    for (int y = 8; y < 120; y += 16) {
+        for (int x = 8; x < 120; x += 16) {
+            uint32_t px = nxc_test_pixel(&s, x, y);
+            const uint8_t *src = img.rgba + ((size_t)y * img.width + x) * 4;
+            if (src[3] != 255) continue;   /* compare opaque pixels only */
+            int d[3] = { (int)((px >> 16) & 255) - src[0], (int)((px >> 8) & 255) - src[1], (int)(px & 255) - src[2] };
+            for (int k = 0; k < 3; k++) { int a = d[k] < 0 ? -d[k] : d[k]; if (a > worst) worst = a; }
+        }
+    }
+    if (worst > 6) fprintf(stderr, "app-files differs from pack art by %d\n", worst);
+    NXC_CHECK(worst <= 6);
+    NXC_CHECK(nxicon_pack_draw(&c, "nope", 0, 0, 32, 255) == NXC_ERR_NOT_FOUND);
+    NXC_CHECK(nxicon_pack_draw(NULL, "folder-generic", 0, 0, 32, 255) == NXC_ERR_INVALID_ARG);
+    nxc_surface_destroy(&s);
+}
+
 int main(void) {
     nxc_test_init(1280, 1280);
     NXC_CHECK_OK(nxicons_init(0));
@@ -89,6 +157,7 @@ int main(void) {
         NXC_CHECK(ink > 8 && ink < 200);
     }
     nxc_surface_destroy(&s);
+    pack_checks();
     sheet(NXC_RGB(0x1c, 0x1f, 0x26), NXC_RGB(0xF0, 0xF4, 0xFF), "icons_dark.png");
     sheet(NXC_RGB(0xf5, 0xf5, 0xf7), NXC_RGB(0x10, 0x14, 0x1E), "icons_light.png");
     zoom();

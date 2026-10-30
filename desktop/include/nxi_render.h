@@ -19,7 +19,9 @@
  * 
  * INSTEAD:
  * - Create .nxi icon files using IconLay.app
- * - Store icons in /System/Icons/ or /Applications/[App].app/resources/icons/
+ * - Store icons in /System/Desktop/Icons/ or /Applications/[App].app/resources/icons/
+ * - System icons the shell needs at boot go in the linked icon pack:
+ *   resources/icons/pack/iconpack.manifest + tools/build_icon_pack.py
  * - Use nxi_render_icon() or nxi_draw_icon_fallback() to render
  * 
  * If you need a new icon:
