@@ -13,6 +13,7 @@
 #include <stddef.h>
 #include "../include/nxui.h"
 #include "../include/nxsyscall.h"
+#include "../include/nxfont_registry.h"
 
 /* ============ Embedded font data (nxui_assets.S) ============ */
 
@@ -21,6 +22,7 @@ extern const uint8_t nxui_font_medium[],  nxui_font_medium_end[];
 extern const uint8_t nxui_font_bold[],    nxui_font_bold_end[];
 extern const uint8_t nxui_font_display[], nxui_font_display_end[];
 extern const uint8_t nxui_font_mono[],    nxui_font_mono_end[];
+extern const uint8_t nxui_font_italic[],  nxui_font_italic_end[];
 
 /* ============ State ============ */
 
@@ -33,6 +35,7 @@ typedef struct {
     nxc_surface_t   wallpaper_blur;
     nxc_surface_t   cursor;         /* pre-rendered arrow with shadow */
     nxc_font_t     *fonts[NXUI_FONT_COUNT];
+    uint32_t        font_reg_ids[NXUI_FONT_COUNT];
     nxc_font_metrics_t metrics[NXUI_TEXT_COUNT];
     nxui_appearance_t appearance;
     nxui_theme_t    theme;
@@ -188,25 +191,36 @@ void nxui_set_appearance(nxui_appearance_t appearance) {
 /* ============ Typography ============ */
 
 static const nxui_type_t g_type_scale[NXUI_TEXT_COUNT] = {
-    [NXUI_TEXT_CAPTION]     = { NXUI_FONT_REGULAR, 11.0f,  0.10f },
-    [NXUI_TEXT_FOOTNOTE]    = { NXUI_FONT_REGULAR, 12.0f,  0.05f },
-    [NXUI_TEXT_BODY]        = { NXUI_FONT_REGULAR, 13.0f,  0.00f },
-    [NXUI_TEXT_BODY_MEDIUM] = { NXUI_FONT_MEDIUM,  13.0f,  0.00f },
-    [NXUI_TEXT_MENU]        = { NXUI_FONT_MEDIUM,  13.5f,  0.00f },
-    [NXUI_TEXT_MENU_BOLD]   = { NXUI_FONT_BOLD,    13.5f,  0.00f },
-    [NXUI_TEXT_HEADLINE]    = { NXUI_FONT_BOLD,    13.0f,  0.00f },
-    [NXUI_TEXT_TITLE3]      = { NXUI_FONT_MEDIUM,  15.0f, -0.10f },
-    [NXUI_TEXT_TITLE2]      = { NXUI_FONT_BOLD,    17.0f, -0.20f },
-    [NXUI_TEXT_TITLE1]      = { NXUI_FONT_BOLD,    22.0f, -0.30f },
-    [NXUI_TEXT_LARGE_TITLE] = { NXUI_FONT_BOLD,    28.0f, -0.45f },
-    [NXUI_TEXT_CLOCK]       = { NXUI_FONT_DISPLAY, 56.0f, -1.20f },
-    [NXUI_TEXT_MONO]        = { NXUI_FONT_MONO,    12.5f,  0.00f },
+    [NXUI_TEXT_CAPTION]       = { NXUI_FONT_REGULAR,  11.0f,  0.10f },
+    [NXUI_TEXT_FOOTNOTE]      = { NXUI_FONT_REGULAR,  12.0f,  0.05f },
+    [NXUI_TEXT_BODY]          = { NXUI_FONT_REGULAR,  13.0f,  0.00f },
+    [NXUI_TEXT_BODY_MEDIUM]   = { NXUI_FONT_MEDIUM,   13.0f,  0.00f },
+    [NXUI_TEXT_MENU]          = { NXUI_FONT_MEDIUM,   13.5f,  0.00f },
+    [NXUI_TEXT_MENU_BOLD]     = { NXUI_FONT_BOLD,     13.5f,  0.00f },
+    [NXUI_TEXT_HEADLINE]      = { NXUI_FONT_BOLD,     13.0f,  0.00f },
+    [NXUI_TEXT_TITLE3]        = { NXUI_FONT_MEDIUM,   15.0f, -0.10f },
+    [NXUI_TEXT_TITLE2]        = { NXUI_FONT_BOLD,     17.0f, -0.20f },
+    [NXUI_TEXT_TITLE1]        = { NXUI_FONT_BOLD,     22.0f, -0.30f },
+    [NXUI_TEXT_LARGE_TITLE]   = { NXUI_FONT_BOLD,     28.0f, -0.45f },
+    [NXUI_TEXT_CLOCK]         = { NXUI_FONT_DISPLAY,  56.0f, -1.20f },
+    [NXUI_TEXT_MONO]          = { NXUI_FONT_MONO,     12.5f,  0.00f },
+    [NXUI_TEXT_SUBHEADLINE]   = { NXUI_FONT_SEMIBOLD, 12.0f,  0.05f },
+    [NXUI_TEXT_CALLOUT]       = { NXUI_FONT_REGULAR,  15.0f, -0.05f },
+    [NXUI_TEXT_BODY_SEMIBOLD] = { NXUI_FONT_SEMIBOLD, 13.0f,  0.00f },
+    [NXUI_TEXT_BODY_ITALIC]   = { NXUI_FONT_ITALIC,   13.0f,  0.00f },
+    [NXUI_TEXT_DISPLAY]       = { NXUI_FONT_DISPLAY,  40.0f, -0.80f },
+    [NXUI_TEXT_MONO_SMALL]    = { NXUI_FONT_MONO,     11.0f,  0.00f },
 };
 
 const nxc_font_t *nxui_font(nxui_font_id_t id) {
     if (id < 0 || id >= NXUI_FONT_COUNT) id = NXUI_FONT_REGULAR;
     if (g_ui.fonts[id]) return g_ui.fonts[id];
     return g_ui.fonts[NXUI_FONT_REGULAR];   /* fallback for missing faces */
+}
+
+uint32_t nxui_font_registry_id(nxui_font_id_t id) {
+    if (id < 0 || id >= NXUI_FONT_COUNT) return 0;
+    return g_ui.font_reg_ids[id];
 }
 
 nxui_type_t nxui_type(nxui_text_style_t style) {
@@ -250,6 +264,14 @@ float nxui_text_descent(nxui_text_style_t style) {
     return g_ui.metrics[style].descent;
 }
 
+float nxui_text_line_height(nxui_text_style_t style) {
+    if (style < 0 || style >= NXUI_TEXT_COUNT) style = NXUI_TEXT_BODY;
+    const nxc_font_metrics_t *m = &g_ui.metrics[style];
+    float lh = m->ascent + m->descent + m->line_gap;
+    if (!(lh > 0.0f)) lh = nxui_type(style).size * 1.3f;
+    return (float)(int32_t)(lh + 0.5f);
+}
+
 nxc_status_t nxui_text_in_rect(nxc_canvas_t *c, nxui_text_style_t style, nxc_rect_t r,
                                const char *utf8, nxc_color_t color, nxc_align_t align) {
     if (!c || !utf8) return NXC_ERR_INVALID_ARG;
@@ -264,6 +286,102 @@ nxc_status_t nxui_text_in_rect(nxc_canvas_t *c, nxui_text_style_t style, nxc_rec
     nxc_text_opts_t o;
     o.letter_spacing = 0.0f; o.align = align; o.max_width = r.w; o.no_kerning = 0;
     return nxui_text(c, style, x, baseline, utf8, color, &o);
+}
+
+static inline int utf8_cont(char ch) { return ((uint8_t)ch & 0xC0u) == 0x80u; }
+
+/* Longest prefix of s[0..n) in bytes (ending on a UTF-8 boundary) whose
+ * width fits maxw; at least one character so wrapping always advances. */
+static int32_t wrap_fit(const nxc_font_t *f, float px, const nxc_text_opts_t *o,
+                        const char *s, int32_t n, float maxw) {
+    int32_t first = 1;
+    while (first < n && utf8_cont(s[first])) first++;
+    int32_t lo = first, hi = n, best = first;
+    while (lo <= hi) {
+        int32_t mid = lo + (hi - lo) / 2;
+        while (mid < hi && utf8_cont(s[mid])) mid++;
+        if (nxc_text_width(f, px, s, mid, o) <= maxw) {
+            best = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    while (best > first && best < n && utf8_cont(s[best])) best--;
+    return best;
+}
+
+/*
+ * Shared word-wrap engine. Lines are laid out top-down from r.y with the
+ * baseline centered on the cap height inside each line box; drawing stops
+ * at the bottom of r, ending the last line with an ellipsis when text is
+ * left over. Returns the height used.
+ */
+static float wrap_draw(nxc_canvas_t *c, const nxc_font_t *f, float px, float tracking,
+                       float cap_height, nxc_rect_t r, const char *utf8, nxc_color_t color,
+                       float lh) {
+    if (!f || !utf8 || !(px > 0.0f) || !(r.w > 0.0f) || !(lh > 0.0f)) return 0.0f;
+    nxc_text_opts_t o;
+    o.letter_spacing = tracking; o.align = NXC_ALIGN_LEFT; o.max_width = 0.0f; o.no_kerning = 0;
+    float y = r.y;
+    const char *s = utf8;
+    uint32_t guard = 0;
+    while (*s && guard++ < 4096) {
+        int32_t n = 0;                               /* this hard line */
+        while (s[n] && s[n] != '\n' && n < 8192) n++;
+        int32_t take = n, next = n;
+        if (n > 0 && nxc_text_width(f, px, s, n, &o) > r.w) {
+            int32_t fit = wrap_fit(f, px, &o, s, n, r.w);
+            int32_t sp = fit;
+            while (sp > 0 && s[sp] != ' ') sp--;
+            if (s[fit] == ' ') { take = fit; next = fit + 1; }
+            else if (sp > 0) { take = sp; next = sp + 1; }
+            else { take = fit; next = fit; }           /* one long word: split it */
+        }
+        const char *rest = s + next;
+        if (next == n && *rest == '\n') rest++;
+        while (*rest == ' ') rest++;
+        int last_line = y + 2.0f * lh > r.y + r.h + 0.5f;
+        float baseline = (float)(int32_t)(y + 0.5f * (lh + cap_height) + 0.5f);
+        if (c) {
+            if (last_line && *rest) {
+                /* Ellipsis: draw what fits of the visible part plus U+2026. */
+                float ew = nxc_text_width(f, px, "\xE2\x80\xA6", -1, &o);
+                int32_t keep = take;
+                if (nxc_text_width(f, px, s, keep, &o) + ew > r.w)
+                    keep = wrap_fit(f, px, &o, s, keep, r.w - ew);
+                while (keep > 0 && s[keep - 1] == ' ') keep--;
+                nxc_draw_text(c, f, px, r.x, baseline, s, keep, color, &o);
+                float w = keep > 0 ? nxc_text_width(f, px, s, keep, &o) : 0.0f;
+                nxc_draw_text(c, f, px, r.x + w, baseline, "\xE2\x80\xA6", -1, color, &o);
+            } else if (take > 0) {
+                nxc_draw_text(c, f, px, r.x, baseline, s, take, color, &o);
+            }
+        }
+        y += lh;
+        if (last_line) break;
+        s = rest;
+    }
+    return y - r.y;
+}
+
+float nxui_text_wrapped(nxc_canvas_t *c, nxui_text_style_t style, nxc_rect_t r,
+                        const char *utf8, nxc_color_t color, float line_height) {
+    if (style < 0 || style >= NXUI_TEXT_COUNT) style = NXUI_TEXT_BODY;
+    nxui_type_t t = nxui_type(style);
+    float cap = g_ui.metrics[style].cap_height;
+    if (!(cap > 0.0f)) cap = t.size * 0.66f;
+    float lh = line_height > 0.0f ? line_height : nxui_text_line_height(style);
+    return wrap_draw(c, nxui_font(t.font), t.size, t.tracking, cap, r, utf8, color, lh);
+}
+
+float nxui_text_wrapped_font(nxc_canvas_t *c, const nxc_font_t *font, float px, nxc_rect_t r,
+                             const char *utf8, nxc_color_t color, float line_height) {
+    nxc_font_metrics_t m;
+    if (!font || !(px > 0.0f) || nxc_font_metrics(font, px, &m) != NXC_OK) return 0.0f;
+    float lh = line_height > 0.0f ? line_height
+                                  : (float)(int32_t)(m.ascent + m.descent + m.line_gap + 0.5f);
+    return wrap_draw(c, font, px, 0.0f, m.cap_height, r, utf8, color, lh);
 }
 
 /* ============ Materials & elevation ============ */
@@ -671,6 +789,55 @@ static nxc_status_t load_font(nxui_font_id_t id, const uint8_t *start, const uin
     return NXC_OK;
 }
 
+/*
+ * Fallback chains and registry entries for the loaded system faces.
+ * Sans faces fall back to Mono (box drawing, technical symbols), Mono to
+ * Regular. Failures are logged; text still renders without them.
+ */
+static void fonts_register(void) {
+    static const struct {
+        nxui_font_id_t id;
+        const char *family, *style, *role;
+    } k_faces[] = {
+        { NXUI_FONT_REGULAR, "NX Sans",      "Regular",  "text"     },
+        { NXUI_FONT_MEDIUM,  "NX Sans",      "Medium",   "ui"       },
+        { NXUI_FONT_DISPLAY, "NX Sans",      "Semibold", "display"  },
+        { NXUI_FONT_BOLD,    "NX Sans",      "Bold",     "emphasis" },
+        { NXUI_FONT_ITALIC,  "NX Sans",      "Italic",   "emphasis" },
+        { NXUI_FONT_MONO,    "NX Sans Mono", "Regular",  "mono"     },
+    };
+    nxc_font_t *mono = g_ui.fonts[NXUI_FONT_MONO];
+    nxc_font_t *regular = g_ui.fonts[NXUI_FONT_REGULAR];
+    for (int32_t i = 0; i < NXUI_FONT_COUNT; i++) {
+        nxc_font_t *f = g_ui.fonts[i];
+        if (!f || i == NXUI_FONT_SEMIBOLD) continue;      /* alias of DISPLAY */
+        const nxc_font_t *fb = (f == mono) ? regular : mono;
+        if (fb && fb != f && nxc_font_set_fallbacks(f, &fb, 1) != NXC_OK) {
+            ui_log("[NXUI] font fallback chain not set\n");
+        }
+    }
+    if (nxfont_registry_init() != NXC_OK) {
+        ui_log("[NXUI] font registry init failed\n");
+        return;
+    }
+    for (uint32_t k = 0; k < sizeof(k_faces) / sizeof(k_faces[0]); k++) {
+        const nxc_font_t *f = g_ui.fonts[k_faces[k].id];
+        if (!f) continue;
+        uint32_t rid = 0;
+        if (nxfont_registry_add_system(f, k_faces[k].family, k_faces[k].style, k_faces[k].role,
+                                       &rid) != NXC_OK) {
+            ui_log("[NXUI] font registry: system face not registered\n");
+            continue;
+        }
+        g_ui.font_reg_ids[k_faces[k].id] = rid;
+    }
+    g_ui.font_reg_ids[NXUI_FONT_SEMIBOLD] = g_ui.font_reg_ids[NXUI_FONT_DISPLAY];
+    uint32_t loaded = 0;
+    if (nxfont_registry_load_user(0, &loaded) == NXC_OK && loaded > 0) {
+        ui_log("[NXUI] user fonts loaded\n");
+    }
+}
+
 nxc_status_t nxui_init(void) {
     if (g_ui.ready) return NXC_OK;
     ui_log("[NXUI] init\n");
@@ -711,6 +878,9 @@ nxc_status_t nxui_init(void) {
     load_font(NXUI_FONT_BOLD,    nxui_font_bold,    nxui_font_bold_end,    "NXSans Bold");
     load_font(NXUI_FONT_DISPLAY, nxui_font_display, nxui_font_display_end, "NXSans Display");
     load_font(NXUI_FONT_MONO,    nxui_font_mono,    nxui_font_mono_end,    "NXSans Mono");
+    load_font(NXUI_FONT_ITALIC,  nxui_font_italic,  nxui_font_italic_end,  "NXSans Italic");
+    g_ui.fonts[NXUI_FONT_SEMIBOLD] = g_ui.fonts[NXUI_FONT_DISPLAY];   /* same 600 face */
+    fonts_register();
     for (int32_t i = 0; i < NXUI_TEXT_COUNT; i++) {
         nxui_type_t t = g_type_scale[i];
         if (nxc_font_metrics(nxui_font(t.font), t.size, &g_ui.metrics[i]) != NXC_OK) {

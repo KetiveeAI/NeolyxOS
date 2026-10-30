@@ -377,4 +377,89 @@ nxc_status_t nxc_font_glyph_path(const nxc_font_t *font, uint32_t codepoint,
                                  float px_size, float x, float baseline_y,
                                  nxc_path_t *out, float *advance_out);
 
+/* ============ Font information, coverage and fallback ============ */
+
+/* Strings from the font's 'name' table, converted to UTF-8 (control
+ * characters become spaces) and truncated at a character boundary to
+ * the buffer size. Missing names are empty strings. */
+typedef struct {
+    char     family[64];        /* typographic family (name 16, else 1) */
+    char     style[48];         /* typographic subfamily (name 17, else 2) */
+    char     full_name[96];     /* name 4 */
+    char     version[64];       /* name 5 */
+    char     copyright[160];    /* name 0 */
+    char     license[512];      /* name 13 (license description) */
+    uint16_t weight;            /* OS/2 usWeightClass (1..1000; 400 if absent) */
+    uint8_t  italic;            /* 1 = italic/oblique face */
+    uint8_t  monospace;         /* 1 = post.isFixedPitch */
+    uint32_t num_glyphs;
+    uint32_t units_per_em;
+    uint32_t file_size;         /* bytes of font data */
+    uint32_t font_revision;     /* head.fontRevision, 16.16 fixed */
+    uint8_t  kerning;           /* 0 none, 1 'kern' table, 2 GPOS pair kerning */
+    uint8_t  reserved[3];
+} nxc_font_info_t;
+
+/* Why the most recent nxc_font_load call rejected its data, as a short
+ * static English phrase ("table outside the file", ...); "" when the last
+ * load succeeded or failed for a non-format reason. */
+const char *nxc_font_last_reject(void);
+
+/* Fill *out from a loaded font. Never allocates. */
+nxc_status_t nxc_font_info(const nxc_font_t *font, nxc_font_info_t *out);
+
+/* 1 when the font maps code point cp to a real glyph (fallbacks ignored). */
+int nxc_font_has_char(const nxc_font_t *font, uint32_t cp);
+
+/* Smallest code point >= from that the font maps to a glyph, or
+ * NXC_NO_CHAR when there is none (iterate a character map with
+ * cp = nxc_font_next_char(f, cp + 1)). */
+#define NXC_NO_CHAR 0xFFFFFFFFu
+uint32_t nxc_font_next_char(const nxc_font_t *font, uint32_t from);
+
+/*
+ * Fallback chain: text drawn with `font` uses the first face in `chain`
+ * that maps a code point the font itself lacks. One level only (the
+ * fallbacks' own chains are not followed), at most NXC_FONT_MAX_FALLBACKS
+ * faces, no self references. count 0 clears the chain. The caller keeps
+ * every face alive while it is in a chain; a face destroyed anyway is
+ * detected (by id) and skipped.
+ */
+#define NXC_FONT_MAX_FALLBACKS 4
+nxc_status_t nxc_font_set_fallbacks(nxc_font_t *font, const nxc_font_t *const *chain,
+                                    uint32_t count);
+
+/* ============ Text rendering quality ============ */
+
+/*
+ * Engine-wide rasterization settings for text. Changing them drops the
+ * glyph cache. Defaults (nxc_text_set_quality(NULL)):
+ *   vertical_hinting 1, hint_max_px 24, subpixel_phases 4, contrast 0.5,
+ *   gamma 1 (polarity- and size-aware coverage correction).
+ */
+typedef struct {
+    int32_t vertical_hinting;   /* 1 = snap x-height to whole pixels at UI sizes */
+    float   hint_max_px;        /* largest size that is hinted (8..64) */
+    int32_t subpixel_phases;    /* horizontal glyph positions per px: 1, 2 or 4 */
+    float   contrast;           /* 0..1 edge contrast boost at small sizes */
+    int32_t gamma;              /* 1 = correct coverage for text polarity and size */
+} nxc_text_quality_t;
+
+/* NULL restores the defaults. NXC_ERR_INVALID_ARG for out-of-range values. */
+nxc_status_t nxc_text_set_quality(const nxc_text_quality_t *q);
+void nxc_text_get_quality(nxc_text_quality_t *out);
+
+typedef struct {
+    uint32_t hits;              /* glyphs drawn from the cache */
+    uint32_t misses;            /* glyphs rasterized into the cache */
+    uint32_t uncached;          /* glyphs rasterized straight to the canvas */
+    uint32_t evictions;         /* cached bitmaps found overwritten by newer ones */
+    uint32_t fallbacks;         /* code points resolved through a fallback face */
+    uint32_t capacity;          /* cache table slots */
+    uint32_t arena_bytes;       /* bitmap ring size */
+} nxc_text_stats_t;
+
+/* Glyph cache counters since the cache was last (re)built. */
+void nxc_text_stats(nxc_text_stats_t *out);
+
 #endif /* NXCANVAS_H */

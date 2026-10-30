@@ -55,7 +55,8 @@ AREA_GLASS_SRC    = lib/nxglass.c
 
 AREA_SETTINGS_SRC = shell/views/settings_view.c
 
-AREA_FONTS_SRC    = shell/views/fonts_view.c
+AREA_FONTS_SRC    = shell/views/fonts_view.c \
+                    lib/nxfont_registry.c
 
 AREA_SETUP_SRC    = shell/views/setup_assistant.c
 
