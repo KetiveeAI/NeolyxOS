@@ -51,6 +51,7 @@ static int cc_slider_value_at(nxc_rect_t r, int x) {
 #include "../include/volume_osd.h"
 #include "../include/theme_osd.h"
 #include "../include/notification_center.h"
+#include "../include/nxnet.h"
 #include <stddef.h>
 
 /* Config for security settings */
@@ -223,8 +224,42 @@ int control_center_is_visible(void) {
 
 /* ============ Animation ============ */
 
+/* Wi-Fi and Ethernet tiles reflect the networking client (nxnet). When
+ * the kernel exposes no network state the tiles say so instead of
+ * pretending to be connected. */
+static void cc_sync_network(void) {
+    nxnet_summary_t sum;
+    nxnet_status_t st = nxnet_summary(&sum);
+    if (st != NXNET_OK) {
+        g_cc.wifi.enabled = 0;
+        cc_strcpy(g_cc.wifi.sublabel, "Unavailable", 32);
+        g_cc.ethernet.enabled = 0;
+        cc_strcpy(g_cc.ethernet.sublabel, "Unavailable", 32);
+        return;
+    }
+    if (!sum.wifi_present) {
+        g_cc.wifi.enabled = 0;
+        cc_strcpy(g_cc.wifi.sublabel, "No Wi-Fi", 32);
+    } else if (sum.wifi_state == NXNET_WIFI_CONNECTED) {
+        control_center_set_wifi(1, sum.wifi_ssid[0] ? sum.wifi_ssid : "Connected");
+    } else {
+        g_cc.wifi.enabled = sum.wifi_state != NXNET_WIFI_OFF;
+        cc_strcpy(g_cc.wifi.sublabel, sum.wifi_state == NXNET_WIFI_OFF ? "Off" :
+                  sum.wifi_state == NXNET_WIFI_CONNECTING ? "Connecting" : "Not Connected", 32);
+    }
+    int wired = sum.primary_index >= 0 && sum.primary_kind == NXNET_IF_ETHERNET &&
+                sum.connectivity != NXNET_CONN_OFFLINE;
+    g_cc.ethernet.enabled = wired;
+    cc_strcpy(g_cc.ethernet.sublabel, wired ? "Connected" : "Not Connected", 32);
+}
+
 void control_center_tick(void) {
     if (!g_cc_initialized) return;
+    if (g_cc.visible) {
+        static float last_sync = -10.0f;
+        float now = nxui_time();
+        if (now - last_sync >= 1.0f || now < last_sync) { cc_sync_network(); last_sync = now; }
+    }
     
     /* Slide-in animation */
     if (g_cc.visible && g_cc.slide_progress < 100) {
@@ -306,14 +341,16 @@ int control_center_handle_input(int mouse_x, int mouse_y, uint8_t buttons, uint8
                 if (on_chevron) {
                     cc_open_settings_panel(CC_PANEL_NETWORK);
                 } else {
-                    g_cc.wifi.enabled = !g_cc.wifi.enabled; 
-                    cc_strcpy(g_cc.wifi.sublabel, g_cc.wifi.enabled ? "Connected" : "Off", 32);
-                    /* Push notification for WiFi state change */
-                    if (g_cc.wifi.enabled) {
-                        notification_push("Wi-Fi", "Wi-Fi Connected", "You are now connected to the network", 0xFF30D158);
+                    /* Radio power through nxnet; the tile shows the real result */
+                    nxnet_status_t pst = nxnet_wifi_set_power(g_cc.wifi.enabled ? 0 : 1);
+                    if (pst == NXNET_OK) {
+                        notification_push("Wi-Fi", g_cc.wifi.enabled ? "Wi-Fi Off" : "Wi-Fi On",
+                                          g_cc.wifi.enabled ? "Wi-Fi has been turned off" : "Wi-Fi is on",
+                                          g_cc.wifi.enabled ? 0xFFFF453A : 0xFF30D158);
                     } else {
-                        notification_push("Wi-Fi", "Wi-Fi Disconnected", "Wi-Fi has been turned off", 0xFFFF453A);
+                        serial_puts("[CC] Wi-Fi power change failed\n");
                     }
+                    cc_sync_network();
                 }
                 return 1;
             case 1:  /* Bluetooth */
