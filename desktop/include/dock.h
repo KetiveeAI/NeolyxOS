@@ -11,6 +11,7 @@
 #define DOCK_H
 
 #include <stdint.h>
+#include "nxcanvas.h"
 #include "nxappearance.h"
 #include "nxevent.h"
 
@@ -143,7 +144,7 @@ void dock_start_bounce(uint32_t app_id);
  * Render dock to framebuffer
  * Note: Uses nxi_render.h for icon drawing - NO hardcoded icons
  */
-void dock_render(uint32_t *fb, uint32_t pitch, int mouse_x, int mouse_y);
+void dock_render(nxc_canvas_t *c, int mouse_x, int mouse_y);
 
 /**
  * Handle mouse input

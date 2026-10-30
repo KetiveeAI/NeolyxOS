@@ -11,7 +11,11 @@
 #include "../include/nxsyscall.h"
 #include "../include/desktop_shell.h"
 
-/* Main entry point - called from _start */
+/* Main entry point - called from _start
+ * The kernel enters here via iretq with a 16-byte aligned RSP and no return
+ * address pushed, so the SysV ABI entry alignment (RSP % 16 == 8) does not hold.
+ * force_align_arg_pointer realigns the stack so SSE spills (movaps) are safe. */
+__attribute__((force_align_arg_pointer))
 void _start(void) {
     nx_debug_print("[DESKTOP_MAIN] Starting...\n");
     

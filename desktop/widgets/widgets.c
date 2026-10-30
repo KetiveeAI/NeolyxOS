@@ -7,6 +7,7 @@
  */
 
 #include <stdint.h>
+#include <stddef.h>
 #include "../include/widgets.h"
 
 /* ============ External Dependencies ============ */

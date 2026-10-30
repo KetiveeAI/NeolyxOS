@@ -1,0 +1,68 @@
+# NeolyxOS system icon pack
+#
+# One icon per line. tools/build_icon_pack.py turns this into NXIB icons
+# in System/Desktop/Icons/ and links them into the desktop image (the boot
+# image ships no files, so the desktop cannot read them from disk yet).
+#
+#   name  size  mode  source  [key=value ...]
+#
+# name    lowercase [a-z0-9-], becomes System/Desktop/Icons/<name>.nxi
+# size    output square in pixels (16..256)
+# mode    art    - source drawn as-is, fitted and centered
+#         tile   - NeolyxOS app tile (rounded square, vertical gradient)
+#                  with the source centered on it in its own colors
+#         tile-w - same tile, source recolored to white (line glyphs)
+# source  path from the repository root: .svg, a NeolyxOS text vector
+#         .nxi (desktop/resources/icons) or an NXIB .nxi
+# keys    tile=#TOP:#BOTTOM  tile gradient
+#         scale=0.62         glyph size as a fraction of the tile
+#         color=#RRGGBB      glyph color for tile-w (default white)
+#
+# To use the exact Figma artwork for an icon, export it from Figma as SVG
+# (the 1024 x 1024 frame, base included), save it under
+# resources/icons/pack/figma/, point the line at it with mode "art", and
+# run: python3 tools/build_icon_pack.py
+
+# ---------- Applications (dock, app drawer, search, notifications) ----------
+app-files       128 tile   desktop/apps/Path.app/resources/icons/icon.svg  tile=#F6EEFF:#D6C4FF scale=0.70
+app-browser     128 tile   icons/zepra.svg                                 tile=#2A2142:#120D22 scale=0.66
+app-terminal    128 tile-w desktop/resources/icons/terminal.nxi           tile=#14131F:#6F70CC scale=0.56
+app-settings    128 tile   desktop/apps/Path.app/resources/icons/setting.svg tile=#ECE8F6:#B9B1CF scale=0.80
+app-calculator  128 tile-w desktop/resources/icons/calculator.nxi          tile=#FFA867:#E3572B scale=0.58
+app-calendar    128 tile-w desktop/resources/icons/calendar.nxi           tile=#FFFFFF:#ECE6F8 scale=0.58 color=#E5484D
+app-clock       128 tile-w desktop/resources/icons/clock.nxi               tile=#2E2745:#100C1D scale=0.62
+app-notes       128 tile   icons/feather.svg                               tile=#FFF8E8:#F2E2BC scale=0.74
+app-music       128 tile-w desktop/resources/icons/music.nxi               tile=#FF7FAE:#C2185B scale=0.58
+app-photos      128 tile   resources/icons/pack/figma/photos.svg          tile=#3A2C6E:#140F2B scale=0.80 render=browser
+app-mail        128 tile-w desktop/resources/icons/mail.nxi               tile=#7FB2FF:#3D5AFE scale=0.58
+app-messages    128 tile-w desktop/resources/icons/chat.nxi                tile=#6BE6A8:#14A06A scale=0.58
+app-fonts       128 tile-w icons/text.svg                                  tile=#B992FF:#6D28D9 scale=0.56
+app-monitor     128 tile-w desktop/resources/icons/chart.nxi               tile=#2F3A50:#0F1420 scale=0.58
+app-store       128 tile-w desktop/resources/icons/shopping-cart.nxi       tile=#63C7FF:#1E6FE0 scale=0.58
+app-trash       128 tile   desktop/apps/Path.app/resources/icons/Bin.svg   tile=#EEF0F5:#C2C7D2 scale=0.70
+app-launcher    128 tile-w icons/appDrower.svg                             tile=#3C3354:#17121F scale=0.56
+app-generic     128 tile   neolyxos.svg                                    tile=#231D36:#0E0B17 scale=0.66
+app-reolab      128 art    desktop/apps/reolab.app/resources/ReoLab.svg
+app-rolecut     128 tile-w desktop/resources/icons/video.nxi               tile=#FF8A8A:#D9434F scale=0.58
+app-rivee       128 tile-w desktop/resources/icons/edit.nxi                tile=#5ED6C8:#148C8C scale=0.56
+
+# ---------- Folders (desktop, Path, file dialogs) ----------
+folder-generic    96 art  resources/icons/pack/folder.svg
+folder-items      96 art  icons/DirIcons/Dir with item.svg
+folder-documents  96 art  icons/DirIcons/Documents.svg
+folder-downloads  96 art  icons/DirIcons/Downloads.svg
+folder-music      96 art  icons/DirIcons/Music.svg
+folder-video      96 art  icons/DirIcons/video.svg
+folder-desktop    96 art  icons/DirIcons/Desktop.svg
+folder-library    96 art  icons/DirIcons/Librery.svg
+folder-public     96 art  icons/DirIcons/Public.svg
+folder-shared     96 art  icons/DirIcons/Shared.svg
+folder-system     96 art  icons/DirIcons/System.svg
+folder-user       96 art  icons/DirIcons/User.svg
+folder-trash      96 art  icons/DirIcons/Bin.svg
+folder-camera     96 art  icons/DirIcons/Camera.svg
+
+# ---------- Devices (desktop) ----------
+device-external   96 art  desktop/apps/Path.app/resources/icons/ExternalSsd.svg
+device-disk       96 art  desktop/apps/Path.app/resources/icons/NucleusDisk.svg
+device-computer   96 art  desktop/apps/Path.app/resources/icons/pc.svg

@@ -31,6 +31,12 @@
 #include "../include/theme_osd.h"
 #include "../include/battery_warning.h"
 #include "../include/network_indicator.h"
+#include "../include/nxui.h"
+#include "../include/menubar.h"
+#include "../lib/nxicons/nxicons_internal.h"
+#include "../include/nxicon_pack.h"
+#define nxc_cosf_shell nxc_cosf_pub
+#define nxc_sinf_shell nxc_sinf_pub
 
 /* Centralized config system */
 #include "nx_config.h"
@@ -701,244 +707,179 @@ static void render_background(void) {
 }
 
 /* Navigation Menu Bar - top of screen */
+/* Format "HH:MM" into out (6 bytes). */
+static void fmt_hhmm(char *out, uint32_t h, uint32_t m) {
+    out[0] = (char)('0' + (h / 10) % 10); out[1] = (char)('0' + h % 10); out[2] = ':';
+    out[3] = (char)('0' + (m / 10) % 10); out[4] = (char)('0' + m % 10); out[5] = '\0';
+}
+
+/* Append src to dst at pos (bounded), returning the new pos. */
+static int str_app(char *dst, int pos, int cap, const char *src) {
+    while (src && *src && pos + 1 < cap) dst[pos++] = *src++;
+    dst[pos] = '\0';
+    return pos;
+}
+
+/* Current wall-clock time: RTC when available, else boot ticks. */
+static void current_time(uint32_t *hour, uint32_t *minute, uint32_t *second,
+                         uint32_t *day, uint32_t *month, uint32_t *year, uint32_t *weekday) {
+    rtc_time_t now;
+    if (get_cached_rtc_time(&now) == 0) {
+        *hour = now.hour; *minute = now.minute; *second = now.second;
+        *day = now.day; *month = now.month ? now.month : 1; *year = now.year;
+        *weekday = calendar_day_of_week(*year, *month, *day);
+        return;
+    }
+    uint64_t secs = nx_gettime() / 1000;
+    *hour = (uint32_t)((secs / 3600) % 24); *minute = (uint32_t)((secs / 60) % 60);
+    *second = (uint32_t)(secs % 60);
+    *day = 1; *month = 1; *year = 2026; *weekday = 4;
+}
+
+/* Status item slots in the menu bar, measured from the right edge. The
+ * click zones in desktop_handle_mouse use the same centers. */
+#define NAV_CC_CX      35.0f
+#define NAV_BELL_CX    67.0f
+#define NAV_ITEM_STEP  30.0f
+
 static void render_navigation_bar(void) {
-    int bar_h = g_nx_config.ui.navbar_height;  /* From config, not hardcoded */
-    
-    /* Translucent glass bar background */
-    for (uint32_t y = 0; y < (uint32_t)bar_h; y++) {
-        for (uint32_t x = 0; x < g_desktop.width; x++) {
-            uint32_t idx = y * (g_desktop.pitch / 4) + x;
-            uint32_t bg = g_desktop.framebuffer[idx];
-            /* Blend with semi-transparent dark overlay */
-            uint8_t br = ((bg >> 16) & 0xFF);
-            uint8_t bgg = ((bg >> 8) & 0xFF);
-            uint8_t bb = (bg & 0xFF);
-            uint8_t nr = (br * 6 + 0x10 * 4) / 10;
-            uint8_t ng = (bgg * 6 + 0x10 * 4) / 10;
-            uint8_t nb = (bb * 6 + 0x18 * 4) / 10;
-            g_desktop.framebuffer[idx] = 0xFF000000 | (nr << 16) | (ng << 8) | nb;
-        }
-    }
-    
-    /* Left: NeolyxOS logo/text */
-    desktop_draw_text(12, 8, "NeolyxOS", COLOR_TEXT_WHITE);
-    
-    /* Center: Clock display - use real RTC time */
-    rtc_time_t now;
-    if (get_cached_rtc_time(&now) == 0) {
-        /* Use real RTC time from CMOS */
-        char time_str[16];
-        time_str[0] = '0' + (now.hour / 10);
-        time_str[1] = '0' + (now.hour % 10);
-        time_str[2] = ':';
-        time_str[3] = '0' + (now.minute / 10);
-        time_str[4] = '0' + (now.minute % 10);
-        time_str[5] = '\0';
-        
-        int clock_x = (g_desktop.width - 40) / 2;
-        desktop_draw_text(clock_x, 8, time_str, COLOR_TEXT_WHITE);
-    } else {
-        /* Fallback: Calculate time from boot ticks + cached RTC boot time */
-        uint64_t ticks = pit_get_ticks();
-        uint32_t elapsed_secs = (uint32_t)(ticks / 1000);
-        
-        /* Use cached RTC time as base (includes timezone offset) */
-        uint32_t base_secs = g_cached_rtc_time.hour * 3600 + 
-                             g_cached_rtc_time.minute * 60 + 
-                             g_cached_rtc_time.second;
-        uint32_t total_secs = base_secs + elapsed_secs;
-        
-        uint32_t hours = (total_secs / 3600) % 24;
-        uint32_t mins = (total_secs / 60) % 60;
-        
-        char time_str[16];
-        time_str[0] = '0' + (hours / 10);
-        time_str[1] = '0' + (hours % 10);
-        time_str[2] = ':';
-        time_str[3] = '0' + (mins / 10);
-        time_str[4] = '0' + (mins % 10);
-        time_str[5] = '\0';
-        
-        int clock_x = (g_desktop.width - 40) / 2;
-        desktop_draw_text(clock_x, 8, time_str, COLOR_TEXT_WHITE);
-    }
-    
-    /* Right side: Control Center icons (PC-style status menu) */
-    int rx = g_desktop.width - 120;  /* Moved left to make room for network */
-    
-    /* Network status indicator (uses NXI icons) */
-    network_indicator_render(rx, 6);
-    rx += 24;
-    
-    /* Volume icon (speaker shape) - PC has speakers, not mobile signal */
-    fill_rounded_rect(rx, 8, 6, 10, 1, COLOR_TEXT_WHITE);  /* Speaker body */
-    fill_rounded_rect(rx + 6, 6, 3, 14, 1, COLOR_TEXT_WHITE);  /* Speaker cone */
-    /* Sound waves */
-    for (int wave = 0; wave < 2; wave++) {
-        int woff = 12 + wave * 4;
-        fill_rounded_rect(rx + woff, 10 + wave, 2, 6 - wave * 2, 1, 
-                          wave == 0 ? COLOR_TEXT_WHITE : 0x80FFFFFF);
-    }
-    rx += 30;
-    
-    /* Bluetooth icon (simplified B shape) */
-    fill_rounded_rect(rx, 7, 12, 14, 2, 0x80007AFF);  /* Blue pill */
-    desktop_draw_text(rx + 2, 8, "B", COLOR_TEXT_WHITE);
-    rx += 20;
-    
-    /* Notification bell icon - left of grid */
-    fill_rounded_rect(rx, 7, 14, 14, 3, notification_center_is_visible() ? 0xFF007AFF : 0x60FFFFFF);
-    /* Bell shape: top dome + bottom */
-    fill_circle(rx + 7, 11, 4, COLOR_TEXT_WHITE);
-    fill_rounded_rect(rx + 4, 14, 6, 4, 1, COLOR_TEXT_WHITE);
-    /* Bell clapper dot */
-    fill_circle(rx + 7, 19, 1, COLOR_TEXT_WHITE);
-    rx += 22;
-    
-    /* Control Center toggle (grid icon) - clicking shows settings panel */
-    fill_rounded_rect(rx, 7, 14, 14, 3, control_center_is_visible() ? 0xFF007AFF : 0x60FFFFFF);
-    /* 2x2 grid dots */
-    fill_circle(rx + 5, 11, 2, COLOR_TEXT_WHITE);
-    fill_circle(rx + 11, 11, 2, COLOR_TEXT_WHITE);
-    fill_circle(rx + 5, 17, 2, COLOR_TEXT_WHITE);
-    fill_circle(rx + 11, 17, 2, COLOR_TEXT_WHITE);
-}
+    nxc_canvas_t *c = nxui_canvas();
+    const nxui_theme_t *th = nxui_theme();
+    float w = (float)g_desktop.width, h = th->menubar_height;
+    nxc_rect_t bar = nxc_rect(0, 0, w, h);
 
-/* Globe Clock Widget - top left */
-static void render_globe_clock_widget(void) {
-    int wx = 30, wy = 45;
-    int ww = 220, wh = 95;
-    
-    /* Glassmorphic rounded background */
-    fill_rounded_rect(wx, wy, ww, wh, WIDGET_RADIUS, GLASS_WIDGET);
-    
-    /* Earth globe (simplified colored circle) */
-    int globe_cx = wx + 48;
-    int globe_cy = wy + 47;
-    int globe_r = 32;
-    
-    /* Ocean blue */
-    fill_circle(globe_cx, globe_cy, globe_r, 0xFF1A4A6A);
-    /* Landmass hints */
-    fill_circle(globe_cx - 8, globe_cy - 8, 12, 0xFF2A6A5A);
-    fill_circle(globe_cx + 10, globe_cy + 5, 8, 0xFF2A6A5A);
-    /* Globe highlight */
-    fill_circle(globe_cx - 10, globe_cy - 12, 5, 0x40FFFFFF);
-    
-    /* Get real date/time from RTC */
-    /* Use Calendar.app's arrays instead of duplicate definitions */
-    /* day_names_short[] and month_names_full[] from calendar.h */
-    
-    rtc_time_t now;
-    uint32_t hours, minutes, day, month, year, weekday;
-    
-    if (get_cached_rtc_time(&now) == 0) {
-        /* Use real RTC time */
-        hours = now.hour;
-        minutes = now.minute;
-        day = now.day;
-        month = now.month;  /* 1-12 */
-        year = now.year;
-        
-        /* Use Calendar.app's calendar_day_of_week() - no duplicate algorithm */
-        weekday = calendar_day_of_week(year, month, day);
-        
-        month = month - 1;  /* 0-indexed for months array */
-    } else {
-        /* Fallback to boot ticks if RTC fails */
-        uint64_t ticks_ms = nx_gettime();
-        uint64_t total_secs = ticks_ms / 1000;
-        uint32_t secs_in_day = total_secs % 86400;
-        hours = (secs_in_day / 3600) % 24;
-        minutes = (secs_in_day / 60) % 60;
-        day = 9;
-        month = 0;  /* January */
-        year = 2026;
-        weekday = 5;  /* Friday (Jan 9 2026) */
+    nxui_panel(c, bar, 0.0f, &th->mat_menubar, 0);
+    nxc_fill_rect(c, nxc_rect(0, h - 1.0f, w, 1.0f), th->separator);
+
+    /* Left: app name and menus */
+    float x = 14.0f;
+    nxc_rect_t slot = nxc_rect(x, 0, 200, h);
+    nxui_text_in_rect(c, NXUI_TEXT_MENU_BOLD, slot, "NeolyxOS", th->text_primary, NXC_ALIGN_LEFT);
+    x += nxui_text_width(NXUI_TEXT_MENU_BOLD, "NeolyxOS") + 22.0f;
+    x = menubar_render_titles(c, x, h);
+
+    /* Right: status symbols */
+    float cy = h * 0.5f;
+    nxc_color_t ic = th->text_primary;
+    if (control_center_is_visible()) {
+        nxc_fill_rrect(c, nxc_rect(w - NAV_CC_CX - 13.0f, 3.0f, 26.0f, h - 6.0f), 6.0f, th->control_fill_pressed);
     }
-    
-    /* Format date string: "Fri, 9. January" */
-    char date_str[40];
+    nxsym_draw(c, NXSYM_CONTROL_CENTER, w - NAV_CC_CX, cy, 16.0f, ic, 0.0f);
+    if (notification_center_is_visible()) {
+        nxc_fill_rrect(c, nxc_rect(w - NAV_BELL_CX - 13.0f, 3.0f, 26.0f, h - 6.0f), 6.0f, th->control_fill_pressed);
+    }
+    nxsym_draw(c, NXSYM_BELL, w - NAV_BELL_CX, cy, 16.0f, ic, 0.0f);
+    float sx = w - NAV_BELL_CX - NAV_ITEM_STEP;
+    nxsym_draw(c, NXSYM_BATTERY, sx, cy, 17.0f, ic, 0.82f);      sx -= NAV_ITEM_STEP;
+    nxsym_draw(c, NXSYM_VOLUME, sx, cy, 16.0f, ic, 0.6f);        sx -= NAV_ITEM_STEP - 2.0f;
+    nxsym_draw(c, NXSYM_WIFI, sx, cy, 16.0f, ic, 1.0f);          sx -= NAV_ITEM_STEP - 4.0f;
+    nxsym_draw(c, NXSYM_BLUETOOTH, sx, cy, 15.0f, ic, 0.0f);     sx -= 14.0f;
+
+    /* Clock: "Sun 25 Oct  22:10" right-aligned before the symbols */
+    uint32_t hh, mm, ss, dd, mo, yy, wd;
+    current_time(&hh, &mm, &ss, &dd, &mo, &yy, &wd);
+    char line[48], hm[8];
     int pos = 0;
-    const char *wd = day_names_short[weekday % 7];  /* From Calendar.app */
-    while (*wd) date_str[pos++] = *wd++;
-    date_str[pos++] = ','; date_str[pos++] = ' ';
-    if (day >= 10) date_str[pos++] = '0' + (day / 10);
-    date_str[pos++] = '0' + (day % 10);
-    date_str[pos++] = '.'; date_str[pos++] = ' ';
-    const char *mn = month_names_full[month % 12];  /* From Calendar.app */
-    while (*mn) date_str[pos++] = *mn++;
-    date_str[pos] = '\0';
-    
-    /* Format time string: "HH:MM" */
-    char time_str[8];
-    time_str[0] = '0' + (hours / 10);
-    time_str[1] = '0' + (hours % 10);
-    time_str[2] = ':';
-    time_str[3] = '0' + (minutes / 10);
-    time_str[4] = '0' + (minutes % 10);
-    time_str[5] = '\0';
-    
-    /* Date text */
-    desktop_draw_text(wx + 90, wy + 12, date_str, COLOR_TEXT_BRIGHT);
-    
-    /* Large time - using 2x scale */
-    draw_text_large(wx + 90, wy + 28, time_str, COLOR_TEXT_WHITE);
-    
-    /* Weather/location icon (small circle) */
-    fill_circle(wx + 95, wy + 72, 6, COLOR_TEXT_DIM);
+    pos = str_app(line, pos, sizeof(line), day_names_short[wd % 7]);
+    pos = str_app(line, pos, sizeof(line), " ");
+    char dbuf[4] = { (char)('0' + (dd / 10) % 10), (char)('0' + dd % 10), '\0', '\0' };
+    pos = str_app(line, pos, sizeof(line), dd >= 10 ? dbuf : dbuf + 1);
+    pos = str_app(line, pos, sizeof(line), " ");
+    const char *mn = month_names_full[(mo - 1) % 12];
+    char m3[4] = { mn[0], mn[1] ? mn[1] : ' ', mn[1] && mn[2] ? mn[2] : ' ', '\0' };
+    pos = str_app(line, pos, sizeof(line), m3);
+    pos = str_app(line, pos, sizeof(line), "   ");
+    fmt_hhmm(hm, hh, mm);
+    pos = str_app(line, pos, sizeof(line), hm);
+    (void)pos;
+    nxui_text_in_rect(c, NXUI_TEXT_MENU, nxc_rect(sx - 220.0f, 0, 220.0f, h), line, th->text_primary,
+                      NXC_ALIGN_RIGHT);
 }
 
-/* Anveshan Search Bar - center top */
-static void render_search_bar(void) {
-    int bar_w = 320;
-    int bar_h = 36;
-    int bar_x = (g_desktop.width - bar_w) / 2;
-    int bar_y = 85;
-    
-    /* Pill-shaped glass background */
-    fill_pill(bar_x, bar_y, bar_w, bar_h, GLASS_SEARCH);
-    draw_pill_border(bar_x, bar_y, bar_w, bar_h, GLASS_BORDER);
-    
-    /* Search icon (magnifying glass - circle + line) */
-    draw_circle(bar_x + 22, bar_y + bar_h/2, 7, COLOR_TEXT_DIM);
-    for (int i = 0; i < 4; i++) {
-        put_pixel(bar_x + 28 + i, bar_y + bar_h/2 + 5 + i, COLOR_TEXT_DIM);
+/* Clock widget - top left: analog face beside the date and digital time. */
+static void render_globe_clock_widget(void) {
+    nxc_canvas_t *c = nxui_canvas();
+    const nxui_theme_t *th = nxui_theme();
+    nxc_rect_t box = nxc_rect(24.0f, 44.0f, 240.0f, 112.0f);
+    nxui_panel(c, box, th->radius_widget, &th->mat_widget, 2);
+
+    uint32_t hh, mm, ss, dd, mo, yy, wd;
+    current_time(&hh, &mm, &ss, &dd, &mo, &yy, &wd);
+
+    /* Analog face */
+    float cx = box.x + 56.0f, cy = box.y + 56.0f, r = 38.0f;
+    int dark = nxui_appearance() == NXUI_APPEARANCE_DARK;
+    nxc_fill_circle(c, cx, cy + 1.5f, r, NXC_ARGB(70, 0, 0, 0));
+    nxc_paint_t face = nxc_paint_linear(cx, cy - r, cx, cy + r,
+                                        dark ? NXC_RGB(0x2A, 0x30, 0x40) : NXC_RGB(0xFF, 0xFF, 0xFF),
+                                        dark ? NXC_RGB(0x14, 0x18, 0x24) : NXC_RGB(0xEC, 0xEE, 0xF3));
+    nxc_fill_circle_paint(c, cx, cy, r, &face);
+    nxc_stroke_circle(c, cx, cy, r - 0.5f, 1.0f, th->highlight);
+    nxc_color_t tick = dark ? NXC_ARGB(200, 0xF0, 0xF4, 0xFF) : NXC_ARGB(220, 0x10, 0x14, 0x1E);
+    for (int i = 0; i < 12; i++) {
+        float a = (float)i * (NXC_PI / 6.0f);
+        float ca = nxc_cosf_shell(a), sa = nxc_sinf_shell(a);
+        float len = (i % 3 == 0) ? 5.0f : 2.5f;
+        nxc_draw_line(c, cx + ca * (r - 4.0f), cy + sa * (r - 4.0f), cx + ca * (r - 4.0f - len),
+                      cy + sa * (r - 4.0f - len), (i % 3 == 0) ? 2.0f : 1.2f, nxc_color_fade(tick, i % 3 ? 0.55f : 1.0f));
     }
-    
-    /* Placeholder text */
-    desktop_draw_text(bar_x + 42, bar_y + 12, "Anveshan | search that need", COLOR_TEXT_DIM);
-    
-    /* Microphone icon (simplified) */
-    fill_rounded_rect(bar_x + bar_w - 28, bar_y + 8, 8, 14, 3, COLOR_TEXT_DIM);
-    fill_circle(bar_x + bar_w - 24, bar_y + 8, 4, COLOR_TEXT_DIM);
+    float ah = ((float)(hh % 12) + (float)mm / 60.0f) * (NXC_PI / 6.0f) - NXC_PI * 0.5f;
+    float am = ((float)mm + (float)ss / 60.0f) * (NXC_PI / 30.0f) - NXC_PI * 0.5f;
+    float as = (float)ss * (NXC_PI / 30.0f) - NXC_PI * 0.5f;
+    nxc_draw_line(c, cx, cy, cx + nxc_cosf_shell(ah) * (r * 0.5f), cy + nxc_sinf_shell(ah) * (r * 0.5f), 3.2f, tick);
+    nxc_draw_line(c, cx, cy, cx + nxc_cosf_shell(am) * (r * 0.74f), cy + nxc_sinf_shell(am) * (r * 0.74f), 2.4f, tick);
+    nxc_draw_line(c, cx - nxc_cosf_shell(as) * 6.0f, cy - nxc_sinf_shell(as) * 6.0f,
+                  cx + nxc_cosf_shell(as) * (r * 0.8f), cy + nxc_sinf_shell(as) * (r * 0.8f), 1.2f, th->accent);
+    nxc_fill_circle(c, cx, cy, 2.6f, th->accent);
+    nxc_fill_circle(c, cx, cy, 1.0f, dark ? NXC_RGB(0x14, 0x18, 0x24) : NXC_RGB(0xFF, 0xFF, 0xFF));
+
+    /* Date and digital time */
+    char date[48];
+    int pos = 0;
+    pos = str_app(date, pos, sizeof(date), day_names_full[wd % 7]);
+    pos = str_app(date, pos, sizeof(date), ", ");
+    char dbuf[4] = { (char)('0' + (dd / 10) % 10), (char)('0' + dd % 10), '\0', '\0' };
+    pos = str_app(date, pos, sizeof(date), dd >= 10 ? dbuf : dbuf + 1);
+    pos = str_app(date, pos, sizeof(date), " ");
+    pos = str_app(date, pos, sizeof(date), month_names_full[(mo - 1) % 12]);
+    (void)pos;
+    float tx = box.x + 108.0f;
+    nxc_text_opts_t o = { 0.0f, NXC_ALIGN_LEFT, box.x + box.w - tx - 12.0f, 0 };
+    nxui_text(c, NXUI_TEXT_FOOTNOTE, tx, box.y + 34.0f, date, th->text_secondary, &o);
+    char hm[8];
+    fmt_hhmm(hm, hh, mm);
+    nxc_text_opts_t big = { -1.0f, NXC_ALIGN_LEFT, 0.0f, 0 };
+    nxc_draw_text(c, nxui_font(NXUI_FONT_DISPLAY), 40.0f, tx - 1.0f, box.y + 76.0f, hm, -1, th->text_primary, &big);
+    /* Seconds progress: a thin accent bar under the time */
+    float bw = box.w - (tx - box.x) - 16.0f;
+    nxc_fill_rrect(c, nxc_rect(tx, box.y + 90.0f, bw, 3.0f), 1.5f, th->control_fill);
+    nxc_fill_rrect(c, nxc_rect(tx, box.y + 90.0f, bw * ((float)ss + 0.5f) / 60.0f, 3.0f), 1.5f, th->accent);
+}
+
+/* Anveshan search field - top center (drawn by anveshan.c) */
+static void render_search_bar(void) {
+    anveshan_render(nxui_canvas());
 }
 
 /* External storage connected flag - set by kernel when USB/storage detected */
 static int g_external_storage_connected = 0;
 
-/* Desktop Icons - only show connected devices
- * External storage icon appears only when USB/external drive is detected */
+/* Desktop icons: only connected devices appear. */
 static void render_desktop_icons(void) {
-    /* Only render external storage icon when actually connected */
-    if (!g_external_storage_connected) {
-        return;  /* No connected devices - clean desktop */
+    if (!g_external_storage_connected) return;
+    nxc_canvas_t *c = nxui_canvas();
+    const nxui_theme_t *th = nxui_theme();
+    float sz = 56.0f;
+    nxc_rect_t tile = nxc_rect((float)g_desktop.width - 100.0f, 170.0f, sz, sz);
+    /* NeolyxOS device art from the icon pack; a plain symbol tile only if
+     * the pack entry is missing or damaged. */
+    if (nxicon_pack_draw(c, "device-external", tile.x, tile.y, sz, 255) != NXC_OK) {
+        nxui_elevation(c, tile, 12.0f, 1);
+        nxui_material(c, tile, 12.0f, &th->mat_widget);
+        nxsym_draw(c, NXSYM_FOLDER, tile.x + sz * 0.5f, tile.y + sz * 0.5f, 30.0f, th->text_primary, 0.0f);
     }
-    
-    /* External storage icon when connected */
-    int icon_x = g_desktop.width - 85;
-    int icon_y = 45;
-    int icon_size = 48;
-    
-    /* Icon background */
-    fill_rounded_rect(icon_x, icon_y, icon_size, icon_size, 8, 0x60506080);
-    /* Storage device representation */
-    fill_rounded_rect(icon_x + 8, icon_y + 16, 32, 18, 3, 0xFF4A5A6A);
-    /* Activity LED */
-    desktop_fill_rect(icon_x + 12, icon_y + 28, 4, 4, 0xFF88FF88);
-    /* Labels */
-    desktop_draw_text(icon_x - 8, icon_y + icon_size + 5, "External", COLOR_TEXT_WHITE);
-    desktop_draw_text(icon_x + 2, icon_y + icon_size + 15, "Storage", COLOR_TEXT_WHITE);
+    nxui_text_in_rect(c, NXUI_TEXT_CAPTION, nxc_rect(tile.x - 20.0f, tile.y + sz + 4.0f, sz + 40.0f, 16.0f),
+                      "External", th->text_primary, NXC_ALIGN_CENTER);
 }
 
 /* Legacy dock rendering - REPLACED by modular dock.c */
@@ -1048,163 +989,108 @@ static inline void serial_puts(const char *s);
 static inline void serial_putc(char c);
 static void serial_hex64(uint64_t val);
 
-/* Main application state */
+/* Title bar height shared with the hit tests in desktop_handle_mouse. */
+#define WIN_TITLE_H 24
+
 static void render_window(desktop_window_t *win) {
     if (!win->visible) return;
-    
-    /* Check for animation state */
-    int32_t wx = win->x;
-    int32_t wy = win->y;
-    uint32_t ww = win->width;
-    uint32_t wh = win->height;
+    nxc_canvas_t *c = nxui_canvas();
+    const nxui_theme_t *th = nxui_theme();
+
+    int32_t wx = win->x, wy = win->y;
+    uint32_t ww = win->width, wh = win->height;
     float opacity = 1.0f;
-    
     if (wm_is_animating(win->id)) {
         if (!wm_get_animated_geometry(win->id, &wx, &wy, &ww, &wh, &opacity)) {
-            /* If minimized and not animating, skip render */
             if (win->minimized) return;
         }
     } else if (win->minimized) {
         return;
     }
-    
-    /* Apply PiP mode sizing */
     wm_window_state_t *wstate = wm_get_window_state(win->id);
+    int is_tiled = 0;
     if (wstate) {
+        is_tiled = wstate->is_tiled;
         if (wstate->mode == WIN_MODE_PIP) {
-            /* Use PiP dimensions */
             ww = wstate->pip_w > 0 ? wstate->pip_w : 300;
             wh = wstate->pip_h > 0 ? wstate->pip_h : 200;
             opacity = wstate->opacity;
-        } else if (wstate->mode == WIN_MODE_SIDEBAR) {
-            if (!wstate->sidebar_expanded) {
-                /* Slid to right edge - only show tab */
-                wx = g_desktop.width - 40;
-                ww = 36;
-                wh = 80;
-            }
+        } else if (wstate->mode == WIN_MODE_SIDEBAR && !wstate->sidebar_expanded) {
+            wx = g_desktop.width - 40; ww = 36; wh = 80;
         }
-        if (wstate->opacity < 1.0f && !wm_is_animating(win->id)) {
-            opacity = wstate->opacity;
-        }
+        if (wstate->opacity < 1.0f && !wm_is_animating(win->id)) opacity = wstate->opacity;
     }
-    
-    /* Skip if nearly invisible */
     if (opacity < 0.05f) return;
-    
-    int title_height = 24;
-    
-    /* Calculate alpha multiplier */
-    uint8_t alpha = (uint8_t)(opacity * 255.0f);
-    
-    /* Drop shadow — soft spread with Y-offset bias.
-     * Disabled for tiled windows (they share edges). */
-    int is_tiled = 0;
-    if (wstate) is_tiled = wstate->is_tiled;
-    
-    if (!is_tiled) {
-        int spread = 8;
-        int y_off = 4;
-        float shadow_base_opacity = 0.55f * (opacity);  /* Fade with window */
-        
-        int32_t total_h = (int32_t)(wh + (uint32_t)title_height);
-        
-        for (int ring = 1; ring <= spread; ring++) {
-            /* Opacity falls off quadratically with distance */
-            float ring_frac = (float)(spread - ring) / (float)spread;
-            float ring_opacity = shadow_base_opacity * ring_frac * ring_frac;
-            uint8_t sa = (uint8_t)(ring_opacity * 255.0f);
-            if (sa == 0) continue;
-            uint32_t sc = (uint32_t)sa << 24;
-            
-            /* Top edge */
-            for (int32_t px = wx - ring; px < wx + (int32_t)ww + ring; px++)
-                put_pixel_alpha(px, wy - ring + y_off, sc);
-            /* Bottom edge */
-            for (int32_t px = wx - ring; px < wx + (int32_t)ww + ring; px++)
-                put_pixel_alpha(px, wy + total_h + ring - 1 + y_off, sc);
-            /* Left edge */
-            for (int32_t py = wy - ring + y_off; py < wy + total_h + ring + y_off; py++)
-                put_pixel_alpha(wx - ring, py, sc);
-            /* Right edge */
-            for (int32_t py = wy - ring + y_off; py < wy + total_h + ring + y_off; py++)
-                put_pixel_alpha(wx + (int32_t)ww + ring - 1, py, sc);
-        }
-    }    
-    /* Window title bar */
-    uint32_t title_color = (WINDOW_TITLE_COLOR & 0x00FFFFFF) | ((uint32_t)alpha << 24);
-    desktop_fill_rect(wx, wy, ww, title_height, title_color);
-    
-    /* Window buttons (close, minimize, maximize) */
-    /* Only show buttons if not too small (during minimize) */
+    if (ww < 8 || wh < 2) return;
+
+    float radius = is_tiled ? 6.0f : th->radius_window;
+    nxc_rect_t frame = nxc_rect((float)wx, (float)wy, (float)ww, (float)wh + WIN_TITLE_H);
+    int focused = win->focused;
+
+    nxc_save(c);
+    nxc_set_alpha(c, (uint8_t)(opacity * 255.0f + 0.5f));
+    if (!is_tiled) nxui_elevation(c, frame, radius, focused ? 4 : 3);
+
+    /* Body and title bar, clipped to the rounded frame */
+    nxc_fill_rrect(c, frame, radius, th->window_bg);
+    nxc_save(c);
+    nxc_clip_rrect(c, frame, radius);
+    nxc_fill_rect(c, nxc_rect(frame.x, frame.y, frame.w, WIN_TITLE_H),
+                  focused ? th->window_titlebar : th->window_titlebar_inactive);
+    nxc_fill_rect(c, nxc_rect(frame.x, frame.y + WIN_TITLE_H - 1.0f, frame.w, 1.0f), th->separator);
+    nxc_fill_rect(c, nxc_rect(frame.x, frame.y, frame.w, 1.0f), th->highlight);   /* top sheen */
+    nxc_restore(c);
+
     if (ww > 60 && wh > 30) {
-        uint32_t btn_alpha = (uint32_t)alpha << 24;
-        /* Close - red */
-        desktop_fill_rect(wx + 8, wy + 6, 12, 12, (0x00FF5555 | btn_alpha));
-        /* Minimize - yellow */
-        desktop_fill_rect(wx + 24, wy + 6, 12, 12, (0x00FFCC00 | btn_alpha));
-        /* Maximize - green */
-        desktop_fill_rect(wx + 40, wy + 6, 12, 12, (0x0055CC55 | btn_alpha));
-        
-        /* Window title */
-        desktop_draw_text(wx + 60, wy + 6, win->title, WINDOW_TEXT_COLOR);
+        /* Traffic lights at x 14 / 30 / 46, matching the 12 px hit boxes */
+        float cy = frame.y + WIN_TITLE_H * 0.5f;
+        nxc_color_t cc = focused ? th->traffic_close : th->traffic_inactive;
+        nxc_color_t cm = focused ? th->traffic_minimize : th->traffic_inactive;
+        nxc_color_t cz = focused ? th->traffic_zoom : th->traffic_inactive;
+        float bx[3] = { frame.x + 14.0f, frame.x + 30.0f, frame.x + 46.0f };
+        nxc_color_t bc[3] = { cc, cm, cz };
+        for (int i = 0; i < 3; i++) {
+            nxc_fill_circle(c, bx[i], cy, 6.0f, bc[i]);
+            nxc_stroke_circle(c, bx[i], cy, 6.0f, 0.75f, NXC_ARGB(60, 0, 0, 0));
+        }
+        /* Hovered title bar shows the glyphs inside the lights */
+        int hover = g_desktop.mouse_x >= wx && g_desktop.mouse_x < wx + (int32_t)ww &&
+                    g_desktop.mouse_y >= wy && g_desktop.mouse_y < wy + WIN_TITLE_H;
+        if (hover && focused) {
+            nxc_color_t g = NXC_ARGB(150, 0x30, 0x10, 0x10);
+            nxsym_draw(c, NXSYM_CLOSE, bx[0], cy, 7.0f, g, 0.0f);
+            nxsym_draw(c, NXSYM_MINIMIZE, bx[1], cy, 7.0f, g, 0.0f);
+            nxsym_draw(c, NXSYM_MAXIMIZE, bx[2], cy, 6.5f, g, 0.0f);
+        }
+        nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, nxc_rect(frame.x + 62.0f, frame.y, frame.w - 124.0f, WIN_TITLE_H),
+                          win->title, focused ? th->text_primary : th->text_tertiary, NXC_ALIGN_CENTER);
     }
-    
-    /* Window body */
-    uint32_t body_color = (WINDOW_BG_COLOR & 0x00FFFFFF) | ((uint32_t)alpha << 24);
-    desktop_fill_rect(wx, wy + title_height, ww, wh, body_color);
-    
-    /* Window border */
-    desktop_draw_rect(wx, wy, ww, wh + title_height, 
-                     win->focused ? 0xFFE8660A : WINDOW_BORDER_COLOR);
-    
-    /* Custom content callback (only if not too small) */
+
+    /* Content callback: legacy callbacks draw in absolute coordinates */
     if (win->render_content && ww > 100 && wh > 50) {
+        nxc_save(c);
+        nxc_clip_rrect(c, nxc_rect(frame.x, frame.y + WIN_TITLE_H, frame.w, frame.h - WIN_TITLE_H), radius);
         win->render_content(win, win->render_ctx);
+        nxc_restore(c);
     }
+
+    /* Hairline border keeps the edge crisp on any wallpaper */
+    nxc_stroke_rrect(c, frame, radius, 1.0f, th->window_border);
+    nxc_restore(c);
 }
 
-/* Render sidebar tab for collapsed sidebar windows */
+/* Collapsed sidebar window: a tab hugging the right screen edge. */
 static void render_sidebar_tab(desktop_window_t *win, wm_window_state_t *wstate) {
     if (!wstate || wstate->mode != WIN_MODE_SIDEBAR || wstate->sidebar_expanded) return;
-    
-    int tab_x = g_desktop.width - 40;
-    int tab_y = win->y;
-    int tab_w = 36;
-    int tab_h = 80;
-    
-    /* Tab background with rounded corners */
-    fill_rounded_rect(tab_x - 4, tab_y, tab_w + 8, tab_h, 8, 0xE0303050);
-    
-    /* Border highlight */
-    desktop_draw_rect(tab_x - 4, tab_y, tab_w + 8, tab_h, 0xFF505070);
-    
-    /* Window title abbreviation (first letter) */
-    char abbr[2];
-    abbr[0] = win->title[0] ? win->title[0] : '?';
-    abbr[1] = '\0';
-    
-    /* Center the letter */
-    int text_x = tab_x + (tab_w - 8) / 2;
-    int text_y = tab_y + 20;
-    desktop_draw_text(text_x, text_y, abbr, COLOR_TEXT_WHITE);
-    
-    /* Second letter if available */
-    if (win->title[1]) {
-        abbr[0] = win->title[1];
-        desktop_draw_text(text_x, text_y + 12, abbr, COLOR_TEXT_DIM);
-    }
-    
-    /* Grip lines (indicate clickable) */
-    for (int i = 0; i < 3; i++) {
-        desktop_fill_rect(tab_x + 6, tab_y + 52 + i * 6, 20, 2, 0x60FFFFFF);
-    }
-    
-    /* Small arrow indicator pointing left */
-    for (int i = 0; i < 4; i++) {
-        put_pixel_alpha(tab_x + 2 + i, tab_y + 40 - i, 0xA0FFFFFF);
-        put_pixel_alpha(tab_x + 2 + i, tab_y + 40 + i, 0xA0FFFFFF);
-    }
+    nxc_canvas_t *c = nxui_canvas();
+    const nxui_theme_t *th = nxui_theme();
+    nxc_rect_t tab = nxc_rect((float)g_desktop.width - 40.0f, (float)win->y, 36.0f + 14.0f, 80.0f);
+    nxui_elevation(c, tab, 12.0f, 2);
+    nxui_material(c, tab, 12.0f, &th->mat_popover);
+    nxsym_draw(c, NXSYM_CHEVRON_LEFT, tab.x + 10.0f, tab.y + 40.0f, 12.0f, th->text_secondary, 0.0f);
+    char abbr[3] = { win->title[0] ? win->title[0] : '?', win->title[0] && win->title[1] ? win->title[1] : '\0', '\0' };
+    nxui_text_in_rect(c, NXUI_TEXT_TITLE3, nxc_rect(tab.x + 14.0f, tab.y, 24.0f, 80.0f), abbr, th->text_primary,
+                      NXC_ALIGN_CENTER);
 }
 
 static void render_windows(void) {
@@ -1238,16 +1124,52 @@ static void render_windows(void) {
     }
 }
 
+/* Frame statistics (ms, accumulated over 60 frames) */
+static uint64_t g_render_ms_acc = 0, g_flip_ms_acc = 0, g_last_frame_end = 0;
+
+/* Per-stage profile in TSC cycles (printed as k-cycles per frame). */
+enum { PF_BG, PF_NAV, PF_CLOCK, PF_SEARCH, PF_WINDOWS, PF_DOCK, PF_OVERLAYS, PF_END, PF_INPUT, PF_SLEEP, PF_COUNT };
+static uint64_t g_pf_loop_t = 0;   /* TSC at the end of the previous render */
+static uint64_t g_pf[PF_COUNT];
+static inline uint64_t rdtsc_now(void) {
+    uint32_t lo, hi;
+    __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
+    return ((uint64_t)hi << 32) | lo;
+}
+#define PF_MARK(stage) do { uint64_t _t = rdtsc_now(); g_pf[stage] += _t - pf_t; pf_t = _t; } while (0)
+
 static void render_desktop(void) {
     /* Only log once every 60 frames to avoid serial spam */
     static int frame_count = 0;
     static uint64_t last_time = 0;
-    
-    if (frame_count++ % 60 == 0) {
-        serial_puts("[DESKTOP] Frame\n");
-    }
+    static uint64_t window_start = 0;
     
     uint64_t now = pit_get_ticks();
+    if (frame_count++ % 60 == 0) {
+        /* Once per 60 frames: average frame, render and flip time (ms) */
+        serial_puts("[DESKTOP] Frame");
+        if (window_start) {
+            serial_puts(" avg ");
+            serial_dec((int64_t)((now - window_start) / 60));
+            serial_puts(" ms (render ");
+            serial_dec((int64_t)(g_render_ms_acc / 60));
+            serial_puts(", flip ");
+            serial_dec((int64_t)(g_flip_ms_acc / 60));
+            serial_puts(") kcyc bg/nav/clock/search/win/dock/ovl/end/input/sleep:");
+            for (int i = 0; i < PF_COUNT; i++) {
+                serial_puts(" ");
+                serial_dec((int64_t)(g_pf[i] / 60 / 1000));
+                g_pf[i] = 0;
+            }
+        }
+        serial_puts("\n");
+        window_start = now;
+        g_render_ms_acc = 0;
+        g_flip_ms_acc = 0;
+    }
+    uint64_t t_render0 = now;
+    uint64_t pf_t = rdtsc_now();
+
     float dt = (last_time > 0) ? (float)(now - last_time) / 1000.0f : 0.016f;
     if (dt > 0.1f) dt = 0.016f;  /* Cap delta time */
     last_time = now;
@@ -1259,111 +1181,84 @@ static void render_desktop(void) {
      * TEMPORARILY DISABLED: Static layer caching was causing missing UI issues.
      * Always render static elements every frame for now.
      */
-    render_background();
-    
-    /* Yantra Grid overlay — subtle geometric mesh between wallpaper and windows */
-    if (yantra_grid_is_enabled()) {
-        yantra_grid_draw(g_desktop.framebuffer, g_desktop.pitch,
-                          g_desktop.width, g_desktop.height, 13 /* ~5% opacity */);
-    }
+    /* Wallpaper and a clean canvas for this frame */
+    nxui_frame_begin();
+    nxc_canvas_t *frame = nxui_canvas();
+    PF_MARK(PF_BG);
     
     render_navigation_bar();
+    PF_MARK(PF_NAV);
     render_globe_clock_widget();
-    render_search_bar();
+    PF_MARK(PF_CLOCK);
+    if (!anveshan_is_active()) render_search_bar();   /* active: drawn above windows */
     render_desktop_icons();
+    PF_MARK(PF_SEARCH);
     
-    /* Render tile preview overlay (below windows) */
+    /* Tile preview (below windows): translucent accent panel */
     int32_t tile_x, tile_y;
     uint32_t tile_w, tile_h;
     if (wm_get_tile_preview(&tile_x, &tile_y, &tile_w, &tile_h)) {
-        /* Ghost snap preview — saffron-tinted translucent overlay */
-        uint32_t preview_color = 0x33E8660A;  /* Saffron orange at ~20% */
-        for (uint32_t py = 0; py < tile_h; py++) {
-            for (uint32_t px = 0; px < tile_w; px++) {
-                put_pixel_alpha(tile_x + px, tile_y + py, preview_color);
-            }
-        }
-        /* Border — saffron orange, fully opaque */
-        uint32_t border_color = 0xFFE8660A;
-        for (uint32_t px = 0; px < tile_w; px++) {
-            put_pixel_alpha(tile_x + px, tile_y, border_color);
-            put_pixel_alpha(tile_x + px, tile_y + tile_h - 1, border_color);
-        }
-        for (uint32_t py = 0; py < tile_h; py++) {
-            put_pixel_alpha(tile_x, tile_y + py, border_color);
-            put_pixel_alpha(tile_x + tile_w - 1, tile_y + py, border_color);
-        }
+        const nxui_theme_t *th = nxui_theme();
+        nxc_rect_t tr = nxc_rect((float)tile_x + 4.0f, (float)tile_y + 4.0f, (float)tile_w - 8.0f, (float)tile_h - 8.0f);
+        nxc_fill_rrect(frame, tr, th->radius_window, NXC_WITH_ALPHA(th->accent, 56));
+        nxc_stroke_rrect(frame, tr, th->radius_window, 1.5f, NXC_WITH_ALPHA(th->accent, 200));
     }
     
     render_windows();
+    PF_MARK(PF_WINDOWS);
     
     /* Modular dock rendering */
     dock_tick();  /* Update animations */
-    dock_render(g_desktop.framebuffer, g_desktop.pitch, 
-                g_desktop.mouse_x, g_desktop.mouse_y);
+    dock_render(frame, g_desktop.mouse_x, g_desktop.mouse_y);
+    PF_MARK(PF_DOCK);
     
-    /* Render App Drawer overlay (above everything except cursor) */
-    app_drawer_render();
+    /* Active search field and its results float above windows */
+    if (anveshan_is_active()) render_search_bar();
+
+    /* Menu bar dropdown (above windows and the dock) */
+    menubar_render(frame);
+
+    /* App Drawer overlay (above everything except cursor) */
+    app_drawer_update((uint32_t)(nxui_frame_dt() * 1000.0f));
+    app_drawer_render(frame);
     
     /* Render Control Center overlay */
     control_center_tick();
-    control_center_render(g_desktop.framebuffer, g_desktop.pitch);
+    control_center_render(frame);
     
     /* Render Notification Center overlay */
     notification_center_tick();
-    notification_center_render(g_desktop.framebuffer, g_desktop.pitch);
+    notification_center_render(frame);
     
     /* Render OSD overlays (above notification center) */
     volume_osd_tick();
-    volume_osd_render(g_desktop.framebuffer, g_desktop.pitch);
+    volume_osd_render(frame);
     keyboard_osd_tick();
-    keyboard_osd_render(g_desktop.framebuffer, g_desktop.pitch);
+    keyboard_osd_render(frame);
     theme_osd_tick();
-    theme_osd_render(g_desktop.framebuffer, g_desktop.pitch);
+    theme_osd_render(frame);
     battery_warning_tick();
-    battery_warning_render(g_desktop.framebuffer, g_desktop.pitch);
+    battery_warning_render(frame);
     
     /* Render keyboard shortcut help overlay (full-screen, above everything) */
-    keyboard_osd_help_render(g_desktop.framebuffer, g_desktop.pitch,
-                             g_desktop.width, g_desktop.height);
+    keyboard_osd_help_render(frame);
     
-    /* Render Quick Access Menu if visible */
+    /* Quick Access Menu (window mode switcher) */
     wm_quick_menu_t *qm = wm_get_quick_menu();
     if (qm && qm->visible) {
-        int mx = qm->x;
-        int my = qm->y;
-        int mw = 3 * 32 + 2 * 8 + 16;  /* 3 icons + gaps + padding */
-        int mh = 32 + 16;
-        
-        /* Menu background */
-        fill_rounded_rect(mx, my, mw, mh, 8, 0xE0303040);
-        
-        /* 3 icons: Pop (PiP), Maximize, Sidebar */
-        int ix = mx + 8;
-        int iy = my + 8;
-        
-        /* Icon 0: Pop (PiP) - small window icon */
-        uint32_t pop_color = (qm->hover_idx == 0) ? 0xFF89B4FA : 0xFFCDD6F4;
-        fill_rounded_rect(ix + 4, iy + 4, 24, 18, 3, pop_color);
-        fill_rounded_rect(ix + 6, iy + 6, 20, 14, 2, 0xFF303040);
-        ix += 40;
-        
-        /* Icon 1: Maximize - full square */
-        uint32_t max_color = (qm->hover_idx == 1) ? 0xFFA6E3A1 : 0xFFCDD6F4;
-        fill_rounded_rect(ix + 2, iy + 2, 28, 22, 4, max_color);
-        fill_rounded_rect(ix + 4, iy + 4, 24, 18, 3, 0xFF303040);
-        ix += 40;
-        
-        /* Icon 2: Sidebar - slide to edge */
-        uint32_t side_color = (qm->hover_idx == 2) ? 0xFFF9E2AF : 0xFFCDD6F4;
-        fill_rounded_rect(ix + 18, iy + 2, 12, 22, 3, side_color);
-        fill_rounded_rect(ix + 2, iy + 6, 14, 14, 2, 0x80CDD6F4);
+        const nxui_theme_t *th = nxui_theme();
+        float mw = 3.0f * 40.0f + 16.0f, mh = 48.0f;
+        nxc_rect_t menu = nxc_rect((float)qm->x, (float)qm->y, mw, mh);
+        nxui_panel(frame, menu, 12.0f, &th->mat_popover, 2);
+        static const nxsym_t syms[3] = { NXSYM_GRID, NXSYM_MAXIMIZE, NXSYM_CHEVRON_RIGHT };
+        for (int i = 0; i < 3; i++) {
+            nxc_rect_t cell = nxc_rect(menu.x + 8.0f + 40.0f * (float)i, menu.y + 8.0f, 32.0f, 32.0f);
+            if (qm->hover_idx == i) nxc_fill_rrect(frame, cell, 8.0f, th->control_fill_hover);
+            nxsym_draw(frame, syms[i], cell.x + 16.0f, cell.y + 16.0f, 18.0f,
+                       qm->hover_idx == i ? th->accent : th->text_primary, 0.0f);
+        }
     }
-    
-    /* Cursor is drawn by KERNEL after flip - tell kernel cursor position via syscall */
-    /* This mirrors macOS/Windows hardware cursor isolation - never overwritten by userspace */
-    nx_cursor_set(g_desktop.mouse_x, g_desktop.mouse_y, 1);
-    
+
     /* Night Mode blue-light filter — last pass before flip.
      * Reduces eye strain in low-light by warming the display.
      * Set g_night_mode_strength via Settings or API. */
@@ -1390,8 +1285,14 @@ static void render_desktop(void) {
         }
     }
     
-    /* Flip back buffer to front buffer - kernel draws cursor AFTER this copy */
-    flip_buffer();
+    PF_MARK(PF_OVERLAYS);
+    /* Cursor + present the backbuffer (double buffered, no tearing) */
+    uint64_t t_flip0 = pit_get_ticks();
+    g_render_ms_acc += t_flip0 - t_render0;
+    nxui_frame_end(g_desktop.mouse_x, g_desktop.mouse_y);
+    g_flip_ms_acc += pit_get_ticks() - t_flip0;
+    PF_MARK(PF_END);
+    g_last_frame_end = pit_get_ticks();
 }
 
 /* ============ Window Management ============ */
@@ -1532,25 +1433,10 @@ void desktop_handle_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
     if (target_x >= (int32_t)g_desktop.width) target_x = g_desktop.width - 1;
     if (target_y >= (int32_t)g_desktop.height) target_y = g_desktop.height - 1;
     
-    /* Initialize smooth position on first use */
-    if (!g_mouse_smooth_init) {
-        g_smooth_mouse_x = target_x * 256;  /* Fixed-point 8.8 */
-        g_smooth_mouse_y = target_y * 256;
-        g_mouse_smooth_init = 1;
-    }
-    
-    /* Exponential moving average for smooth cursor movement
-     * new_pos = old_pos + (target - old_pos) / smooth_factor
-     * Using fixed-point arithmetic (8-bit fractional) */
-    int32_t target_fp_x = target_x * 256;
-    int32_t target_fp_y = target_y * 256;
-    
-    g_smooth_mouse_x += (target_fp_x - g_smooth_mouse_x) >> MOUSE_SMOOTH_FACTOR;
-    g_smooth_mouse_y += (target_fp_y - g_smooth_mouse_y) >> MOUSE_SMOOTH_FACTOR;
-    
-    /* Convert back to integer position */
-    g_desktop.mouse_x = g_smooth_mouse_x >> 8;
-    g_desktop.mouse_y = g_smooth_mouse_y >> 8;
+    /* Pointer tracks hardware deltas 1:1 (the old half-step smoothing
+     * halved pointer speed because deltas are relative). */
+    g_desktop.mouse_x = target_x;
+    g_desktop.mouse_y = target_y;
     
     uint8_t prev_buttons = g_desktop.mouse_buttons;
     g_desktop.mouse_buttons = buttons;
@@ -1559,6 +1445,15 @@ void desktop_handle_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
     if (app_drawer_is_open()) {
         app_drawer_handle_mouse(g_desktop.mouse_x, g_desktop.mouse_y, buttons);
         return;  /* Drawer consumes all mouse events when open */
+    }
+    
+    /* Menu bar menus take the pointer while open or when a title is hit */
+    if (menubar_handle_mouse(g_desktop.mouse_x, g_desktop.mouse_y, buttons, prev_buttons)) {
+        return;
+    }
+    /* Anveshan search field and its results */
+    if (anveshan_handle_mouse(g_desktop.mouse_x, g_desktop.mouse_y, buttons, prev_buttons)) {
+        return;
     }
     
     /* Handle Control Center input */
@@ -1830,7 +1725,118 @@ void nx_key_tick(void) {
     }
 }
 
+int desktop_launch_app(const char *name);   /* defined below */
+static void render_empty_content(desktop_window_t *win, void *ctx);
+
+/* Shell-side handling of app launches (dock, app drawer, search). Apps
+ * without a registered window get a cascaded window with the empty state
+ * until a process launcher exists. Re-launching focuses the open window. */
+static int shell_streq_ci(const char *a, const char *b) {
+    while (*a && *b) {
+        char x = *a, y = *b;
+        if (x >= 'A' && x <= 'Z') x = (char)(x + 32);
+        if (y >= 'A' && y <= 'Z') y = (char)(y + 32);
+        if (x != y) return 0;
+        a++; b++;
+    }
+    return *a == 0 && *b == 0;
+}
+
+static void desktop_on_app_launched(const nx_event_t *event, void *userdata) {
+    (void)userdata;
+    if (!event || !event->data || event->data_size < sizeof(nx_app_data_t)) return;
+    const nx_app_data_t *app = (const nx_app_data_t *)event->data;
+    const char *name = app->app_name;
+    if (!name[0]) return;
+    /* Dock labels map to registered startup apps where one exists */
+    if (shell_streq_ci(name, "Files")) name = "File Manager";
+    else if (shell_streq_ci(name, "Settings")) name = "System Settings";
+    else if (shell_streq_ci(name, "Fonts")) name = "Font Manager";
+    /* Already open: focus and restore */
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (g_windows[i].id != 0 && shell_streq_ci(g_windows[i].title, name)) {
+            if (g_windows[i].minimized) {
+                g_windows[i].minimized = 0;
+                g_windows[i].visible = 1;
+                wm_restore_window(g_windows[i].id);
+            }
+            desktop_focus_window(g_windows[i].id);
+            dock_set_running(app->app_id, 1);
+            return;
+        }
+    }
+    if (desktop_launch_app(name) != 0) {
+        /* No registered window: cascade a generic one */
+        static int cascade = 0;
+        int32_t x = 180 + (cascade % 6) * 32, y = 110 + (cascade % 6) * 28;
+        cascade++;
+        uint32_t id = desktop_create_window(app->app_name, x, y, 640, 440);
+        if (id) desktop_set_window_render(id, render_empty_content, NULL);
+    }
+    dock_set_running(app->app_id, 1);
+}
+
+
+/* ASCII of the key being dispatched (set by the event loop before desktop_handle_key). */
+static char g_key_ascii = 0;
+
+/* Menu bar actions (menubar.c publishes them; the shell decides). */
+static desktop_window_t *focused_window(void) {
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (g_windows[i].id != 0 && g_windows[i].visible && g_windows[i].focused) return &g_windows[i];
+    }
+    return NULL;
+}
+
+static void desktop_menu_action(int menu, int action) {
+    (void)menu;
+    desktop_window_t *fw = focused_window();
+    switch (action) {
+        case 1:  /* New Window */
+            desktop_launch_app("File Manager");
+            break;
+        case 4: case 5:  /* Close Window, Quit */
+            if (fw) wm_close_window_animated(fw->id);
+            break;
+        case 15: /* Toggle Appearance */
+            nxui_set_appearance(nxui_appearance() == NXUI_APPEARANCE_DARK ? NXUI_APPEARANCE_LIGHT : NXUI_APPEARANCE_DARK);
+            theme_osd_show_dark_mode(nxui_appearance() == NXUI_APPEARANCE_DARK);
+            break;
+        case 17: /* Minimize */
+            if (fw) {
+                int32_t dcx = g_desktop.width / 2, dcy = g_desktop.height - 50;
+                wm_minimize_window(fw->id, dcx, dcy);
+                wm_add_minimized(fw->id, 0, fw->title, dcx, dcy);
+                fw->minimized = 1;
+            }
+            break;
+        case 18: /* Zoom */
+            if (fw) wm_maximize_window(fw->id);
+            break;
+        case 22: /* Keyboard Shortcuts */
+            keyboard_osd_help_show();
+            break;
+        case 23: /* About */
+            notification_push("System", "NeolyxOS", "Vajra desktop on the NXCanvas renderer", 0xFFE8660A);
+            notification_center_show();
+            break;
+        default:
+            serial_puts("[MENU] action not wired yet\n");
+            break;
+    }
+}
+
 void desktop_handle_key(uint8_t scancode, uint8_t pressed) {
+    /* Open menu or active search field take the keyboard first */
+    if (menubar_handle_key(scancode, pressed)) return;
+    if (anveshan_handle_key(scancode, pressed, g_key_ascii)) return;
+    /* NX + Space opens the search field */
+    if (scancode == 0x39 && pressed && g_nx_key_held) {
+        anveshan_get_state()->active = 1;
+        g_nx_help_shown = 0;
+        g_nx_key_held = 0;   /* release of NX must not open the drawer */
+        return;
+    }
     /* Track Caps Lock state */
     static int caps_lock_on = 0;
     
@@ -1934,16 +1940,21 @@ int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pit
         /* Initialize config system first */
         nx_config_init();
         
-        if (init_framebuffer() != 0) {
-            serial_puts("[DESKTOP] Failed to init framebuffer via syscall\n");
+        /* NXUI maps the framebuffer, owns the double-buffered frame
+         * surface and initializes the NXCanvas engine, fonts and icons. */
+        nxc_status_t ui_st = nxui_init();
+        if (ui_st != NXC_OK) {
+            serial_puts("[DESKTOP] NXUI init failed: ");
+            serial_puts(nxc_status_str(ui_st));
+            serial_puts("\n");
             return -1;
         }
-        /* Use back buffer for rendering */
-        g_desktop.framebuffer = g_backbuffer;
-        g_desktop.width = g_fb_info.width;
-        g_desktop.height = g_fb_info.height;
-        /* SINGLE BUFFER MODE: Using hardware framebuffer directly - use hardware pitch */
-        g_desktop.pitch = g_fb_info.pitch;
+        nxc_canvas_t *frame = nxui_canvas();
+        /* Legacy pixel code renders into the same backbuffer (linear stride). */
+        g_desktop.framebuffer = frame->target->pixels;
+        g_desktop.width = (uint32_t)frame->target->width;
+        g_desktop.height = (uint32_t)frame->target->height;
+        g_desktop.pitch = (uint32_t)frame->target->stride * 4u;
     } else {
         /* Fallback: use passed parameters (kernel mode, no double buffering) */
         g_desktop.framebuffer = (uint32_t *)fb_addr;
@@ -1969,6 +1980,11 @@ int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pit
         g_windows[i].id = 0;
     }
     
+    /* Menu bar menus and the Anveshan search field */
+    menubar_init();
+    menubar_set_handler(desktop_menu_action);
+    anveshan_init(g_desktop.width, g_desktop.height);
+    
     nx_debug_print("[DESKTOP] Calling WM init...\n");
     
     /* Initialize Window Manager */
@@ -1980,6 +1996,8 @@ int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pit
     
     /* Initialize Event Bus */
     nxevent_init();
+    /* Launch requests from the dock, drawer and search open windows here */
+    nxevent_subscribe(NX_EVENT_APP_LAUNCHED, desktop_on_app_launched, NULL);
     nx_debug_print("[DESKTOP] Event bus done, dock init...\n");
     
     /* Initialize Dock */
@@ -2040,21 +2058,31 @@ static startup_app_t g_startup_apps[] = {
 /* Font Manager window content renderer */
 static void render_fontmanager_content(desktop_window_t *win, void *ctx) {
     (void)ctx;
-    
-    int y = win->y + 28 + 10;
-    int x = win->x + 10;
-    
-    desktop_draw_text(x, y, "Available Fonts:", 0xFFFFFFFF);
-    y += 16;
-    
-    const char *fonts[] = {"Consolas", "Monaco", "Menlo", "Noto Mono", "Terminus"};
+    nxc_canvas_t *c = nxui_canvas();
+    const nxui_theme_t *th = nxui_theme();
+    float x = (float)win->x + 16.0f, y = (float)win->y + 24.0f + 14.0f;
+    nxui_text(c, NXUI_TEXT_HEADLINE, x, y + 12.0f, "Installed typefaces", th->text_primary, NULL);
+    static const char *const fonts[] = { "NXSans Text", "NXSans UI", "NXSans Bold", "NXSans Display", "NXSans Mono" };
+    static const nxui_text_style_t styles[] = { NXUI_TEXT_BODY, NXUI_TEXT_BODY_MEDIUM, NXUI_TEXT_HEADLINE, NXUI_TEXT_TITLE3, NXUI_TEXT_MONO };
+    y += 34.0f;
     for (int i = 0; i < 5; i++) {
-        desktop_draw_text(x + 10, y, fonts[i], 0xFFCCCCCC);
-        y += 12;
+        nxui_text(c, styles[i], x, y + 12.0f, fonts[i], th->text_primary, NULL);
+        nxui_text(c, NXUI_TEXT_CAPTION, x + 150.0f, y + 12.0f, "Hamburgefonstiv 0123", th->text_secondary, NULL);
+        y += 26.0f;
     }
-    
-    y += 10;
-    desktop_draw_text(x, y, "Current: Consolas 14pt", 0xFF88FF88);
+    y += 8.0f;
+    nxui_text(c, NXUI_TEXT_FOOTNOTE, x, y + 12.0f, "System font: NXSans UI 13 pt", th->success, NULL);
+}
+
+/* Windows without a content renderer show a quiet empty state. */
+static void render_empty_content(desktop_window_t *win, void *ctx) {
+    (void)ctx;
+    nxc_canvas_t *c = nxui_canvas();
+    const nxui_theme_t *th = nxui_theme();
+    float cx = (float)win->x + (float)win->width * 0.5f, cy = (float)win->y + 24.0f + (float)win->height * 0.5f;
+    nxapp_icon_draw(c, nxapp_icon_from_name(win->title), cx - 32.0f, cy - 48.0f, 64.0f, 110);
+    nxui_text_in_rect(c, NXUI_TEXT_BODY, nxc_rect(cx - 150.0f, cy + 24.0f, 300.0f, 20.0f), win->title, th->text_secondary, NXC_ALIGN_CENTER);
+    nxui_text_in_rect(c, NXUI_TEXT_CAPTION, nxc_rect(cx - 150.0f, cy + 44.0f, 300.0f, 18.0f), "Nothing to show yet", th->text_tertiary, NXC_ALIGN_CENTER);
 }
 
 /* Start registered startup applications */
@@ -2120,6 +2148,8 @@ int desktop_launch_app(const char *name) {
                 /* Check if Font Manager to set custom renderer */
                 if (app->name[0] == 'F' && app->name[1] == 'o') {
                     desktop_set_window_render(win_id, render_fontmanager_content, NULL);
+                } else {
+                    desktop_set_window_render(win_id, render_empty_content, NULL);
                 }
                 return 0;
             }
@@ -2146,6 +2176,8 @@ void desktop_run(void) {
         frame_count++;
         
         /* Poll ALL input events */
+        if (g_pf_loop_t) g_pf[PF_SLEEP] += rdtsc_now() - g_pf_loop_t;
+        uint64_t pf_in0 = rdtsc_now();
         input_event_t event;
         int had_input = 0;
         int mouse_moved = 0;
@@ -2173,6 +2205,7 @@ void desktop_run(void) {
                 }
             } else if (event.type == INPUT_TYPE_KEYBOARD) {
                 /* Keyboard event */
+                g_key_ascii = (char)event.keyboard.ascii;
                 desktop_handle_key(event.keyboard.scancode, event.keyboard.pressed);
             }
         }
@@ -2183,16 +2216,18 @@ void desktop_run(void) {
         /* Check NX key long-press for help overlay */
         nx_key_tick();
         
-        /* Advance the app drawer open/close animation (one frame) */
-        app_drawer_update(16);
+        g_pf[PF_INPUT] += rdtsc_now() - pf_in0;
         
         /* Always render every frame */
         render_desktop();
+        g_pf_loop_t = rdtsc_now();
         
-        /* Frame rate limiting - cap at ~60 FPS to reduce flicker
-         * This gives stable frame timing and reduces partial frame visibility
-         */
-        nx_sleep(16);  /* 16ms ≈ 60 FPS */
+        /* Frame pacing: aim at 60 Hz, sleeping only the unused part of
+         * the budget so a slow frame never adds a full sleep on top. */
+        {
+            uint64_t spent = pit_get_ticks() - g_last_frame_end;
+            if (spent < 15) nx_sleep(15 - spent);
+        }
     }
     
     /* This should NEVER be reached */

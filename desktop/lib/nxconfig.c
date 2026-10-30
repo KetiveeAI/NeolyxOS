@@ -91,7 +91,7 @@ static uint32_t nxc_parse_hex(const char *s) {
 static nxc_config_t g_configs[4];
 static int g_config_count = 0;
 
-nxc_config_t* nxc_load(const char *path) {
+nxc_config_t* nxc_config_load(const char *path) {
     if (g_config_count >= 4) return NULL;
     
     nxc_config_t *config = &g_configs[g_config_count++];
@@ -171,7 +171,7 @@ nxc_config_t* nxc_load(const char *path) {
     return config;
 }
 
-int nxc_save(nxc_config_t *config) {
+int nxc_config_save(nxc_config_t *config) {
     if (!config) return -1;
     /* TODO: Implement VFS write when available */
     config->modified = 0;
@@ -305,7 +305,7 @@ int nxc_set_color(nxc_config_t *config, const char *section,
 int nxc_load_desktop_settings(nxc_desktop_settings_t *settings) {
     if (!settings) return -1;
     
-    nxc_config_t *config = nxc_load(NXC_USER_DEFAULTS);
+    nxc_config_t *config = nxc_config_load(NXC_USER_DEFAULTS);
     if (!config) return -1;
     
     /* Desktop section */
@@ -344,7 +344,7 @@ int nxc_load_desktop_settings(nxc_desktop_settings_t *settings) {
 int nxc_save_desktop_settings(const nxc_desktop_settings_t *settings) {
     if (!settings) return -1;
     
-    nxc_config_t *config = nxc_load(NXC_USER_DEFAULTS);
+    nxc_config_t *config = nxc_config_load(NXC_USER_DEFAULTS);
     if (!config) return -1;
     
     /* Desktop section */
@@ -366,7 +366,7 @@ int nxc_save_desktop_settings(const nxc_desktop_settings_t *settings) {
     nxc_set_string(config, "window", "animation_speed", settings->animation_speed);
     nxc_set_bool(config, "window", "snap_enabled", settings->snap_enabled);
     
-    return nxc_save(config);
+    return nxc_config_save(config);
 }
 
 void nxc_apply_desktop_settings(const nxc_desktop_settings_t *settings) {

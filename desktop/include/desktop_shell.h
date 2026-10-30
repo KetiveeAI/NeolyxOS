@@ -89,7 +89,7 @@ typedef struct {
 #define MAX_WINDOWS 16
 #define WINDOW_TITLE_MAX 64
 
-typedef struct {
+typedef struct desktop_shell_window {
     uint32_t id;
     char title[WINDOW_TITLE_MAX];
     
@@ -107,11 +107,12 @@ typedef struct {
     uint8_t z_order;
     
     /* Content render callback */
-    void (*render_content)(void *win, void *ctx);
+    void (*render_content)(struct desktop_shell_window *win, void *ctx);
     void *render_ctx;
     
     /* Keyboard handler callback (optional) */
-    void (*key_handler)(void *win, uint8_t scancode, uint8_t pressed, void *ctx);
+    void (*key_handler)(struct desktop_shell_window *win, uint8_t scancode,
+                        uint8_t pressed, void *ctx);
     void *key_ctx;
 } desktop_window_t;
 

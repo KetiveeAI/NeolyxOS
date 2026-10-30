@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "../include/battery_warning.h"
+#include "../include/nxui.h"
 #include "../include/nxsyscall.h"
 
 /* Warning State */
@@ -156,7 +157,7 @@ static void draw_battery_icon(int32_t x, int32_t y, uint8_t alpha, int percent) 
 }
 
 /* Render warning popup */
-void battery_warning_render(uint32_t *fb, uint32_t pitch) {
+static void battery_warning_render_legacy(uint32_t *fb, uint32_t pitch) {
     if (!g_bw.visible || g_bw.opacity == 0) return;
     
     (void)fb;
@@ -222,4 +223,34 @@ void battery_warning_render(uint32_t *fb, uint32_t pitch) {
     
     /* Hint */
     desktop_draw_text(x + 20, y + 88, "Connect to power soon", dim_color);
+}
+
+/* ============ Canvas renderer ============ */
+
+void battery_warning_render(nxc_canvas_t *c) {
+    if (!c || !g_bw.visible || g_bw.opacity == 0) return;
+    const nxui_theme_t *th = nxui_theme();
+    nxc_rect_t box = nxc_rect((float)g_bw.x, (float)g_bw.y, (float)g_bw.width, (float)g_bw.height);
+    nxc_save(c);
+    nxc_set_alpha(c, g_bw.opacity);
+    nxui_elevation(c, box, 16.0f, 2);
+    nxui_material(c, box, 16.0f, &th->mat_hud);
+    float level = (float)(g_bw.battery_percent < 0 ? 0 : g_bw.battery_percent > 100 ? 100 : g_bw.battery_percent) / 100.0f;
+    nxc_color_t col = g_bw.battery_percent <= 10 ? th->destructive : th->warning;
+    nxsym_draw(c, g_bw.is_charging ? NXSYM_BATTERY_CHARGING : NXSYM_BATTERY, box.x + 30.0f, box.y + box.h * 0.5f, 26.0f, col, level);
+    char line[40];
+    int n = 0;
+    {
+        int v = g_bw.battery_percent; char tmp[8]; int t = 0;
+        if (v <= 0) tmp[t++] = '0';
+        while (v > 0 && t < 7) { tmp[t++] = (char)('0' + v % 10); v /= 10; }
+        while (t > 0) line[n++] = tmp[--t];
+        const char *b = "% battery remaining"; while (*b && n < 38) line[n++] = *b++;
+        line[n] = '\0';
+    }
+    nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, nxc_rect(box.x + 58.0f, box.y + 8.0f, box.w - 70.0f, 20.0f), "Low battery",
+                      th->text_primary, NXC_ALIGN_LEFT);
+    nxui_text_in_rect(c, NXUI_TEXT_CAPTION, nxc_rect(box.x + 58.0f, box.y + 28.0f, box.w - 70.0f, 18.0f), line,
+                      th->text_secondary, NXC_ALIGN_LEFT);
+    nxc_restore(c);
 }

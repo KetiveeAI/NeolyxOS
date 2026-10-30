@@ -92,6 +92,44 @@ IRQ 14, 46          /* Primary ATA */
 IRQ 15, 47          /* Secondary ATA */
 
 /* ============ Common Stub ============ */
+/*
+ * Kernel stack layout while isr_handler() runs (higher addresses on top).
+ * RBX holds the registers_t pointer for the whole C call; it is callee-saved
+ * and the interrupted RBX is already stored in the frame (RBX+0x78).
+ *
+ *   RBX+0xB8  ss        \
+ *   RBX+0xB0  rsp        |
+ *   RBX+0xA8  rflags     |  pushed by the CPU
+ *   RBX+0xA0  cs         |
+ *   RBX+0x98  rip       /
+ *   RBX+0x90  err_code     (CPU or stub dummy 0)
+ *   RBX+0x88  int_no       (stub)
+ *   RBX+0x80  rax ... RBX+0x10 r15   (15 GPRs, see registers_t)
+ *   RBX+0x08  ds
+ *   RBX+0x00  es        <- RBX = registers_t * passed to isr_handler (RDI)
+ *   [padding]           0 bytes in practice (see below), at most 15
+ *   RSP+0x000 .. RSP+0x1FF  FXSAVE64 area, 512 bytes, 16-byte aligned
+ *
+ * In 64-bit mode the CPU aligns RSP to 16 bytes before pushing the
+ * 40-byte interrupt frame, and the stub adds 152 bytes, so registers_t
+ * (0xC0 bytes) starts 16-byte aligned and the AND below is a no-op. It is
+ * kept so a misaligned entry can never make FXSAVE64 raise #GP.
+ *
+ * FPU/SSE state: the kernel is compiled with SSE enabled, so any C code
+ * reached from here may clobber XMM registers and MXCSR. The interrupted
+ * context's x87/MMX/SSE state is saved before the C call and restored
+ * before IRETQ. The save area lives on the stack of the entry it belongs
+ * to, so nested interrupts and stack-switching context switches each find
+ * their own area. No task is resumed through this return path with a frame
+ * built in C today (the preemptive scheduler hook in pit_tick() is
+ * disabled); a future scheduler that builds such frames must place a valid
+ * FXSAVE image (e.g. nx_fpu_default_state in arch.S) below registers_t.
+ * CR4.OSXSAVE is clear, so AVX/YMM state is not enabled and FXSAVE covers
+ * all user-visible FP state.
+ *
+ * Interrupt gates leave DF as the interrupted context had it, so CLD runs
+ * before any C code (SysV ABI requires DF=0); IRETQ restores the original.
+ */
 
 .extern isr_handler
 
@@ -124,9 +162,34 @@ isr_common_stub:
     mov %ax, %ds
     mov %ax, %es
     
-    /* Call C handler with registers pointer */
-    mov %rsp, %rdi      /* First argument: pointer to registers */
+    /* The SysV ABI requires DF=0 on entry to C; interrupt gates do not
+     * clear it and the interrupted context may have set it. IRETQ restores
+     * the interrupted RFLAGS (including DF). */
+    cld
+    
+    /* RBX = registers_t pointer (callee-saved, survives the C call) */
+    mov %rsp, %rbx
+    
+    /* Save interrupted FPU/SSE state in a 512-byte 16-byte-aligned area */
+    sub $512, %rsp
+    and $-16, %rsp
+    fxsave64 (%rsp)
+    
+    /* Run kernel C code with a known FP environment, independent of the
+     * interrupted context: x87 reset (exceptions masked, none pending) and
+     * MXCSR = 0x1F80 (SIMD exceptions masked, round to nearest, no FTZ/DAZ).
+     * The saved state, including any pending x87 exception, is restored
+     * before IRETQ. */
+    fninit
+    ldmxcsr nx_fpu_default_mxcsr(%rip)
+    
+    /* Call C handler with registers pointer (RSP is 16-byte aligned here) */
+    mov %rbx, %rdi      /* First argument: pointer to registers */
     call isr_handler
+    
+    /* Restore interrupted FPU/SSE state, then drop the save area */
+    fxrstor64 (%rsp)
+    mov %rbx, %rsp
     
     /* Restore segment registers */
     pop %rax

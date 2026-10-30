@@ -14,6 +14,7 @@
  */
 
 #include <stdint.h>
+extern void serial_putc(char c);
 
 extern void serial_puts(const char *s);
 extern uint64_t timer_get_ticks(void);

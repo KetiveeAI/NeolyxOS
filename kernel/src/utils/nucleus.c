@@ -7,6 +7,7 @@
 #include "ui/disk_icons.h"
 #include "ui/nxfont.h"
 #include "mm/pmm.h"
+extern void serial_putc(char c);
 
 /* Simplified Light Purple Theme */
 #define COLOR_BG          0xFF16161E   /* Dark background */

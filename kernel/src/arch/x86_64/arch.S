@@ -62,57 +62,149 @@ idt_load:
 # g_kernel_rsp0 always holds the top of the *current* process's kernel
 # stack; the scheduler updates it on every switch.
 syscall_entry:
-    movq %rsp, g_syscall_user_rsp(%rip)     # Save user RSP without clobbering a GPR
-    movq g_kernel_rsp0(%rip), %rsp          # Switch to this process's kernel stack
-
-    pushq g_syscall_user_rsp(%rip)          # User RSP
-    pushq %r11                              # User RFLAGS
-    pushq %rcx                              # User RIP
-
-    # Preserve every register userspace may rely on
+    # CRITICAL: Disable interrupts immediately!
+    # FMASK should already clear IF, but this is defense-in-depth
+    cli
+    
+    # Switch to kernel stack (SYSCALL doesn't switch stacks automatically).
+    # User RSP is parked in a scratch global so no user register is lost;
+    # like g_kernel_rsp0, this assumes one CPU is in syscall entry at a time.
+    mov %rsp, g_syscall_user_rsp(%rip)
+    mov g_kernel_rsp0(%rip), %rsp  # Load kernel stack from global variable
+    
+    # Save user context for sysretq
+    pushq g_syscall_user_rsp(%rip) # User RSP
+    pushq %r11                  # User RFLAGS
+    pushq %rcx                  # User RIP
+    
+    # Save syscall number and argument registers. These are restored on
+    # return: only RAX (return value), RCX and R11 are clobbered for userspace.
+    pushq %rax                  # Syscall number
+    pushq %rdi                  # Arg1
+    pushq %rsi                  # Arg2
+    pushq %rdx                  # Arg3
+    pushq %r10                  # Arg4
+    pushq %r8                   # Arg5
+    pushq %r9                   # Arg6
+    
+    # Save callee-saved registers
     pushq %rbx
     pushq %rbp
     pushq %r12
     pushq %r13
     pushq %r14
     pushq %r15
-    pushq %rdi
-    pushq %rsi
-    pushq %rdx
-    pushq %r10
-    pushq %r8
-    pushq %r9
-    # 15 qwords pushed onto a 16-byte aligned stack top: realign for the call
-    subq $8, %rsp
-
-    # syscall_handler(num, arg1, arg2, arg3, arg4, arg5)
-    movq %r8, %r9                           # arg5
-    movq %r10, %r8                          # arg4
-    movq %rdx, %rcx                         # arg3
-    movq %rsi, %rdx                         # arg2
-    movq %rdi, %rsi                         # arg1
-    movq %rax, %rdi                         # num
+    
+    # Load kernel data segment
+    mov $0x10, %ax
+    mov %ax, %ds
+    mov %ax, %es
+    
+    # Saved-register frame: 16 pushes, 128 bytes. RBX holds the frame base
+    # for the whole C call (callee-saved; the user RBX is already saved at
+    # RBX+40 and is restored by the pops below).
+    #   RBX+120 user RSP    RBX+112 r11 (RFLAGS)  RBX+104 rcx (RIP)
+    #   RBX+96  rax (num)   RBX+88  rdi           RBX+80  rsi
+    #   RBX+72  rdx         RBX+64  r10           RBX+56  r8
+    #   RBX+48  r9          RBX+40  rbx           RBX+32  rbp
+    #   RBX+24  r12         RBX+16  r13           RBX+8   r14
+    #   RBX+0   r15
+    #   [padding: 0 bytes in practice, g_kernel_rsp0 is 16-byte aligned]
+    #   RSP+0 .. RSP+511    FXSAVE64 area (512 bytes, 16-byte aligned)
+    mov %rsp, %rbx
+    
+    # Save the user FPU/SSE state (x87, MMX, XMM0-15, MXCSR). Kernel C code
+    # is compiled with SSE enabled and may clobber any of it.
+    sub $512, %rsp
+    and $-16, %rsp
+    fxsave64 (%rsp)
+    
+    # Run kernel C code with a known FP environment, independent of the
+    # user's: x87 reset (exceptions masked, none pending) and MXCSR =
+    # 0x1F80 (SIMD exceptions masked, round to nearest, no FTZ/DAZ).
+    fninit
+    ldmxcsr nx_fpu_default_mxcsr(%rip)
+    
+    # Set up C args: syscall_handler(num, arg1, arg2, arg3, arg4, arg5)
+    # RSP is 16-byte aligned here, as the ABI requires at the call.
+    mov 96(%rbx), %rdi          # num (rax)
+    mov 88(%rbx), %rsi          # arg1 (rdi from user)
+    mov 80(%rbx), %rdx          # arg2 (rsi from user)
+    mov 72(%rbx), %rcx          # arg3 (rdx from user)
+    mov 64(%rbx), %r8           # arg4 (r10 from user)
+    mov 56(%rbx), %r9           # arg5 (r8 from user)
+    
     call syscall_handler
-    # RAX = return value (left untouched below)
-
-    addq $8, %rsp
-    popq %r9
-    popq %r8
-    popq %r10
-    popq %rdx
-    popq %rsi
-    popq %rdi
+    
+    # Restore the user FPU/SSE state (FXRSTOR64 does not touch RAX), then
+    # drop the save area so RSP points at the saved-register frame again.
+    fxrstor64 (%rsp)
+    mov %rbx, %rsp
+    
+    # RAX now contains return value - DO NOT CLOBBER IT
+    # Use stack to preserve return value instead of register
+    pushq %rax                  # Save return value on stack
+    
+    # Restore user data segment (use a scratch register)
+    mov $0x23, %bx              # Use BX instead of AX
+    mov %bx, %ds
+    mov %bx, %es
+    
+    # Restore return value
+    popq %rax                   # Return value back in RAX
+    
+    # Restore callee-saved registers
     popq %r15
     popq %r14
     popq %r13
     popq %r12
     popq %rbp
     popq %rbx
-
-    popq %rcx                               # User RIP
-    popq %r11                               # User RFLAGS
-    popq %rsp                               # User RSP (interrupts still masked)
+    
+    # Restore user argument registers
+    popq %r9
+    popq %r8
+    popq %r10
+    popq %rdx
+    popq %rsi
+    popq %rdi
+    
+    # Skip saved syscall number (RAX holds the return value)
+    addq $8, %rsp
+    
+    # Restore sysretq values
+    popq %rcx                   # User RIP
+    popq %r11                   # User RFLAGS
+    popq %rsp                   # User RSP
+    
     sysretq
+
+# Default FPU/SSE image for FXRSTOR64 (512 bytes, 16-byte aligned):
+# FCW=0x037F (x87 exceptions masked, 64-bit precision, round to nearest),
+# FSW=0, all x87 tags empty, MXCSR=0x1F80 (SIMD exceptions masked, round to
+# nearest), all ST0-7/MM0-7 and XMM0-15 registers zero. Loading it gives the
+# same state as FNINIT + LDMXCSR 0x1F80 with every FP register cleared.
+.section .rodata
+.balign 16
+.global nx_fpu_default_state
+nx_fpu_default_state:
+    .word 0x037F                # +0   FCW
+    .word 0x0000                # +2   FSW
+    .byte 0x00                  # +4   FTW (abridged form: all empty)
+    .byte 0x00                  # +5   reserved
+    .word 0x0000                # +6   FOP
+    .quad 0                     # +8   FPU IP
+    .quad 0                     # +16  FPU DP
+.global nx_fpu_default_mxcsr     # also the LDMXCSR operand on kernel entry
+nx_fpu_default_mxcsr:
+    .long 0x00001F80            # +24  MXCSR
+    .long 0x00000000            # +28  MXCSR_MASK (ignored by FXRSTOR)
+    .fill 480, 1, 0             # +32  ST0-7/MM0-7, XMM0-15, reserved
+nx_fpu_default_state_end:
+.if (nx_fpu_default_state_end - nx_fpu_default_state) - 512
+.error "nx_fpu_default_state must be exactly 512 bytes"
+.endif
+.text
 
 
 # void sched_switch(uint64_t *save_rsp, uint64_t new_rsp)
@@ -269,6 +361,11 @@ enter_user_mode:
     xor %r13, %r13
     xor %r14, %r14
     xor %r15, %r15
+    
+    # Start userspace with a clean, deterministic FPU/SSE state and no
+    # kernel data left in x87/MMX/XMM registers: same as FNINIT +
+    # LDMXCSR 0x1F80, with ST0-7/MM0-7 and XMM0-15 zeroed.
+    fxrstor64 nx_fpu_default_state(%rip)
     
     # Return to user mode - CPU will:
     # - Pop RIP, CS, RFLAGS, RSP, SS from stack

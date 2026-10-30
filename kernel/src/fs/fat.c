@@ -429,7 +429,7 @@ static void fat_name_to_8_3(const char *name, char *name8, char *ext3) {
 }
 
 /* Create file or directory in FAT filesystem */
-static int fat_vfs_create(vfs_node_t *parent, const char *name, uint8_t type, uint32_t mode) {
+static int fat_vfs_create(vfs_node_t *parent, const char *name, vfs_type_t type, uint32_t mode) {
     if (!parent || !name || !parent->mount) return VFS_ERR_INVALID;
     if (parent->type != VFS_DIRECTORY) return VFS_ERR_NOT_DIR;
     

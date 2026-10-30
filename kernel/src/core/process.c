@@ -441,7 +441,12 @@ void process_fpu_init(void) {
     uint32_t mxcsr = 0x1F80;
     __asm__ volatile("fninit");
     __asm__ volatile("ldmxcsr %0" : : "m"(mxcsr));
-    fpu_save(fpu_template);
+
+    /* New programs start from the all-zero default image (arch.S), not a
+     * snapshot of the boot context, so no kernel data in XMM/x87 registers
+     * reaches userspace. */
+    extern const uint8_t nx_fpu_default_state[];
+    proc_memcpy(fpu_template, nx_fpu_default_state, FXSAVE_SIZE);
     fpu_ready = 1;
 
     serial_puts("[PROC] FPU/SSE enabled, per-process FXSAVE ready\n");
@@ -830,8 +835,12 @@ void process_yield(void) {
 void process_sleep(uint32_t ms) {
     process_t *self = current_process;
 
+    if (ms > 60000u) ms = 60000u;          /* bound a hostile request */
+
     if (!scheduler_running || !self || self == idle_process) {
-        /* No scheduler yet: calibrated busy-wait (~100k loops per ms) */
+        /* No scheduler yet: calibrated busy-wait (~100k loops per ms).
+         * The PIT may not be programmed or unmasked this early, so HLT
+         * could wait forever; once the scheduler runs, sleep blocks. */
         uint64_t delay_loops = (uint64_t)ms * 100000ULL;
         for (volatile uint64_t i = 0; i < delay_loops; i++) {
             __asm__ volatile("pause");

@@ -1,15 +1,18 @@
 /*
  * NeolyxOS - NXI Icon Renderer
  * 
- * Renders NXI icons with:
- * 1. File-based loading from /System/Icons/*.nxi
- * 2. Icon caching for performance
+ * Renders NXI icons, resolved in this order:
+ * 1. File-based loading from /System/Desktop/Icons/{name}[_{size}].nxi
+ *    (lets an installed system override an icon without a rebuild)
+ * 2. The NeolyxOS icon pack linked into the desktop (nxicon_pack.h)
  * 3. Procedural builtin fallbacks
+ * Results are cached per (id, size).
  * 
  * Copyright (c) 2025-2026 KetiveeAI
  */
 
 #include "../include/nxi_render.h"
+#include "../include/nxicon_pack.h"
 #include "../include/nxrender_bridge.h"
 #include "../include/nxsyscall.h"
 #include <stddef.h>
@@ -46,7 +49,8 @@ typedef struct {
     uint16_t actual_w;    /* Actual width from file */
     uint16_t actual_h;    /* Actual height from file */
     uint8_t *rgba;        /* RGBA pixel data (allocated via nx_malloc) */
-    uint8_t loaded;       /* 1=from file, 2=file not found (use procedural) */
+    const uint8_t *pack_rgba; /* icon-pack pixels (read-only, linked in) */
+    uint8_t loaded;       /* 1=from file, 2=not found (procedural), 3=from icon pack */
 } nxi_cached_icon_t;
 
 static nxi_cached_icon_t g_icon_cache[NXI_ICON_CACHE_SIZE];
@@ -56,39 +60,60 @@ static int g_nxi_initialized = 0;
 /* System paths */
 #define NXI_ICON_PATH "/System/Desktop/Icons/"
 
-/* ============ Icon ID to Filename Mapping ============ */
+/* ============ Icon ID <-> Name Mapping ============ */
 
-static const char* nxi_get_icon_filename(uint32_t icon_id) {
-    switch (icon_id) {
-        case NXI_ICON_WIFI:       return "wifi";
-        case NXI_ICON_BLUETOOTH:  return "bluetooth";
-        case NXI_ICON_AIRDROP:    return "share";
-        case NXI_ICON_ETHERNET:   return "ethernet";
-        case NXI_ICON_BRIGHTNESS: return "brightness";
-        case NXI_ICON_VOLUME:     return "volume";
-        case NXI_ICON_FOCUS:      return "focus";
-        case NXI_ICON_DARK_MODE:  return "darkmode";
-        case NXI_ICON_MIRROR:     return "mirror";
-        case NXI_ICON_KEYBOARD:   return "keyboard";
-        case NXI_ICON_PLAY:       return "play";
-        case NXI_ICON_PAUSE:      return "pause";
-        case NXI_ICON_PREV:       return "prev";
-        case NXI_ICON_NEXT:       return "next";
-        case NXI_ICON_BELL:       return "bell";
-        case NXI_ICON_GRID:       return "grid";
-        case NXI_ICON_SETTINGS:   return "settings";
-        case NXI_ICON_TERMINAL:   return "terminal";
-        case NXI_ICON_FOLDER:     return "folder";
-        case NXI_ICON_SEARCH:     return "search";
-        case NXI_ICON_CLOSE:      return "close";
-        case NXI_ICON_APP:        return "app";
-        case NXI_ICON_FILE:       return "file";
-        default: return NULL;
-    }
+/* One row per icon: file stem under NXI_ICON_PATH, and the icon-pack
+ * entry with full-color NeolyxOS art for it (NULL = none). Names are
+ * matched exactly (case-insensitive) by nxi_render_icon_by_name. */
+typedef struct {
+    uint32_t    id;
+    const char *name;
+    const char *pack;
+} nxi_name_t;
+
+static const nxi_name_t g_nxi_names[] = {
+    { NXI_ICON_APP,        "app",        "app-generic"  },
+    { NXI_ICON_FOLDER,     "folder",     "folder-generic" },
+    { NXI_ICON_FILE,       "file",       NULL           },
+    { NXI_ICON_TERMINAL,   "terminal",   "app-terminal" },
+    { NXI_ICON_SETTINGS,   "settings",   "app-settings" },
+    { NXI_ICON_SEARCH,     "search",     NULL           },
+    { NXI_ICON_CLOSE,      "close",      NULL           },
+    { NXI_ICON_WIFI,       "wifi",       NULL           },
+    { NXI_ICON_BLUETOOTH,  "bluetooth",  NULL           },
+    { NXI_ICON_AIRDROP,    "share",      NULL           },
+    { NXI_ICON_ETHERNET,   "ethernet",   NULL           },
+    { NXI_ICON_BRIGHTNESS, "brightness", NULL           },
+    { NXI_ICON_VOLUME,     "volume",     NULL           },
+    { NXI_ICON_FOCUS,      "focus",      NULL           },
+    { NXI_ICON_MIRROR,     "mirror",     NULL           },
+    { NXI_ICON_DARK_MODE,  "darkmode",   NULL           },
+    { NXI_ICON_KEYBOARD,   "keyboard",   NULL           },
+    { NXI_ICON_PLAY,       "play",       NULL           },
+    { NXI_ICON_PAUSE,      "pause",      NULL           },
+    { NXI_ICON_PREV,       "prev",       NULL           },
+    { NXI_ICON_NEXT,       "next",       NULL           },
+    { NXI_ICON_BELL,       "bell",       NULL           },
+    { NXI_ICON_GRID,       "grid",       NULL           },
+};
+
+#define NXI_NAME_COUNT ((int)(sizeof(g_nxi_names) / sizeof(g_nxi_names[0])))
+
+static const nxi_name_t *nxi_lookup_id(uint32_t icon_id) {
+    for (int i = 0; i < NXI_NAME_COUNT; i++)
+        if (g_nxi_names[i].id == icon_id) return &g_nxi_names[i];
+    return NULL;
 }
 
-/* Build path: /System/Icons/{name}_{size}.nxi */
+static const char* nxi_get_icon_filename(uint32_t icon_id) {
+    const nxi_name_t *n = nxi_lookup_id(icon_id);
+    return n ? n->name : NULL;
+}
+
+/* Build path: /System/Desktop/Icons/{name}_{size}.nxi (size 1..999).
+ * Returns the length, or -1 if it does not fit. */
 static int nxi_build_path(char *buf, int buflen, const char *name, int size) {
+    if (!buf || !name || buflen < 8 || size < 1 || size > 999) return -1;
     int i = 0;
     const char *prefix = NXI_ICON_PATH;
     
@@ -102,6 +127,7 @@ static int nxi_build_path(char *buf, int buflen, const char *name, int size) {
         buf[i++] = name[j++];
     }
     
+    if (i + 8 >= buflen) return -1;   /* "_NNN.nxi" + NUL */
     buf[i++] = '_';
     
     /* Size to string */
@@ -146,11 +172,12 @@ static nxi_cached_icon_t* nxi_cache_alloc(uint32_t icon_id, int size) {
     entry->icon_id = icon_id;
     entry->size = (uint16_t)size;
     entry->rgba = NULL;
+    entry->pack_rgba = NULL;
     entry->loaded = 0;
     return entry;
 }
 
-/* Try to load icon from /System/Icons/ */
+/* Try to load icon from /System/Desktop/Icons/ */
 static int nxi_load_from_file(nxi_cached_icon_t *entry, uint32_t icon_id, int size) {
     const char *name = nxi_get_icon_filename(icon_id);
     if (!name) {
@@ -159,12 +186,11 @@ static int nxi_load_from_file(nxi_cached_icon_t *entry, uint32_t icon_id, int si
     }
     
     char path[128];
-    nxi_build_path(path, sizeof(path), name, size);
-    
-    /* Open file */
-    int fd = nx_open(path, O_RDONLY);
+    int fd = -1;
+    if (nxi_build_path(path, sizeof(path), name, size) > 0)
+        fd = nx_open(path, O_RDONLY);
     if (fd < 0) {
-        /* Try without size suffix: /System/Icons/{name}.nxi */
+        /* Try without size suffix: /System/Desktop/Icons/{name}.nxi */
         int i = 0;
         const char *prefix = NXI_ICON_PATH;
         while (prefix[i]) { path[i] = prefix[i]; i++; }
@@ -196,8 +222,17 @@ static int nxi_load_from_file(nxi_cached_icon_t *entry, uint32_t icon_id, int si
         return -1;
     }
     
+    /* Validate before allocating: version, RGBA layout, sane dimensions */
+    if (header.version != NXI_BITMAP_VERSION || header.flags != 0 ||
+        header.width == 0 || header.height == 0 ||
+        header.width > 1024 || header.height > 1024) {
+        nx_close(fd);
+        entry->loaded = 2;
+        return -1;
+    }
+
     /* Allocate pixel buffer */
-    uint32_t pixel_count = header.width * header.height;
+    uint32_t pixel_count = (uint32_t)header.width * (uint32_t)header.height;
     uint32_t data_size = pixel_count * 4;
     
     entry->rgba = (uint8_t*)nx_malloc(data_size);
@@ -430,10 +465,12 @@ static void draw_builtin_icon(uint32_t icon_id, int x, int y, int sz, uint32_t c
 
 /* ============ Bitmap Icon Blitting ============ */
 
-static void nxi_blit_rgba(uint8_t *rgba, int img_w, int img_h,
+/* Nearest-neighbor scaled blit. tint multiplies the source color; pass
+ * 0xFFFFFFFF for full-color art (icon-pack icons) to keep its colors. */
+static void nxi_blit_rgba(const uint8_t *rgba, int img_w, int img_h,
                           int x, int y, int dest_w, int dest_h,
                           uint32_t tint_color) {
-    /* Simple nearest-neighbor scaling with tint */
+    if (!rgba || img_w <= 0 || img_h <= 0 || dest_w <= 0 || dest_h <= 0) return;
     uint8_t tint_r = (tint_color >> 16) & 0xFF;
     uint8_t tint_g = (tint_color >> 8) & 0xFF;
     uint8_t tint_b = tint_color & 0xFF;
@@ -490,20 +527,34 @@ void nxi_render_shutdown(void) {
 void nxi_render_icon(nx_context_t *ctx, uint32_t icon_id, 
                      int x, int y, int size, uint32_t tint_color) {
     (void)ctx;
-    
-    /* Check cache first */
+
+    if (size <= 0 || size > 1024) return;
+    if (!g_nxi_initialized) nxi_render_init();
+
     nxi_cached_icon_t *entry = nxi_cache_find(icon_id, size);
-    
     if (!entry) {
-        /* Allocate cache entry and try loading from file */
+        /* File override first, then the linked icon pack */
         entry = nxi_cache_alloc(icon_id, size);
-        nxi_load_from_file(entry, icon_id, size);
+        if (nxi_load_from_file(entry, icon_id, size) != 0) {
+            const nxi_name_t *n = nxi_lookup_id(icon_id);
+            nxicon_pack_image_t img;
+            if (n && n->pack && nxicon_pack_find(n->pack, &img) == 0) {
+                entry->pack_rgba = img.rgba;
+                entry->actual_w = (uint16_t)img.width;
+                entry->actual_h = (uint16_t)img.height;
+                entry->loaded = 3;
+            }
+        }
     }
     
     if (entry->loaded == 1 && entry->rgba) {
         /* Use file-based icon */
         nxi_blit_rgba(entry->rgba, entry->actual_w, entry->actual_h,
                       x, y, size, size, tint_color);
+    } else if (entry->loaded == 3 && entry->pack_rgba) {
+        /* Full-color pack art: never tinted */
+        nxi_blit_rgba(entry->pack_rgba, entry->actual_w, entry->actual_h,
+                      x, y, size, size, 0xFFFFFFFFu);
     } else {
         /* Fall back to procedural icon */
         draw_builtin_icon(icon_id, x, y, size, tint_color);
@@ -512,31 +563,19 @@ void nxi_render_icon(nx_context_t *ctx, uint32_t icon_id,
 
 void nxi_render_icon_by_name(nx_context_t *ctx, const char *name,
                               int x, int y, int size, uint32_t tint_color) {
-    uint32_t id = NXI_ICON_APP;
-    
-    if (!name) {
-        nxi_render_icon(ctx, id, x, y, size, tint_color);
-        return;
+    uint32_t id = NXI_ICON_APP;   /* unknown names get the generic app icon */
+    if (name) {
+        for (int i = 0; i < NXI_NAME_COUNT; i++) {
+            const char *a = name, *b = g_nxi_names[i].name;
+            int n = 0;
+            while (*a && *b && n < 64) {
+                char ca = (*a >= 'A' && *a <= 'Z') ? (char)(*a + 32) : *a;
+                if (ca != *b) break;
+                a++; b++; n++;
+            }
+            if (*a == 0 && *b == 0) { id = g_nxi_names[i].id; break; }
+        }
     }
-    
-    if (name[0] == 'w' && name[1] == 'i') id = NXI_ICON_WIFI;
-    else if (name[0] == 'b' && name[1] == 'l') id = NXI_ICON_BLUETOOTH;
-    else if (name[0] == 'e' && name[1] == 't') id = NXI_ICON_ETHERNET;
-    else if (name[0] == 's' && name[1] == 'h') id = NXI_ICON_AIRDROP;
-    else if (name[0] == 'f' && name[1] == 'o') id = (name[2] == 'c') ? NXI_ICON_FOCUS : NXI_ICON_FOLDER;
-    else if (name[0] == 'd' && name[1] == 'a') id = NXI_ICON_DARK_MODE;
-    else if (name[0] == 'm' && name[1] == 'i') id = NXI_ICON_MIRROR;
-    else if (name[0] == 'k' && name[1] == 'e') id = NXI_ICON_KEYBOARD;
-    else if (name[0] == 'b' && name[1] == 'r') id = NXI_ICON_BRIGHTNESS;
-    else if (name[0] == 'v' && name[1] == 'o') id = NXI_ICON_VOLUME;
-    else if (name[0] == 'p' && name[1] == 'l') id = NXI_ICON_PLAY;
-    else if (name[0] == 'p' && name[1] == 'a') id = NXI_ICON_PAUSE;
-    else if (name[0] == 'b' && name[1] == 'e') id = NXI_ICON_BELL;
-    else if (name[0] == 'g' && name[1] == 'r') id = NXI_ICON_GRID;
-    else if (name[0] == 's' && name[1] == 'e') id = (name[2] == 't') ? NXI_ICON_SETTINGS : NXI_ICON_SEARCH;
-    else if (name[0] == 't' && name[1] == 'e') id = NXI_ICON_TERMINAL;
-    else if (name[0] == 'c' && name[1] == 'l') id = NXI_ICON_CLOSE;
-    
     nxi_render_icon(ctx, id, x, y, size, tint_color);
 }
 
@@ -544,7 +583,9 @@ void nxi_draw_icon_fallback(uint32_t *fb, uint32_t pitch,
                             uint32_t icon_id, int x, int y, int size,
                             uint32_t tint_color) {
     (void)fb; (void)pitch;
-    draw_builtin_icon(icon_id, x, y, size, tint_color);
+    /* Same resolution as nxi_render_icon (file, pack, procedural); it
+     * used to skip straight to the procedural shapes. */
+    nxi_render_icon(NULL, icon_id, x, y, size, tint_color);
 }
 
 void nxi_cache_clear(void) {

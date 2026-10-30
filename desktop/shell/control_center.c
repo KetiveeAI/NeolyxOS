@@ -11,6 +11,20 @@
  */
 
 #include "../include/control_center.h"
+#include "../include/nxui.h"
+/* Layout (relative to the panel) shared with control_center_handle_input */
+#define CCL_PAD        16
+#define CCL_TILE_H     48
+#define CCL_NET_Y      16
+#define CCL_SEC_Y      (CCL_NET_Y + 2 * (CCL_TILE_H + CC_GRID_GAP) + 8)       /* 140 */
+#define CCL_SEC_H      72
+#define CCL_MEDIA_Y    (CCL_SEC_Y + CCL_SEC_H + CC_SECTION_GAP + 8)             /* 232 */
+#define CCL_MEDIA_H    90
+#define CCL_BRIGHT_Y   (CCL_MEDIA_Y + CCL_MEDIA_H + CC_SECTION_GAP)             /* 334 */
+#define CCL_VOL_Y      (CCL_BRIGHT_Y + 44)                                      /* 378 */
+#define CCL_QA_Y       (CCL_VOL_Y + 44)                                         /* 422 */
+#define CCL_QA_H       40
+
 #include "../include/nxsyscall.h"
 #include "../include/vm_detect.h"
 #include "../include/nxi_render.h"
@@ -21,6 +35,8 @@
 
 /* Config for security settings */
 #include "nx_config.h"
+
+extern void serial_puts(const char *s);
 
 /* ============ External Desktop API ============ */
 
@@ -424,7 +440,7 @@ static void render_slider(uint32_t *fb, uint32_t pitch,
 
 /* ============ Main Render ============ */
 
-void control_center_render(uint32_t *fb, uint32_t pitch) {
+static void control_center_render_legacy(uint32_t *fb, uint32_t pitch) {
     if (!g_cc.visible || !g_cc_initialized) return;
     
     int px = g_cc.x;
@@ -577,6 +593,11 @@ int control_center_handle_input(int mouse_x, int mouse_y, uint8_t buttons, uint8
     } else if (rel_y >= 16 + tile_h + CC_GRID_GAP && rel_y < 16 + 2*tile_h + CC_GRID_GAP) {
         if (rel_x >= 16 && rel_x < 16 + tile_w) g_cc.hover_item = 2;  /* AirDrop */
         else if (rel_x >= 16 + tile_w + CC_GRID_GAP) g_cc.hover_item = 3;  /* Ethernet */
+    } else if (rel_y >= CCL_QA_Y && rel_y < CCL_QA_Y + 2 * CCL_QA_H + 8) {
+        /* Quick actions 2x2 (items 4..7) */
+        int row = (rel_y - CCL_QA_Y) / (CCL_QA_H + 8);
+        int col = (rel_x >= 16 + tile_w + CC_GRID_GAP) ? 1 : (rel_x >= 16 ? 0 : -1);
+        if (row >= 0 && row < 2 && col >= 0) g_cc.hover_item = 4 + row * 2 + col;
     }
     
     /* Handle slider drags */
@@ -663,6 +684,7 @@ int control_center_handle_input(int mouse_x, int mouse_y, uint8_t buttons, uint8
                     cc_open_settings_panel(CC_PANEL_APPEARANCE);
                 } else {
                     g_cc.dark_mode.enabled = !g_cc.dark_mode.enabled;
+                    nxui_set_appearance(g_cc.dark_mode.enabled ? NXUI_APPEARANCE_DARK : NXUI_APPEARANCE_LIGHT);
                     theme_osd_show_dark_mode(g_cc.dark_mode.enabled);
                 }
                 return 1;
@@ -731,3 +753,127 @@ control_center_state_t* control_center_get_state(void) {
     return &g_cc;
 }
 
+/* ============ Canvas renderer ============ */
+
+static float cc_anim = 0.0f;   /* 0 hidden .. 1 shown, eased */
+
+/* A tile with a round icon well, label and sublabel; `on` lights it up. */
+static void cc_tile(nxc_canvas_t *c, const nxui_theme_t *th, nxc_rect_t r, nxsym_t sym,
+                    const char *label, const char *sub, int on, nxc_color_t on_color, int hover,
+                    int chevron) {
+    nxc_fill_rrect(c, r, 12.0f, hover ? th->control_fill_hover : th->control_fill);
+    float cy = r.y + r.h * 0.5f;
+    nxc_fill_circle(c, r.x + 24.0f, cy, 15.0f, on ? on_color : NXC_WITH_ALPHA(th->text_primary, 36));
+    nxsym_draw(c, sym, r.x + 24.0f, cy, 17.0f, on ? th->text_on_accent : th->text_secondary, 1.0f);
+    float tx = r.x + 48.0f, tw = r.w - 48.0f - (chevron ? 22.0f : 10.0f);
+    if (sub && sub[0]) {
+        nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, nxc_rect(tx, r.y + 6.0f, tw, 20.0f), label, th->text_primary, NXC_ALIGN_LEFT);
+        nxui_text_in_rect(c, NXUI_TEXT_CAPTION, nxc_rect(tx, r.y + 24.0f, tw, 18.0f), sub, th->text_secondary, NXC_ALIGN_LEFT);
+    } else {
+        nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, nxc_rect(tx, r.y, tw, r.h), label, th->text_primary, NXC_ALIGN_LEFT);
+    }
+    if (chevron) nxsym_draw(c, NXSYM_CHEVRON_RIGHT, r.x + r.w - 12.0f, cy, 12.0f, th->text_tertiary, 0.0f);
+}
+
+static void cc_slider(nxc_canvas_t *c, const nxui_theme_t *th, float x, float y, float w, nxsym_t sym,
+                      int value, float sym_value) {
+    nxc_rect_t track = nxc_rect(x + 32.0f, y + 12.0f, w - 32.0f, 12.0f);
+    nxc_fill_rrect(c, track, 6.0f, th->control_fill);
+    float fw = track.w * (float)(value < 0 ? 0 : value > 100 ? 100 : value) / 100.0f;
+    if (fw < 12.0f) fw = 12.0f;
+    nxc_fill_rrect(c, nxc_rect(track.x, track.y, fw, track.h), 6.0f, NXC_WITH_ALPHA(th->text_primary, 235));
+    nxsym_draw(c, sym, x + 12.0f, y + 18.0f, 18.0f, th->text_primary, sym_value);
+}
+
+void control_center_render(nxc_canvas_t *c) {
+    if (!c || !g_cc_initialized) return;
+    float dt = nxui_frame_dt();
+    cc_anim = nxui_approach(cc_anim, g_cc.visible ? 1.0f : 0.0f, 0.06f, dt);
+    if (cc_anim < 0.01f) return;
+    const nxui_theme_t *th = nxui_theme();
+    float ease = nxui_ease_out_cubic(cc_anim);
+    nxc_rect_t panel = nxc_rect((float)g_cc.x, (float)g_cc.y - (1.0f - ease) * 12.0f, (float)g_cc.width, (float)g_cc.height);
+
+    nxc_save(c);
+    nxc_set_alpha(c, (uint8_t)(ease * 255.0f));
+    nxui_panel(c, panel, th->radius_popover, &th->mat_popover, 2);
+    nxc_stroke_rrect(c, panel, th->radius_popover, 1.0f, th->window_border);
+
+    float px = panel.x, py = panel.y;
+    float tile_w = (float)((g_cc.width - 40 - CC_GRID_GAP) / 2);
+
+    /* Network 2x2 */
+    const cc_toggle_t *net[4] = { &g_cc.wifi, &g_cc.bluetooth, &g_cc.airdrop, &g_cc.ethernet };
+    const nxsym_t nsym[4] = { NXSYM_WIFI, NXSYM_BLUETOOTH, NXSYM_AIRPLANE, NXSYM_ETHERNET };
+    const nxc_color_t ncol[4] = { th->success, th->accent, th->accent, th->success };
+    for (int i = 0; i < 4; i++) {
+        float tx = px + CCL_PAD + (i % 2) * (tile_w + CC_GRID_GAP);
+        float ty = py + CCL_NET_Y + (i / 2) * (CCL_TILE_H + CC_GRID_GAP);
+        cc_tile(c, th, nxc_rect(tx, ty, tile_w, CCL_TILE_H), nsym[i], net[i]->label, net[i]->sublabel,
+                net[i]->enabled, ncol[i], g_cc.hover_item == i, 1);
+    }
+
+    /* Security */
+    nxc_rect_t sec = nxc_rect(px + CCL_PAD, py + CCL_SEC_Y, (float)g_cc.width - 2 * CCL_PAD, CCL_SEC_H);
+    nxc_fill_rrect(c, sec, 12.0f, th->control_fill);
+    nxc_fill_circle(c, sec.x + 28.0f, sec.y + sec.h * 0.5f, 18.0f, g_cc.firewall.enabled ? th->success : NXC_WITH_ALPHA(th->text_primary, 36));
+    nxsym_draw(c, NXSYM_SHIELD, sec.x + 28.0f, sec.y + sec.h * 0.5f, 20.0f, th->text_on_accent, 0.0f);
+    nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, nxc_rect(sec.x + 56.0f, sec.y + 12.0f, 200.0f, 20.0f),
+                      g_cc.firewall.enabled ? "Firewall active" : "Firewall off", th->text_primary, NXC_ALIGN_LEFT);
+    char info[64];
+    int n = 0;
+    {
+        char num[12]; int k = 0; int v = g_cc.blocked_count; char tmp[12]; int t = 0;
+        if (v <= 0) tmp[t++] = '0';
+        while (v > 0 && t < 11) { tmp[t++] = (char)('0' + v % 10); v /= 10; }
+        while (t > 0) num[k++] = tmp[--t];
+        num[k] = '\0';
+        const char *a = num; while (*a && n < 60) info[n++] = *a++;
+        const char *b = " blocked  \xC2\xB7  "; while (*b && n < 60) info[n++] = *b++;
+        v = g_cc.active_connections; t = 0; k = 0;
+        if (v <= 0) tmp[t++] = '0';
+        while (v > 0 && t < 11) { tmp[t++] = (char)('0' + v % 10); v /= 10; }
+        while (t > 0) num[k++] = tmp[--t];
+        num[k] = '\0';
+        a = num; while (*a && n < 60) info[n++] = *a++;
+        b = " connections"; while (*b && n < 62) info[n++] = *b++;
+        info[n] = '\0';
+    }
+    nxui_text_in_rect(c, NXUI_TEXT_CAPTION, nxc_rect(sec.x + 56.0f, sec.y + 36.0f, 240.0f, 18.0f), info,
+                      th->text_secondary, NXC_ALIGN_LEFT);
+
+    /* Media */
+    nxc_rect_t med = nxc_rect(px + CCL_PAD, py + CCL_MEDIA_Y, (float)g_cc.width - 2 * CCL_PAD, CCL_MEDIA_H);
+    nxc_fill_rrect(c, med, 12.0f, th->control_fill);
+    nxc_rect_t art = nxc_rect(med.x + 14.0f, med.y + 15.0f, 60.0f, 60.0f);
+    nxc_paint_t ap = nxc_paint_linear(art.x, art.y, art.x + art.w, art.y + art.h,
+                                      nxc_color_lerp(g_cc.media_artwork_color, 0xFFFFFFFF, 0.25f), g_cc.media_artwork_color);
+    nxc_fill_rrect_paint(c, art, 10.0f, &ap);
+    nxsym_draw(c, NXSYM_PLAY, art.x + 30.0f, art.y + 30.0f, 22.0f, NXC_ARGB(200, 255, 255, 255), 0.0f);
+    nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, nxc_rect(art.x + 74.0f, med.y + 20.0f, med.w - 100.0f, 20.0f),
+                      g_cc.media_title, th->text_primary, NXC_ALIGN_LEFT);
+    nxui_text_in_rect(c, NXUI_TEXT_CAPTION, nxc_rect(art.x + 74.0f, med.y + 40.0f, med.w - 100.0f, 18.0f),
+                      g_cc.media_artist[0] ? g_cc.media_artist : "No media", th->text_secondary, NXC_ALIGN_LEFT);
+    float mcx = art.x + 74.0f + 20.0f, mcy = med.y + 68.0f;
+    nxsym_draw(c, NXSYM_PREV, mcx, mcy, 16.0f, th->text_primary, 0.0f);
+    nxsym_draw(c, g_cc.media_playing ? NXSYM_PAUSE : NXSYM_PLAY, mcx + 34.0f, mcy, 16.0f, th->text_primary, 0.0f);
+    nxsym_draw(c, NXSYM_NEXT, mcx + 68.0f, mcy, 16.0f, th->text_primary, 0.0f);
+
+    /* Sliders */
+    cc_slider(c, th, px + CCL_PAD, py + CCL_BRIGHT_Y, (float)g_cc.width - 2 * CCL_PAD, NXSYM_BRIGHTNESS,
+              g_cc.brightness, (float)g_cc.brightness / 100.0f);
+    cc_slider(c, th, px + CCL_PAD, py + CCL_VOL_Y, (float)g_cc.width - 2 * CCL_PAD, NXSYM_VOLUME,
+              g_cc.volume, (float)g_cc.volume / 100.0f);
+
+    /* Quick actions 2x2 */
+    const cc_toggle_t *qa[4] = { &g_cc.focus_mode, &g_cc.dark_mode, &g_cc.screen_mirror, &g_cc.keyboard_brightness };
+    const nxsym_t qsym[4] = { NXSYM_MOON, NXSYM_SUN, NXSYM_MAXIMIZE, NXSYM_KEYBOARD };
+    const nxc_color_t qcol[4] = { th->warning, th->accent, NXC_RGB(0xAF, 0x52, 0xDE), th->accent };
+    for (int i = 0; i < 4; i++) {
+        float tx = px + CCL_PAD + (i % 2) * (tile_w + CC_GRID_GAP);
+        float ty = py + CCL_QA_Y + (i / 2) * (CCL_QA_H + 8);
+        cc_tile(c, th, nxc_rect(tx, ty, tile_w, CCL_QA_H), qsym[i], qa[i]->label, "", qa[i]->enabled, qcol[i],
+                g_cc.hover_item == 4 + i, 0);
+    }
+    nxc_restore(c);
+}

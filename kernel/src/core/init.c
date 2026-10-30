@@ -155,9 +155,19 @@ static void init_heap(void) {
             continue;
         }
         
-        if (r->length > best_size) {
-            best_base = r->base;
-            best_size = r->length;
+        /* Never place the kernel heap inside the userspace program region
+         * (desktop ELF at 0x1000000, its 64 MB heap reserve and stack; the
+         * PMM reserves the same range). Clip the candidate around it. */
+        uint64_t base = r->base, end = r->base + r->length;
+        const uint64_t user_start = 0x1000000ULL, user_end = 0x6000000ULL;
+        if (base < user_end && end > user_start) {
+            if (end > user_end) base = user_end;            /* keep the part above */
+            else if (base < user_start) end = user_start;   /* keep the part below */
+            else continue;                                  /* fully inside */
+        }
+        if (end > base && end - base > best_size) {
+            best_base = base;
+            best_size = end - base;
         }
     }
     
@@ -175,6 +185,10 @@ static void init_heap(void) {
     
     g_ram_info.heap_start = best_base;
     g_ram_info.heap_size = best_size;
+    
+    /* Keep the PMM from handing out frames that belong to the heap. */
+    extern void pmm_reserve_region(uint64_t start, uint64_t size);
+    pmm_reserve_region(best_base, best_size);
     
     heap_init(best_base, best_size);
     

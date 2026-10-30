@@ -11,6 +11,7 @@
 #define ANVESHAN_H
 
 #include <stdint.h>
+#include "nxcanvas.h"
 #include "nxappearance.h"
 #include "nxevent.h"
 
@@ -165,7 +166,7 @@ void anveshan_clear(void);
  * @param fb Framebuffer pointer
  * @param pitch Framebuffer pitch in bytes
  */
-void anveshan_render(uint32_t *fb, uint32_t pitch);
+void anveshan_render(nxc_canvas_t *c);
 
 /**
  * Handle mouse input

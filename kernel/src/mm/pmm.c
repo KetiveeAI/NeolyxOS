@@ -234,7 +234,12 @@ void pmm_init(void *memory_map, uint64_t map_size, uint64_t descriptor_size) {
     }
     
     /* Physical alias of the per-process user window: never allocate here,
-     * user address spaces map their own frames at these virtual addresses */
+     * user address spaces map their own frames at these virtual addresses.
+     * Reserving it this early also keeps the kernel heap and per-process
+     * kernel stacks (both allocated from the PMM) out of the window. */
+    if (kernel_end_addr > USER_WINDOW_BASE) {
+        serial_puts("[PMM] WARNING: kernel image extends into the user window base\n");
+    }
     addrspace_reserve_window();
     
     /* Calculate final stats */

@@ -8,6 +8,7 @@
 #include <drivers/ata.h>
 #include <drivers/mouse.h>
 #include <utils/log.h>
+int audio_drivers_init(void);   /* defined below, used by the init table */
 
 // Global driver list
 static kernel_driver_t* driver_list = NULL;

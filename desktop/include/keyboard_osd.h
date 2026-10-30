@@ -8,6 +8,7 @@
 #define KEYBOARD_OSD_H
 
 #include <stdint.h>
+#include "nxcanvas.h"
 
 /* Modifier key flags */
 #define MOD_CAPS_LOCK   0x01
@@ -61,12 +62,12 @@ int keyboard_osd_is_visible(void);
 void keyboard_osd_tick(void);
 
 /* Render keyboard OSD */
-void keyboard_osd_render(uint32_t *fb, uint32_t pitch);
+void keyboard_osd_render(nxc_canvas_t *c);
 
 /* Help overlay functions (full-screen shortcut help) */
 void keyboard_osd_help_show(void);
 void keyboard_osd_help_hide(void);
 int keyboard_osd_help_visible(void);
-void keyboard_osd_help_render(uint32_t *fb, uint32_t pitch, uint32_t sw, uint32_t sh);
+void keyboard_osd_help_render(nxc_canvas_t *c);
 
 #endif /* KEYBOARD_OSD_H */

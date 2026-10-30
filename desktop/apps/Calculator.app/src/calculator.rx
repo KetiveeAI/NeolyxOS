@@ -1,0 +1,592 @@
+// Calculator.app - NeolyxOS Calculator written in REOX
+// NeolyxOS Application
+//
+// Copyright (c) 2025 KetiveeAI. All Rights Reserved.
+// PROPRIETARY AND CONFIDENTIAL
+//
+// Engine and UI are REOX.  The UI talks to nxrender through NxUI
+// (sdk/nxui), the REOX-visible facade of gui/nxrender_c reox_ffi.
+//
+// Built with `reoxc compile --target neolyx` (sdk/reox.mk) and linked
+// against librx_neolyx.a.  Language used: functions, globals, layers with
+// `static fn` methods (called as `Keypad.key(...)`), if/else, while,
+// int/float/bool/string, extern fn.  Formatting still goes through NxUI
+// (written before REOX had string operations, sdk/README.md).
+
+// ---------------------------------------------------------------- NxUI
+
+extern fn nxui_log(message: string) -> void;
+extern fn nxui_window_create(title: string, width: int, height: int) -> int;
+extern fn nxui_window_set_root(window: int, widget: int) -> int;
+extern fn nxui_window_set_background(window: int, rgb: int) -> int;
+extern fn nxui_vstack(gap: int) -> int;
+extern fn nxui_grid(cols: int, gap: int) -> int;
+extern fn nxui_grid_set_cell_size(grid: int, cell_w: int, cell_h: int) -> int;
+extern fn nxui_add(container: int, child: int) -> int;
+extern fn nxui_widget_set_background(widget: int, rgb: int) -> int;
+extern fn nxui_label_create(text: string) -> int;
+extern fn nxui_label_set_text(label: int, text: string) -> int;
+extern fn nxui_label_set_font_size(label: int, size: int) -> int;
+extern fn nxui_label_set_color(label: int, rgb: int) -> int;
+extern fn nxui_label_set_align(label: int, align: int) -> int;
+extern fn nxui_button_create(label: string) -> int;
+extern fn nxui_button_set_action(button: int, action_id: int) -> int;
+extern fn nxui_button_set_colors(button: int, bg_rgb: int, fg_rgb: int) -> int;
+extern fn nxui_button_set_font_size(button: int, size: int) -> int;
+extern fn nxui_run(window: int) -> int;
+extern fn nxui_format_number(value: float, max_decimals: int) -> string;
+extern fn nxui_format_input(mantissa: int, frac_digits: int, show_dot: bool, negative: bool) -> string;
+extern fn nxui_concat(a: string, b: string) -> string;
+
+// ---------------------------------------------------------------- Palette
+
+const COLOR_BG: int = 0x1C1C1E;
+const COLOR_DISPLAY: int = 0x000000;
+const COLOR_TEXT: int = 0xFFFFFF;
+const COLOR_TEXT_DIM: int = 0x8E8E93;
+const COLOR_BTN_NUMBER: int = 0x333333;
+const COLOR_BTN_OP: int = 0xFF9F0A;
+const COLOR_BTN_FUNC: int = 0x505050;
+
+// ---------------------------------------------------------------- Layout
+
+const WINDOW_WIDTH: int = 280;
+const WINDOW_HEIGHT: int = 480;
+const GRID_COLS: int = 4;
+const GRID_GAP: int = 4;
+const CELL_WIDTH: int = 64;
+const CELL_HEIGHT: int = 52;
+const DISPLAY_FONT: int = 32;
+const EXPR_FONT: int = 14;
+const BUTTON_FONT: int = 18;
+
+// ---------------------------------------------------------------- Actions
+
+const ACT_DIGIT_0: int = 0;      // 0..9 are digits
+const ACT_DOT: int = 10;
+const ACT_ADD: int = 11;
+const ACT_SUB: int = 12;
+const ACT_MUL: int = 13;
+const ACT_DIV: int = 14;
+const ACT_EQUALS: int = 15;
+const ACT_CLEAR: int = 16;
+const ACT_NEGATE: int = 17;
+const ACT_PERCENT: int = 18;
+const ACT_BACKSPACE: int = 19;
+const ACT_MEM_CLEAR: int = 20;
+const ACT_MEM_RECALL: int = 21;
+const ACT_MEM_ADD: int = 22;
+const ACT_MEM_SUB: int = 23;
+const ACT_SQRT: int = 24;
+const ACT_SQUARE: int = 25;
+const ACT_RECIPROCAL: int = 26;
+
+const OP_NONE: int = 0;
+
+const MAX_MANTISSA: int = 999999999999999;   // 15 digits of exact entry
+const MAX_FRAC_DIGITS: int = 12;
+const RESULT_DECIMALS: int = 10;
+
+// ---------------------------------------------------------------- Engine state
+//
+// A number being typed is kept exactly as mantissa / 10^frac_digits so the
+// display never shows float noise while the user is entering digits.
+
+let mut g_mantissa: int = 0;
+let mut g_frac_digits: int = 0;
+let mut g_has_dot: bool = false;
+let mut g_negative: bool = false;
+let mut g_typing: bool = false;        // a number is being entered
+
+let mut g_value: float = 0.0;          // current value when not typing
+let mut g_accumulator: float = 0.0;    // left operand of the pending op
+let mut g_pending_op: int = 0;         // OP_NONE or ACT_ADD..ACT_DIV
+let mut g_operand_entered: bool = false;
+
+let mut g_memory: float = 0.0;
+let mut g_has_memory: bool = false;
+let mut g_error: bool = false;
+
+// ---------------------------------------------------------------- UI handles
+
+let mut g_window: int = 0;
+let mut g_display: int = 0;
+let mut g_expression: int = 0;
+let mut g_memory_indicator: int = 0;
+
+// ---------------------------------------------------------------- Numeric helpers
+
+fn pow10(n: int) -> float {
+    let mut r: float = 1.0;
+    let mut i: int = 0;
+    while i < n {
+        r = r * 10.0;
+        i = i + 1;
+    }
+    return r;
+}
+
+fn typed_value() -> float {
+    let mut v: float = g_mantissa / pow10(g_frac_digits);
+    if g_negative {
+        v = -v;
+    }
+    return v;
+}
+
+fn current_value() -> float {
+    if g_typing {
+        return typed_value();
+    }
+    return g_value;
+}
+
+fn absf(x: float) -> float {
+    if x < 0.0 {
+        return -x;
+    }
+    return x;
+}
+
+// Newton-Raphson square root; REOX has no math builtins yet.
+fn sqrt_newton(x: float) -> float {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    let mut guess: float = x;
+    if guess < 1.0 {
+        guess = 1.0;
+    }
+    let mut i: int = 0;
+    while i < 64 {
+        let next: float = 0.5 * (guess + x / guess);
+        if absf(next - guess) <= guess * 0.000000000000001 {
+            return next;
+        }
+        guess = next;
+        i = i + 1;
+    }
+    return guess;
+}
+
+fn op_symbol(op: int) -> string {
+    if op == ACT_ADD { return " +"; }
+    if op == ACT_SUB { return " -"; }
+    if op == ACT_MUL { return " *"; }
+    if op == ACT_DIV { return " /"; }
+    return "";
+}
+
+// ---------------------------------------------------------------- Display (layer)
+
+layer Display {
+    @Bind let text: string = "0";
+    @Bind let expression: string = "";
+
+    static fn build(parent: int) -> void {
+        let strip: int = nxui_vstack(2);
+        nxui_widget_set_background(strip, COLOR_DISPLAY);
+
+        g_expression = nxui_label_create(" ");
+        nxui_label_set_font_size(g_expression, EXPR_FONT);
+        nxui_label_set_color(g_expression, COLOR_TEXT_DIM);
+        nxui_label_set_align(g_expression, 2);
+        nxui_add(strip, g_expression);
+
+        g_display = nxui_label_create("0");
+        nxui_label_set_font_size(g_display, DISPLAY_FONT);
+        nxui_label_set_color(g_display, COLOR_TEXT);
+        nxui_label_set_align(g_display, 2);
+        nxui_add(strip, g_display);
+
+        g_memory_indicator = nxui_label_create(" ");
+        nxui_label_set_font_size(g_memory_indicator, EXPR_FONT);
+        nxui_label_set_color(g_memory_indicator, COLOR_TEXT_DIM);
+        nxui_add(strip, g_memory_indicator);
+
+        nxui_add(parent, strip);
+    }
+
+    static fn refresh() -> void {
+        if g_error {
+            nxui_label_set_text(g_display, "Error");
+        } else if g_typing {
+            nxui_label_set_text(g_display, nxui_format_input(g_mantissa, g_frac_digits, g_has_dot, g_negative));
+        } else {
+            nxui_label_set_text(g_display, nxui_format_number(g_value, RESULT_DECIMALS));
+        }
+
+        if g_pending_op != OP_NONE {
+            let lhs: string = nxui_format_number(g_accumulator, RESULT_DECIMALS);
+            nxui_label_set_text(g_expression, nxui_concat(lhs, op_symbol(g_pending_op)));
+        } else {
+            nxui_label_set_text(g_expression, " ");
+        }
+
+        if g_has_memory {
+            nxui_label_set_text(g_memory_indicator, "M");
+        } else {
+            nxui_label_set_text(g_memory_indicator, " ");
+        }
+    }
+}
+
+// ---------------------------------------------------------------- Keypad (layer)
+
+layer Keypad {
+    let columns: int = 4;
+
+    static fn key(grid: int, label: string, act: int, bg: int) -> void {
+        let b: int = nxui_button_create(label);
+        nxui_button_set_action(b, act);
+        nxui_button_set_colors(b, bg, COLOR_TEXT);
+        nxui_button_set_font_size(b, BUTTON_FONT);
+        nxui_add(grid, b);
+    }
+
+    static fn build(parent: int) -> void {
+        let grid: int = nxui_grid(GRID_COLS, GRID_GAP);
+        nxui_grid_set_cell_size(grid, CELL_WIDTH, CELL_HEIGHT);
+
+        Keypad.key(grid, "MC", ACT_MEM_CLEAR, COLOR_BTN_FUNC);
+        Keypad.key(grid, "MR", ACT_MEM_RECALL, COLOR_BTN_FUNC);
+        Keypad.key(grid, "M+", ACT_MEM_ADD, COLOR_BTN_FUNC);
+        Keypad.key(grid, "M-", ACT_MEM_SUB, COLOR_BTN_FUNC);
+
+        Keypad.key(grid, "AC", ACT_CLEAR, COLOR_BTN_FUNC);
+        Keypad.key(grid, "+/-", ACT_NEGATE, COLOR_BTN_FUNC);
+        Keypad.key(grid, "%", ACT_PERCENT, COLOR_BTN_FUNC);
+        Keypad.key(grid, "/", ACT_DIV, COLOR_BTN_OP);
+
+        Keypad.key(grid, "7", 7, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "8", 8, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "9", 9, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "*", ACT_MUL, COLOR_BTN_OP);
+
+        Keypad.key(grid, "4", 4, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "5", 5, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "6", 6, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "-", ACT_SUB, COLOR_BTN_OP);
+
+        Keypad.key(grid, "1", 1, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "2", 2, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "3", 3, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "+", ACT_ADD, COLOR_BTN_OP);
+
+        Keypad.key(grid, "0", 0, COLOR_BTN_NUMBER);
+        Keypad.key(grid, ".", ACT_DOT, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "<-", ACT_BACKSPACE, COLOR_BTN_FUNC);
+        Keypad.key(grid, "=", ACT_EQUALS, COLOR_BTN_OP);
+
+        Keypad.key(grid, "sqrt", ACT_SQRT, COLOR_BTN_FUNC);
+        Keypad.key(grid, "x^2", ACT_SQUARE, COLOR_BTN_FUNC);
+        Keypad.key(grid, "1/x", ACT_RECIPROCAL, COLOR_BTN_FUNC);
+        Keypad.key(grid, " ", ACT_CLEAR, COLOR_BTN_FUNC);
+
+        nxui_add(parent, grid);
+    }
+}
+
+// ---------------------------------------------------------------- Engine
+
+fn engine_reset_entry() -> void {
+    g_mantissa = 0;
+    g_frac_digits = 0;
+    g_has_dot = false;
+    g_negative = false;
+    g_typing = false;
+}
+
+fn engine_clear_all() -> void {
+    engine_reset_entry();
+    g_value = 0.0;
+    g_accumulator = 0.0;
+    g_pending_op = OP_NONE;
+    g_operand_entered = false;
+    g_error = false;
+}
+
+fn engine_set_error() -> void {
+    engine_reset_entry();
+    g_value = 0.0;
+    g_pending_op = OP_NONE;
+    g_operand_entered = false;
+    g_error = true;
+}
+
+fn engine_set_value(v: float) -> void {
+    engine_reset_entry();
+    g_value = v;
+}
+
+fn engine_input_digit(d: int) -> void {
+    if g_error {
+        engine_clear_all();
+    }
+    if !g_typing {
+        engine_reset_entry();
+        g_typing = true;
+    }
+    if g_mantissa > MAX_MANTISSA / 10 {
+        return;
+    }
+    if g_has_dot {
+        if g_frac_digits >= MAX_FRAC_DIGITS {
+            return;
+        }
+        g_frac_digits = g_frac_digits + 1;
+    }
+    g_mantissa = g_mantissa * 10 + d;
+    g_operand_entered = true;
+}
+
+fn engine_input_dot() -> void {
+    if g_error {
+        engine_clear_all();
+    }
+    if !g_typing {
+        engine_reset_entry();
+        g_typing = true;
+    }
+    g_has_dot = true;
+    g_operand_entered = true;
+}
+
+fn engine_backspace() -> void {
+    if g_error {
+        engine_clear_all();
+        return;
+    }
+    if !g_typing {
+        return;
+    }
+    if g_has_dot && g_frac_digits == 0 {
+        g_has_dot = false;
+        return;
+    }
+    if g_frac_digits > 0 {
+        g_frac_digits = g_frac_digits - 1;
+    }
+    g_mantissa = g_mantissa / 10;
+    if g_mantissa == 0 && g_frac_digits == 0 && !g_has_dot {
+        g_negative = false;
+    }
+}
+
+fn apply_op(op: int, a: float, b: float) -> float {
+    if op == ACT_ADD { return a + b; }
+    if op == ACT_SUB { return a - b; }
+    if op == ACT_MUL { return a * b; }
+    if op == ACT_DIV {
+        if b == 0.0 {
+            engine_set_error();
+            return 0.0;
+        }
+        return a / b;
+    }
+    return b;
+}
+
+fn engine_equals() -> void {
+    if g_error {
+        return;
+    }
+    if g_pending_op == OP_NONE {
+        engine_set_value(current_value());
+        return;
+    }
+    let rhs: float = current_value();
+    let result: float = apply_op(g_pending_op, g_accumulator, rhs);
+    if g_error {
+        return;
+    }
+    g_pending_op = OP_NONE;
+    g_operand_entered = false;
+    engine_set_value(result);
+}
+
+fn engine_operator(op: int) -> void {
+    if g_error {
+        return;
+    }
+    if g_pending_op != OP_NONE && g_operand_entered {
+        let rhs: float = current_value();
+        let result: float = apply_op(g_pending_op, g_accumulator, rhs);
+        if g_error {
+            return;
+        }
+        engine_set_value(result);
+    } else {
+        engine_set_value(current_value());
+    }
+    g_accumulator = g_value;
+    g_pending_op = op;
+    g_operand_entered = false;
+}
+
+fn engine_negate() -> void {
+    if g_error {
+        return;
+    }
+    if g_typing {
+        g_negative = !g_negative;
+    } else {
+        g_value = -g_value;
+    }
+}
+
+fn engine_percent() -> void {
+    if g_error {
+        return;
+    }
+    engine_set_value(current_value() / 100.0);
+    g_operand_entered = true;
+}
+
+fn engine_unary(act: int) -> void {
+    if g_error {
+        return;
+    }
+    let v: float = current_value();
+    if act == ACT_SQRT {
+        if v < 0.0 {
+            engine_set_error();
+            return;
+        }
+        engine_set_value(sqrt_newton(v));
+    } else if act == ACT_SQUARE {
+        engine_set_value(v * v);
+    } else if act == ACT_RECIPROCAL {
+        if v == 0.0 {
+            engine_set_error();
+            return;
+        }
+        engine_set_value(1.0 / v);
+    }
+    g_operand_entered = true;
+}
+
+fn engine_memory(act: int) -> void {
+    if g_error {
+        return;
+    }
+    if act == ACT_MEM_CLEAR {
+        g_memory = 0.0;
+        g_has_memory = false;
+    } else if act == ACT_MEM_RECALL {
+        if g_has_memory {
+            engine_set_value(g_memory);
+            g_operand_entered = true;
+        }
+    } else if act == ACT_MEM_ADD {
+        g_memory = g_memory + current_value();
+        g_has_memory = true;
+        engine_set_value(current_value());
+    } else if act == ACT_MEM_SUB {
+        g_memory = g_memory - current_value();
+        g_has_memory = true;
+        engine_set_value(current_value());
+    }
+}
+
+fn engine_dispatch(act: int) -> void {
+    if act >= ACT_DIGIT_0 && act <= 9 {
+        engine_input_digit(act);
+    } else if act == ACT_DOT {
+        engine_input_dot();
+    } else if act >= ACT_ADD && act <= ACT_DIV {
+        engine_operator(act);
+    } else if act == ACT_EQUALS {
+        engine_equals();
+    } else if act == ACT_CLEAR {
+        engine_clear_all();
+    } else if act == ACT_NEGATE {
+        engine_negate();
+    } else if act == ACT_PERCENT {
+        engine_percent();
+    } else if act == ACT_BACKSPACE {
+        engine_backspace();
+    } else if act >= ACT_MEM_CLEAR && act <= ACT_MEM_SUB {
+        engine_memory(act);
+    } else if act >= ACT_SQRT && act <= ACT_RECIPROCAL {
+        engine_unary(act);
+    } else {
+        nxui_log("[CALC] unknown act\n");
+        return;
+    }
+    Display.refresh();
+}
+
+// ---------------------------------------------------------------- NxUI hooks
+
+pub fn rx_ui_on_action(act: int) -> void {
+    engine_dispatch(act);
+}
+
+pub fn rx_ui_on_key(key: int) -> void {
+    if key >= 48 && key <= 57 {          // '0'..'9'
+        engine_dispatch(key - 48);
+    } else if key == 46 {                // '.'
+        engine_dispatch(ACT_DOT);
+    } else if key == 43 {                // '+'
+        engine_dispatch(ACT_ADD);
+    } else if key == 45 {                // '-'
+        engine_dispatch(ACT_SUB);
+    } else if key == 42 {                // '*'
+        engine_dispatch(ACT_MUL);
+    } else if key == 47 {                // '/'
+        engine_dispatch(ACT_DIV);
+    } else if key == 13 || key == 10 || key == 61 {   // Enter, '='
+        engine_dispatch(ACT_EQUALS);
+    } else if key == 27 {                // Escape
+        engine_dispatch(ACT_CLEAR);
+    } else if key == 8 || key == 127 {   // Backspace, Delete
+        engine_dispatch(ACT_BACKSPACE);
+    } else if key == 37 {                // '%'
+        engine_dispatch(ACT_PERCENT);
+    }
+}
+
+// ---------------------------------------------------------------- Entry
+
+fn build_ui() -> bool {
+    g_window = nxui_window_create("Calculator", WINDOW_WIDTH, WINDOW_HEIGHT);
+    if g_window == 0 {
+        nxui_log("[CALC] window creation failed\n");
+        return false;
+    }
+    nxui_window_set_background(g_window, COLOR_BG);
+
+    let root: int = nxui_vstack(8);
+    if root == 0 {
+        return false;
+    }
+    Display.build(root);
+    Keypad.build(root);
+
+    if nxui_window_set_root(g_window, root) != 0 {
+        return false;
+    }
+    if g_display == 0 || g_expression == 0 {
+        nxui_log("[CALC] display widgets missing\n");
+        return false;
+    }
+    return true;
+}
+
+fn main() -> int {
+    nxui_log("[CALC] Calculator.app (REOX) starting\n");
+    engine_clear_all();
+    if !build_ui() {
+        nxui_log("[CALC] UI construction failed\n");
+        return 1;
+    }
+    Display.refresh();
+    let errors: int = nxui_run(g_window);
+    if errors != 0 {
+        nxui_log("[CALC] run loop reported errors\n");
+        return 2;
+    }
+    nxui_log("[CALC] Calculator.app exiting\n");
+    return 0;
+}

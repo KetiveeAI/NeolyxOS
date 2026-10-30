@@ -11,6 +11,7 @@
 #define NEOLYX_APP_DRAWER_H
 
 #include <stdint.h>
+#include "nxcanvas.h"
 
 /* ============ App Drawer Constants ============ */
 
@@ -160,7 +161,7 @@ int app_drawer_is_open(void);
  * 
  * Call each frame when drawer is visible or animating.
  */
-void app_drawer_render(void);
+void app_drawer_render(nxc_canvas_t *c);
 
 /**
  * app_drawer_update - Update drawer animations
