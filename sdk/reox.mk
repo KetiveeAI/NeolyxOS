@@ -13,15 +13,16 @@
 # Provides:
 #   %.c: %.rx / %.reox     reoxc compile --emit c --target neolyx
 #   REOX_CFLAGS            freestanding flags + REOX runtime + NxUI + nxrender includes
-#   REOX_LDLIBS            librx_neolyx.a (when present) + libnxrender_neolyx.a
+#   REOX_LDLIBS            librx_neolyx.a + libnxrender_neolyx.a
 #   REOX_SUPPORT_OBJS      crt0, memory shims, NxUI, libc stubs, heap (built per app)
 #   REOX_RUNTIME_LIB       path of librx_neolyx.a; REOX_RUNTIME_AVAILABLE is 0/1
 #
 # Contract (docs/NEOLYX_ROADMAP.md, decision 3 and 6): the REOX runtime is
 # split into rx_core (headers under runtime/core) and the NeolyxOS platform
-# layer (headers under runtime/platform), archived as librx_neolyx.a.  Until
-# that archive exists, REOX_LDLIBS omits it and the link fails loudly on any
-# runtime symbol the generated C references.  Nothing is stubbed.
+# layer (headers under runtime/platform), archived as librx_neolyx.a.  Every
+# REOX program needs it (strings are reference-counted rx_string values).
+# When it is missing the link stops with the command that builds it;
+# `make reox-runtime` runs that command.  Nothing is stubbed.
 
 ifndef REOX_MK_INCLUDED
 REOX_MK_INCLUDED := 1
@@ -39,7 +40,8 @@ CC ?= gcc
 LD ?= ld
 AR ?= ar
 
-# Wrapper until reoxc implements the flags natively (sdk/REOXC_REQUIREMENTS.md).
+# Locates reoxc (toolchain.env), checks its version and calls it with this
+# command line; falls back to the legacy reoxc 1.1 spelling for old builds.
 REOXC        ?= $(REOX_SDK_DIR)/tools/reoxc-neolyx
 REOXC_FLAGS  ?=
 REOX_TARGET  ?= neolyx
@@ -55,11 +57,10 @@ REOX_RUNTIME_INCLUDES := -I$(REOX_RUNTIME_DIR)/core \
 
 ifeq ($(wildcard $(REOX_RUNTIME_LIB)),)
 REOX_RUNTIME_AVAILABLE := 0
-REOX_RUNTIME_LDLIB :=
 else
 REOX_RUNTIME_AVAILABLE := 1
-REOX_RUNTIME_LDLIB := $(REOX_RUNTIME_LIB)
 endif
+REOX_RUNTIME_LDLIB := $(REOX_RUNTIME_LIB)
 
 # ---- NeolyxOS userspace flags (mirror desktop/Makefile) --------------------
 NEOLYX_USER_CFLAGS := -Wall -Wextra -std=c11 -O2 \
@@ -103,6 +104,17 @@ $(REOX_BUILD_DIR)/sys/%.o: $(NEOLYX_ROOT)/desktop/lib/%.c
 
 $(NXRENDER_NEOLYX_LIB):
 	$(MAKE) -C $(NXRENDER_DIR) neolyx
+
+# The REOX checkout is consumed read-only: a missing runtime is reported, not
+# built behind the developer's back.  `make reox-runtime` builds it on request.
+$(REOX_RUNTIME_LIB):
+	@echo "reox.mk: missing $@" >&2
+	@echo "reox.mk: build it with 'make reox-runtime' (runs: $(MAKE) -C $(REOX_RUNTIME_DIR) neolyx NEOLYX_ROOT=$(NEOLYX_ROOT))" >&2
+	@exit 1
+
+.PHONY: reox-runtime
+reox-runtime:
+	$(MAKE) -C $(REOX_RUNTIME_DIR) neolyx NEOLYX_ROOT=$(NEOLYX_ROOT)
 
 # ---- REOX -> C -------------------------------------------------------------
 %.c: %.rx

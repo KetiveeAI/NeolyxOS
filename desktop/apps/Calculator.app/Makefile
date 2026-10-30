@@ -49,24 +49,30 @@ info: reox-info
 
 # ---- host-side engine test -------------------------------------------------
 # Compiles the generated C on the development host (no NeolyxOS syscalls)
-# together with NxUI and the host nxrender library, and checks the engine
+# together with NxUI, the host nxrender library and the host REOX runtime
+# (librx_linux.a: generated C uses rx_string and ARC), and checks the engine
 # through the same hooks the buttons use.
 HOST_CC      ?= gcc
 HOST_CFLAGS  := -Wall -Wextra -std=c11 -O1 -g \
                 -I$(REOX_SDK_DIR)/nxui -I$(NXRENDER_DIR)/include $(REOX_RUNTIME_INCLUDES)
 HOST_NXRENDER := $(NXRENDER_DIR)/build/host/libnxrender_host.a
+HOST_RX_LIB   ?= $(REOX_RUNTIME_DIR)/librx_linux.a
 TEST_BIN := $(REOX_BUILD_DIR)/host/engine_test
 
 .PHONY: test
 test: $(TEST_BIN)
 	$(TEST_BIN)
 
-$(TEST_BIN): test/engine_test.c $(REOX_GEN_C) $(REOX_SDK_DIR)/nxui/nxui.c $(HOST_NXRENDER)
+$(TEST_BIN): test/engine_test.c $(REOX_GEN_C) $(REOX_SDK_DIR)/nxui/nxui.c $(HOST_NXRENDER) $(HOST_RX_LIB)
 	@mkdir -p $(dir $@)
 	$(HOST_CC) $(HOST_CFLAGS) -Dmain=calc_main -c $(REOX_GEN_C) -o $(REOX_BUILD_DIR)/host/calculator.o
 	$(HOST_CC) $(HOST_CFLAGS) -c $(REOX_SDK_DIR)/nxui/nxui.c -o $(REOX_BUILD_DIR)/host/nxui.o
 	$(HOST_CC) $(HOST_CFLAGS) test/engine_test.c $(REOX_BUILD_DIR)/host/calculator.o \
-	    $(REOX_BUILD_DIR)/host/nxui.o $(HOST_NXRENDER) -lm -o $@
+	    $(REOX_BUILD_DIR)/host/nxui.o $(HOST_NXRENDER) $(HOST_RX_LIB) -lm -o $@
+
+$(HOST_RX_LIB):
+	@echo "missing $@: build it with 'make -C $(REOX_RUNTIME_DIR) linux'" >&2
+	@exit 1
 
 # Always let nxrender's own Makefile decide whether the host lib is stale.
 .PHONY: $(HOST_NXRENDER)

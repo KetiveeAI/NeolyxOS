@@ -22,10 +22,12 @@ make info            # resolved toolchain paths
 make legacy          # old C sources; does not compile against today's nxrender
 ```
 
-`make` needs `reoxc` (path in `sdk/toolchain.env`) and builds
-`gui/nxrender_c/libnxrender_neolyx.a` on demand.  The generated C
-references no REOX runtime symbol, so the ELF links whether or not
-`librx_neolyx.a` exists; the final line of the build says which.
+`make` needs `reoxc` with `--target neolyx` (path in `sdk/toolchain.env`)
+and `librx_neolyx.a` from the REOX checkout (`make reox-runtime` builds
+it), and builds `gui/nxrender_c/libnxrender_neolyx.a` on demand.  The
+generated C uses REOX strings, so the runtime is always linked.
+`make test` also needs the host runtime, `librx_linux.a`
+(`make -C $REOX_ROOT/reox-lang/runtime linux`).
 
 ## Design
 
@@ -35,16 +37,16 @@ references no REOX runtime symbol, so the ELF links whether or not
   trimmed; magnitudes of 1e18 and above switch to `d.ddddde+NN`.
 * **Engine** is a classic accumulator / pending-operator machine
   (`engine_operator`, `engine_equals`), with memory (MC, MR, M+, M-),
-  percent, negate, backspace, square root (Newton iteration: REOX has no
-  math builtins yet), square and reciprocal.  Division by zero, the
+  percent, negate, backspace, square root (Newton iteration, written
+  before REOX had math builtins), square and reciprocal.  Division by zero, the
   square root of a negative and 1/0 enter an `Error` state cleared by the
   next digit or AC.
 * **UI** is two `layer`s: `Display` (expression line, value, memory
   indicator) and `Keypad` (4 x 7 grid of `nxui_button`s).  Buttons carry
   an action id; NxUI calls `rx_ui_on_action(act)` on click and
   `rx_ui_on_key(key)` on keyboard input, and both feed `engine_dispatch`.
-* **No strings in REOX yet**: formatting goes through `nxui_format_input`,
-  `nxui_format_number` and `nxui_concat`.
+* **Formatting** goes through `nxui_format_input`, `nxui_format_number`
+  and `nxui_concat`, written before REOX had string operations.
 
 ## Running on NeolyxOS
 
