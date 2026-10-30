@@ -1410,56 +1410,62 @@ int installer_run_wizard(void) {
                 {
                     serial_puts("[INSTALL] Writing boot.nlc configuration...\n");
                     
-                    /* Use static to avoid 600KB+ stack allocation */
-                    static nlc_config_t boot_cfg;
-                    /* clear it manually since {0} on static is only init-time */
-                    for (int i=0; i<sizeof(nlc_config_t); i++) ((char*)&boot_cfg)[i] = 0;
-                    /* Set filepath directly */
-                    const char *cfg_path = "/EFI/BOOT/config/boot.nlc";
-                    for (int i = 0; cfg_path[i] && i < 255; i++) {
-                        boot_cfg.filepath[i] = cfg_path[i];
+                    /* Heap, not stack (600KB+) or a static (it would sit in
+                     * the kernel's .bss for the whole uptime and push the
+                     * image toward the 16 MB user window). */
+                    nlc_config_t *boot_cfg = (nlc_config_t *)kmalloc(sizeof(nlc_config_t));
+                    if (!boot_cfg) {
+                        serial_puts("[INSTALL] ERROR: no memory for boot.nlc, skipping it\n");
+                    } else {
+                        for (size_t i = 0; i < sizeof(nlc_config_t); i++) ((char*)boot_cfg)[i] = 0;
+                        /* Set filepath directly */
+                        const char *cfg_path = "/EFI/BOOT/config/boot.nlc";
+                        for (int i = 0; cfg_path[i] && i < 255; i++) {
+                            boot_cfg->filepath[i] = cfg_path[i];
+                        }
+                    
+                        /* Installation section */
+                        nlc_set(boot_cfg, "installation", "installed", "true");
+                        nlc_set(boot_cfg, "installation", "installer_version", "1.0.0");
+                        nlc_set(boot_cfg, "installation", "edition", 
+                                (config.profile == PROFILE_DESKTOP) ? "desktop" : "server");
+                    
+                        /* Disk section */
+                        char port_str[8];
+                        int_to_str(disks[selected_disk_idx].port, port_str);
+                        nlc_set(boot_cfg, "disk", "boot_device", disks[selected_disk_idx].name);
+                        nlc_set(boot_cfg, "disk", "boot_port", port_str);
+                        nlc_set(boot_cfg, "disk", "filesystem", "nxfs");
+                    
+                        /* Boot section */
+                        nlc_set(boot_cfg, "boot", "timeout", "5");
+                        nlc_set(boot_cfg, "boot", "default_entry", "neolyx_os");
+                        nlc_set(boot_cfg, "boot", "kernel_path", "/System/Kernel/kernel.bin");
+                        nlc_set(boot_cfg, "boot", "safe_mode", "false");
+                        nlc_set(boot_cfg, "boot", "verbose_boot", "false");
+                    
+                        /* System section */
+                        nlc_set(boot_cfg, "system", "architecture", "x86_64");
+                        nlc_set(boot_cfg, "system", "kernel_version", "1.0.0");
+                    
+                        /* Recovery section */
+                        nlc_set(boot_cfg, "recovery", "recovery_enabled", "true");
+                        nlc_set(boot_cfg, "recovery", "boot_failures", "0");
+                        nlc_set(boot_cfg, "recovery", "max_failures", "3");
+                    
+                        /* First boot flag for user creation wizard */
+                        nlc_set(boot_cfg, "installation", "first_boot", "true");
+                    
+                        /* Skip NLC save for now - causes page fault on FAT32 boot partition */
+                        /* The neolyx.installed marker is sufficient for boot detection */
+                        serial_puts("[INSTALL] Skipping boot.nlc (FAT32 limitation)...\n");
+                        serial_puts("[INSTALL] Will create config on first NXFS boot\n");
+                    
+                        /* TODO: Move NLC config to NXFS partition after first boot */
+                        /* vfs_create("/EFI/BOOT/config", VFS_DIRECTORY, 0755); */
+                        /* nlc_save(boot_cfg); */
+                        kfree(boot_cfg);
                     }
-                    
-                    /* Installation section */
-                    nlc_set(&boot_cfg, "installation", "installed", "true");
-                    nlc_set(&boot_cfg, "installation", "installer_version", "1.0.0");
-                    nlc_set(&boot_cfg, "installation", "edition", 
-                            (config.profile == PROFILE_DESKTOP) ? "desktop" : "server");
-                    
-                    /* Disk section */
-                    char port_str[8];
-                    int_to_str(disks[selected_disk_idx].port, port_str);
-                    nlc_set(&boot_cfg, "disk", "boot_device", disks[selected_disk_idx].name);
-                    nlc_set(&boot_cfg, "disk", "boot_port", port_str);
-                    nlc_set(&boot_cfg, "disk", "filesystem", "nxfs");
-                    
-                    /* Boot section */
-                    nlc_set(&boot_cfg, "boot", "timeout", "5");
-                    nlc_set(&boot_cfg, "boot", "default_entry", "neolyx_os");
-                    nlc_set(&boot_cfg, "boot", "kernel_path", "/System/Kernel/kernel.bin");
-                    nlc_set(&boot_cfg, "boot", "safe_mode", "false");
-                    nlc_set(&boot_cfg, "boot", "verbose_boot", "false");
-                    
-                    /* System section */
-                    nlc_set(&boot_cfg, "system", "architecture", "x86_64");
-                    nlc_set(&boot_cfg, "system", "kernel_version", "1.0.0");
-                    
-                    /* Recovery section */
-                    nlc_set(&boot_cfg, "recovery", "recovery_enabled", "true");
-                    nlc_set(&boot_cfg, "recovery", "boot_failures", "0");
-                    nlc_set(&boot_cfg, "recovery", "max_failures", "3");
-                    
-                    /* First boot flag for user creation wizard */
-                    nlc_set(&boot_cfg, "installation", "first_boot", "true");
-                    
-                    /* Skip NLC save for now - causes page fault on FAT32 boot partition */
-                    /* The neolyx.installed marker is sufficient for boot detection */
-                    serial_puts("[INSTALL] Skipping boot.nlc (FAT32 limitation)...\n");
-                    serial_puts("[INSTALL] Will create config on first NXFS boot\n");
-                    
-                    /* TODO: Move NLC config to NXFS partition after first boot */
-                    /* vfs_create("/EFI/BOOT/config", VFS_DIRECTORY, 0755); */
-                    /* nlc_save(&boot_cfg); */
                 }
                 
                 /* Transition to remove media screen */

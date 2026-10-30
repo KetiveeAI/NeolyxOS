@@ -266,11 +266,31 @@ static struct {
     int buffer_count;
 } g_vram = {0};
 
-/* Simulated VRAM (in system memory for now) */
-static uint8_t g_vram_pool[VRAM_POOL_SIZE] __attribute__((aligned(4096)));
+/*
+ * Simulated VRAM (in system memory for now). The pool is taken from the PMM
+ * on first use rather than living in .bss: a 4 MB static array pushed the
+ * kernel image past 16 MB, into the per-process user window
+ * (include/mm/addrspace.h). The PMM reserves that window, and the kernel
+ * page tables identity-map only the first 4 GB.
+ */
+extern uint64_t pmm_alloc_pages(size_t count);
+extern void pmm_free_pages(uint64_t addr, size_t count);
 
 int nxgfx_vram_init(void) {
-    g_vram.vram_base = (uint64_t)g_vram_pool;
+    if (g_vram.vram_base == 0) {
+        uint64_t base = pmm_alloc_pages(VRAM_POOL_SIZE / 4096);
+        if (base == 0) {
+            serial_puts("[NXGfx] ERROR: cannot allocate VRAM pool\n");
+            return -1;
+        }
+        if (base + VRAM_POOL_SIZE > 0x100000000ULL) {
+            /* Not identity-mapped: give the pages back untouched */
+            pmm_free_pages(base, VRAM_POOL_SIZE / 4096);
+            serial_puts("[NXGfx] ERROR: VRAM pool allocated above 4 GB\n");
+            return -1;
+        }
+        g_vram.vram_base = base;
+    }
     g_vram.vram_offset = 0;
     g_vram.buffer_count = 0;
     
@@ -286,6 +306,7 @@ int nxgfx_vram_init(void) {
 
 nxgfx_buffer_t* nxgfx_alloc_buffer(uint64_t size, uint32_t flags) {
     if (size == 0 || size > VRAM_POOL_SIZE) return NULL;
+    if (g_vram.vram_base == 0 && nxgfx_vram_init() != 0) return NULL;
     
     /* Align size to 64 bytes */
     size = (size + 63) & ~63ULL;
