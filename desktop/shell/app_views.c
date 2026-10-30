@@ -23,8 +23,19 @@ static int view_streq_ci(const char *a, const char *b) {
     return *a == 0 && *b == 0;
 }
 
+/* Short names used by dock labels, Control Center and search. */
+static const struct { const char *alias, *name; } g_aliases[] = {
+    { "Settings", "System Settings" },
+    { "Fonts",    "Font Manager" },
+    { "Activity", "Task Manager" },
+    { "Tasks",    "Task Manager" },
+};
+
 const app_view_t *app_view_find(const char *name) {
     if (!name) return 0;
+    for (unsigned i = 0; i < sizeof(g_aliases) / sizeof(g_aliases[0]); i++) {
+        if (view_streq_ci(name, g_aliases[i].alias)) { name = g_aliases[i].name; break; }
+    }
     for (unsigned i = 0; i < sizeof(g_views) / sizeof(g_views[0]); i++) {
         if (view_streq_ci(name, g_views[i].name)) return &g_views[i];
     }

@@ -11,6 +11,7 @@
  */
 
 #include "settings_internal.h"
+#include "dock.h"
 #include "desktop_shell.h"
 #include "control_center.h"
 #include "nxappearance.h"
@@ -239,7 +240,7 @@ SUI_DEFINE_PANE(settings_pane_wallpaper, "wallpaper", "Wallpaper", build_wallpap
 
 static void build_dock(sui_t *ui) {
     const nxui_theme_t *th = nxui_theme();
-    sui_header(ui, "dock", "Dock & Taskbar", "Size and behavior of the Dock at the bottom of the screen.");
+    sui_header(ui, "dock", "Dock & Taskbar", "Choose a floating Dock or a full-width taskbar, and how it behaves.");
     settings_dock_info_t d;
     if (settings_dock_read(&d) != 0 || !d.available) {
         sui_card_begin(ui);
@@ -248,39 +249,37 @@ static void build_dock(sui_t *ui) {
         return;
     }
 
+    /* The dock API validates, applies, saves ([dock] section) and logs. */
     sui_card_begin(ui);
-    float size = (float)(d.icon_size - 32) / 48.0f;
-    int r = sui_slider(ui, "Size", &size, "Small", "Large");
-    if (r) {
-        int px = 32 + (int)(size * 48.0f + 0.5f);
-        if (settings_dock_set_icon_size(px) == 0 && r == 2)
-            sprefs_set_int("dock", "icon_size", px, 32, 80);
+    static const char *const layouts[] = { "Dock", "Taskbar" };
+    int layout = d.layout;
+    if (sui_segmented(ui, "Style", layouts, 2, &layout)) settings_dock_set_layout(layout);
+    if (layout == 0) {
+        static const char *const pos_names[] = { "Left", "Bottom", "Right" };
+        static const int pos_map[] = { 1, 0, 2 };   /* segment -> dock_position_t */
+        int seg = d.position == 1 ? 0 : (d.position == 2 ? 2 : 1);
+        if (sui_segmented(ui, "Position on screen", pos_names, 3, &seg)) settings_dock_set_position(pos_map[seg]);
     }
+    sui_card_end(ui);
+
+    sui_card_begin(ui);
+    float size = (float)(d.icon_size - DOCK_ICON_SIZE_MIN) / (float)(DOCK_ICON_SIZE_MAX - DOCK_ICON_SIZE_MIN);
+    if (sui_slider(ui, "Size", &size, "Small", "Large"))
+        settings_dock_set_icon_size(DOCK_ICON_SIZE_MIN + (int)(size * (float)(DOCK_ICON_SIZE_MAX - DOCK_ICON_SIZE_MIN) + 0.5f));
     int mag = d.magnification;
-    if (sui_toggle(ui, "Magnification", "Enlarge icons under the pointer", &mag)) {
-        if (settings_dock_set_magnification(mag, d.magnification_amount) == 0)
-            sprefs_set_bool("dock", "magnification", mag);
-    }
+    if (sui_toggle(ui, "Magnification", "Enlarge icons under the pointer", &mag))
+        settings_dock_set_magnification(mag, d.magnification_amount);
     if (mag) {
         float amt = d.magnification_amount - 1.0f;
-        int m = sui_slider(ui, "Magnification size", &amt, "Small", "Large");
-        if (m) {
-            float a = 1.0f + amt;
-            if (settings_dock_set_magnification(1, a) == 0 && m == 2)
-                sprefs_set_int("dock", "magnification_pct", (int)(a * 100.0f + 0.5f), 100, 200);
-        }
+        if (sui_slider(ui, "Magnification size", &amt, "Small", "Large"))
+            settings_dock_set_magnification(1, 1.0f + amt);
     }
     int ah = d.autohide;
-    if (sui_toggle(ui, "Automatically hide and show the Dock", "Saved; the Dock does not hide itself yet", &ah)) {
-        if (settings_dock_set_autohide(ah) == 0) sprefs_set_bool("dock", "autohide", ah);
-    }
-    static const char *const pos_names[] = { "Bottom", "Left", "Right" };
-    sui_info(ui, "Position on screen", pos_names[d.position]);
+    if (sui_toggle(ui, "Automatically hide and show", "Reveal by moving the pointer to the screen edge", &ah))
+        settings_dock_set_autohide(ah);
     char n[16];
     sui_info(ui, "Apps in the Dock", sx_itoa(d.app_count, n, (int)sizeof(n)));
     sui_card_end(ui);
-    if (!d.position_supported)
-        sui_note(ui, "The Dock is laid out along the bottom edge; left and right positions are not available yet.");
 }
 
 SUI_DEFINE_PANE(settings_pane_dock, "dock", "Dock & Taskbar", build_dock);

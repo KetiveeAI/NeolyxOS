@@ -189,6 +189,7 @@ typedef struct {
     int   autohide;                /* 0/1 */
     int   position;                /* 0 bottom, 1 left, 2 right */
     int   position_supported;      /* dock renders at that position */
+    int   layout;                  /* 0 dock, 1 taskbar */
     int   app_count;               /* icons in the dock */
 } settings_dock_info_t;
 
@@ -197,6 +198,7 @@ int settings_dock_set_icon_size(int px);
 int settings_dock_set_magnification(int on, float amount);
 int settings_dock_set_autohide(int on);
 int settings_dock_set_position(int position);
+int settings_dock_set_layout(int layout);
 
 /* ============ System information (settings_sysinfo.c) ============ */
 
