@@ -9,6 +9,29 @@ Each item states the observed behaviour, the required behaviour, and the
 acceptance check NeolyxOS will run.  Items are ordered by how hard they
 block the SDK.
 
+## Status (2026-10-30, REOX main + the NeolyxOS target change)
+
+| Item | State |
+|---|---|
+| 1.1 `compile` subcommand | done |
+| 1.2 `--target neolyx` prologue | done: `<stdint.h> <stdbool.h> <stddef.h> "rx_core.h"`; `rx_core.h` brings in `platform/rx_platform.h` |
+| 1.3 `--emit obj/exe` with `neolyx` | done: exits 2 with `error: --emit exe requires the NeolyxOS SDK; use --emit c` |
+| 1.4 exit status on diagnostics | done: exit 1, no output file |
+| 2 runtime layout, `make neolyx`, `librx_neolyx.a` | done; `make symcheck` enforces the allowed external symbols |
+| 2 `rx_app_*` for `panel` | open: still emitted, still undeclared |
+| 2 `print` by static type | done |
+| 3.1 `match` | done |
+| 3.2 `as` casts | open |
+| 3.3 `fn` types in `extern fn` params | open |
+| 3.4 string ops | interpolation, `+`, `len(s)` done; `.len()` method syntax open |
+| 3.5 arrays | `rx_array` with `push(a, x)` / `len(a)` done; method syntax open |
+| 3.6 math builtins | done |
+| 3.7 `panel` | open (see 2) |
+| 3.9 `layer` methods and `self` | done (`static fn` for methods without `self`) |
+| 4 `main` | changed: reoxc emits `int main(void)`; `crt/rx_crt0_neolyx.c` follows |
+
+The original measurements below are kept for reference.
+
 ---
 
 ## 1. Command line
@@ -153,9 +176,9 @@ and `nxui_concat`.  Once 3.4 lands these move into `rx_core`.
 These are relied on by `sdk/crt` and `sdk/nxui`; changing them breaks the
 link.
 
-* `fn main() -> int` emits `int64_t main(void)`; `_start` in
-  `crt/rx_crt0_neolyx.c` calls it.  A `fn main()` without `-> int` emits
-  `void main(void)`; require `-> int` for `neolyx` or emit a wrapper.
+* `fn main() -> int` and `fn main()` emit `int main(void)` (the latter
+  returns 0); `_start` in `crt/rx_crt0_neolyx.c` calls it.  (Measured
+  2026-10-25 as `int64_t main(void)`; changed with the ARC codegen.)
 * `pub fn` and plain `fn` both emit external linkage.  `pub fn` must stay
   external (hooks depend on it); plain `fn` may become `static`.
 * Type mapping: `int` -> `int64_t`, `float` -> `double`, `bool` -> `bool`,
@@ -171,7 +194,7 @@ link.
 ```sh
 cd neolyx-os
 make -C gui/nxrender_c neolyx
-make -C desktop/apps/Calculator.app clean all     # REOXC_NATIVE=1 once 1.x lands
+make -C desktop/apps/Calculator.app reox-runtime clean all
 nm -u desktop/apps/Calculator.app/bin/calculator   # must print nothing
 ```
 

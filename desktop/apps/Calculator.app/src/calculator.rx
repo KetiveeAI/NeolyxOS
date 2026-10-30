@@ -7,10 +7,11 @@
 // Engine and UI are REOX.  The UI talks to nxrender through NxUI
 // (sdk/nxui), the REOX-visible facade of gui/nxrender_c reox_ffi.
 //
-// Language subset used (what reoxc 1.1.x compiles today, see
-// sdk/REOXC_REQUIREMENTS.md): functions, globals, structs, layer,
-// if/else, while, int/float/bool/string, extern fn.  No match, no
-// casts, no closures, no string operations; NxUI supplies formatting.
+// Built with `reoxc compile --target neolyx` (sdk/reox.mk) and linked
+// against librx_neolyx.a.  Language used: functions, globals, layers with
+// `static fn` methods (called as `Keypad.key(...)`), if/else, while,
+// int/float/bool/string, extern fn.  Formatting still goes through NxUI
+// (written before REOX had string operations, sdk/README.md).
 
 // ---------------------------------------------------------------- NxUI
 
@@ -182,7 +183,7 @@ layer Display {
     @Bind let text: string = "0";
     @Bind let expression: string = "";
 
-    fn build(parent: int) -> void {
+    static fn build(parent: int) -> void {
         let strip: int = nxui_vstack(2);
         nxui_widget_set_background(strip, COLOR_DISPLAY);
 
@@ -206,7 +207,7 @@ layer Display {
         nxui_add(parent, strip);
     }
 
-    fn refresh() -> void {
+    static fn refresh() -> void {
         if g_error {
             nxui_label_set_text(g_display, "Error");
         } else if g_typing {
@@ -235,7 +236,7 @@ layer Display {
 layer Keypad {
     let columns: int = 4;
 
-    fn key(grid: int, label: string, act: int, bg: int) -> void {
+    static fn key(grid: int, label: string, act: int, bg: int) -> void {
         let b: int = nxui_button_create(label);
         nxui_button_set_action(b, act);
         nxui_button_set_colors(b, bg, COLOR_TEXT);
@@ -243,44 +244,44 @@ layer Keypad {
         nxui_add(grid, b);
     }
 
-    fn build(parent: int) -> void {
+    static fn build(parent: int) -> void {
         let grid: int = nxui_grid(GRID_COLS, GRID_GAP);
         nxui_grid_set_cell_size(grid, CELL_WIDTH, CELL_HEIGHT);
 
-        Keypad_key(grid, "MC", ACT_MEM_CLEAR, COLOR_BTN_FUNC);
-        Keypad_key(grid, "MR", ACT_MEM_RECALL, COLOR_BTN_FUNC);
-        Keypad_key(grid, "M+", ACT_MEM_ADD, COLOR_BTN_FUNC);
-        Keypad_key(grid, "M-", ACT_MEM_SUB, COLOR_BTN_FUNC);
+        Keypad.key(grid, "MC", ACT_MEM_CLEAR, COLOR_BTN_FUNC);
+        Keypad.key(grid, "MR", ACT_MEM_RECALL, COLOR_BTN_FUNC);
+        Keypad.key(grid, "M+", ACT_MEM_ADD, COLOR_BTN_FUNC);
+        Keypad.key(grid, "M-", ACT_MEM_SUB, COLOR_BTN_FUNC);
 
-        Keypad_key(grid, "AC", ACT_CLEAR, COLOR_BTN_FUNC);
-        Keypad_key(grid, "+/-", ACT_NEGATE, COLOR_BTN_FUNC);
-        Keypad_key(grid, "%", ACT_PERCENT, COLOR_BTN_FUNC);
-        Keypad_key(grid, "/", ACT_DIV, COLOR_BTN_OP);
+        Keypad.key(grid, "AC", ACT_CLEAR, COLOR_BTN_FUNC);
+        Keypad.key(grid, "+/-", ACT_NEGATE, COLOR_BTN_FUNC);
+        Keypad.key(grid, "%", ACT_PERCENT, COLOR_BTN_FUNC);
+        Keypad.key(grid, "/", ACT_DIV, COLOR_BTN_OP);
 
-        Keypad_key(grid, "7", 7, COLOR_BTN_NUMBER);
-        Keypad_key(grid, "8", 8, COLOR_BTN_NUMBER);
-        Keypad_key(grid, "9", 9, COLOR_BTN_NUMBER);
-        Keypad_key(grid, "*", ACT_MUL, COLOR_BTN_OP);
+        Keypad.key(grid, "7", 7, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "8", 8, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "9", 9, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "*", ACT_MUL, COLOR_BTN_OP);
 
-        Keypad_key(grid, "4", 4, COLOR_BTN_NUMBER);
-        Keypad_key(grid, "5", 5, COLOR_BTN_NUMBER);
-        Keypad_key(grid, "6", 6, COLOR_BTN_NUMBER);
-        Keypad_key(grid, "-", ACT_SUB, COLOR_BTN_OP);
+        Keypad.key(grid, "4", 4, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "5", 5, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "6", 6, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "-", ACT_SUB, COLOR_BTN_OP);
 
-        Keypad_key(grid, "1", 1, COLOR_BTN_NUMBER);
-        Keypad_key(grid, "2", 2, COLOR_BTN_NUMBER);
-        Keypad_key(grid, "3", 3, COLOR_BTN_NUMBER);
-        Keypad_key(grid, "+", ACT_ADD, COLOR_BTN_OP);
+        Keypad.key(grid, "1", 1, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "2", 2, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "3", 3, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "+", ACT_ADD, COLOR_BTN_OP);
 
-        Keypad_key(grid, "0", 0, COLOR_BTN_NUMBER);
-        Keypad_key(grid, ".", ACT_DOT, COLOR_BTN_NUMBER);
-        Keypad_key(grid, "<-", ACT_BACKSPACE, COLOR_BTN_FUNC);
-        Keypad_key(grid, "=", ACT_EQUALS, COLOR_BTN_OP);
+        Keypad.key(grid, "0", 0, COLOR_BTN_NUMBER);
+        Keypad.key(grid, ".", ACT_DOT, COLOR_BTN_NUMBER);
+        Keypad.key(grid, "<-", ACT_BACKSPACE, COLOR_BTN_FUNC);
+        Keypad.key(grid, "=", ACT_EQUALS, COLOR_BTN_OP);
 
-        Keypad_key(grid, "sqrt", ACT_SQRT, COLOR_BTN_FUNC);
-        Keypad_key(grid, "x^2", ACT_SQUARE, COLOR_BTN_FUNC);
-        Keypad_key(grid, "1/x", ACT_RECIPROCAL, COLOR_BTN_FUNC);
-        Keypad_key(grid, " ", ACT_CLEAR, COLOR_BTN_FUNC);
+        Keypad.key(grid, "sqrt", ACT_SQRT, COLOR_BTN_FUNC);
+        Keypad.key(grid, "x^2", ACT_SQUARE, COLOR_BTN_FUNC);
+        Keypad.key(grid, "1/x", ACT_RECIPROCAL, COLOR_BTN_FUNC);
+        Keypad.key(grid, " ", ACT_CLEAR, COLOR_BTN_FUNC);
 
         nxui_add(parent, grid);
     }
@@ -513,7 +514,7 @@ fn engine_dispatch(act: int) -> void {
         nxui_log("[CALC] unknown act\n");
         return;
     }
-    Display_refresh();
+    Display.refresh();
 }
 
 // ---------------------------------------------------------------- NxUI hooks
@@ -560,8 +561,8 @@ fn build_ui() -> bool {
     if root == 0 {
         return false;
     }
-    Display_build(root);
-    Keypad_build(root);
+    Display.build(root);
+    Keypad.build(root);
 
     if nxui_window_set_root(g_window, root) != 0 {
         return false;
@@ -580,7 +581,7 @@ fn main() -> int {
         nxui_log("[CALC] UI construction failed\n");
         return 1;
     }
-    Display_refresh();
+    Display.refresh();
     let errors: int = nxui_run(g_window);
     if errors != 0 {
         nxui_log("[CALC] run loop reported errors\n");

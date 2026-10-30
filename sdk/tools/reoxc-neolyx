@@ -16,9 +16,10 @@
 #      truncated C file after a parse or type error;
 #   4. removes the output on failure so make never links stale C.
 #
-# When reoxc grows the flags listed in sdk/REOXC_REQUIREMENTS.md, set
-# REOXC_NATIVE=1 (or delete this wrapper) and the Makefile rule calls
-# reoxc directly with the identical command line.
+# A reoxc that lists `--target` in its help (REOX with the NeolyxOS target,
+# sdk/REOXC_REQUIREMENTS.md items 1.1-1.4) is called natively with the
+# identical command line.  REOXC_NATIVE=1 forces that, REOXC_NATIVE=0 forces
+# the legacy `reoxc IN.rx -o OUT.c` mapping.
 set -u
 
 SDK_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -95,7 +96,11 @@ newest=$(printf '%s\n%s\n' "$min" "$ver" | sort -t. -k1,1n -k2,2n -k3,3n | tail 
 [ "$newest" = "$ver" ] || die "reoxc $ver is older than required $min"
 
 # ---- run -------------------------------------------------------------------
-if [ "${REOXC_NATIVE:-0}" = "1" ]; then
+native=${REOXC_NATIVE:-}
+if [ -z "$native" ]; then
+    if "$REOXC_BIN" --help 2>/dev/null | grep -q -- '--target'; then native=1; else native=0; fi
+fi
+if [ "$native" = "1" ]; then
     set -- "$REOXC_BIN" compile --emit c --target neolyx $passthru -o "$output" "$input"
 else
     set -- "$REOXC_BIN" "$input" -o "$output" $passthru
