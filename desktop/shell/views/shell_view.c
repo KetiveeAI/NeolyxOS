@@ -7,9 +7,15 @@
  * network, clock). Programs on disk start with `run`; their output goes
  * to the system log because the kernel has no pipe/PTY path for apps yet.
  *
- * Commands use the same vocabulary as the kernel recovery shell
- * (kernel/src/shell/terminal.c): help, list/ls, show/cat, make dir,
- * tasks/ps, info, net status, sys <command>, ...
+ * Commands follow the NeoLyx OS Command Specification v1.0: native,
+ * readable verbs (list, show, make, remove, copy, move, tasks, info, net,
+ * sys ...). Unix names (ls, cat, rm, mkdir, ps, ...) are compatibility
+ * aliases only. Destructive commands take --dry, folders and power
+ * actions ask for typed confirmation, and system paths need `sys`.
+ * `sys` maps to a capability token the kernel cannot grant yet
+ * (docs/desktop/proposals/sys-capabilities.md), so privileged requests
+ * are refused or passed to the kernel, which refuses them. Commands
+ * whose system service does not exist yet say what is missing.
  *
  * Everything is static storage sized at compile time: SH_MAX_TABS tabs,
  * each with a ring of SH_LINES scrollback lines. No allocation.
@@ -43,6 +49,10 @@ extern int desktop_launch_app(const char *name);   /* desktop_shell.c: 0, -1 fai
 #define SH_NAME_MAX     32
 #define SH_CAT_LIMIT    (64u * 1024u)
 #define SH_DIR_MAX      128
+#define SH_ALIAS_MAX    8
+#define SH_COPY_LIMIT   (16u * 1024u * 1024u)
+#define SH_FIND_DIRS    256         /* folders visited by find */
+#define SH_FIND_HITS    200
 
 #define SH_TABBAR_H     36.0f
 #define SH_PAD_X        16.0f
@@ -75,6 +85,14 @@ typedef struct {
     char      cwd[SH_PATH_MAX];
     char      last_cmd[SH_NAME_MAX];
     int       scroll;                   /* rows scrolled up from the bottom */
+    /* Session aliases (alias <name> '<command>') */
+    char      alias_name[SH_ALIAS_MAX][SH_NAME_MAX];
+    char      alias_cmd[SH_ALIAS_MAX][SH_INPUT_MAX];
+    int       alias_count;
+    /* Intent confirmation: while confirm_phrase is set, the next line must
+     * equal it exactly for confirm_line to run; anything else cancels. */
+    char      confirm_phrase[SH_INPUT_MAX];
+    char      confirm_line[SH_INPUT_MAX];
 } sh_tab_t;
 
 typedef struct {
@@ -175,6 +193,12 @@ static void s_size(char *out, int cap, uint64_t bytes) {
     }
     s_cat(out, " ", cap);
     s_cat(out, unit[u], cap);
+}
+
+/* Clear memory that may hold typed secrets; volatile so it is not elided. */
+static void wipe(void *p, int n) {
+    volatile uint8_t *b = (volatile uint8_t *)p;
+    for (int i = 0; i < n; i++) b[i] = 0;
 }
 
 static void s_pad2(char *out, unsigned v) {
@@ -361,6 +385,7 @@ static void short_dir(const char *cwd, char *buf, int cap) {
 
 /* Prompt pieces: "user@host dir # " */
 static void prompt_text(const sh_tab_t *t, char *buf, int cap) {
+    if (t->confirm_phrase[0]) { s_copy(buf, "confirm> ", cap); return; }
     char d[SH_PATH_MAX];
     short_dir(t->cwd, d, (int)sizeof(d));
     s_copy(buf, V.user, cap);
@@ -442,6 +467,7 @@ typedef struct {
     const char *args;
     const char *help;
     sh_cmd_fn   fn;
+    uint32_t    flags;
 } sh_cmd_t;
 
 static const sh_cmd_t *find_cmd(const char *name);
@@ -473,49 +499,6 @@ static void cmd_cd(sh_tab_t *t, int argc, char **argv) {
     }
     if (!dir_exists(path)) { err(t, "cd", "no such folder"); return; }
     s_copy(t->cwd, path, SH_PATH_MAX);
-}
-
-static void cmd_list(sh_tab_t *t, int argc, char **argv) {
-    char path[SH_PATH_MAX];
-    if (argc > 2) { err(t, argv[0], "too many arguments"); return; }
-    if (resolve_path(t->cwd, argc > 1 ? argv[1] : ".", path, (int)sizeof(path)) != 0) {
-        err(t, argv[0], "invalid or too long path");
-        return;
-    }
-    uint32_t n = 0;
-    int rc = nx_readdir(path, g_dir, SH_DIR_MAX, &n);
-    if (rc < 0) { err(t, argv[0], "cannot read folder (it may not exist)"); return; }
-    if (n > SH_DIR_MAX) n = SH_DIR_MAX;
-    /* Drop "." and ".." (the kernel lists them on some filesystems) */
-    uint32_t keep = 0;
-    for (uint32_t i = 0; i < n; i++) {
-        g_dir[i].name[NX_DIRENT_NAME_MAX] = '\0';
-        if (s_eq(g_dir[i].name, ".") || s_eq(g_dir[i].name, "..")) continue;
-        if (keep != i) g_dir[keep] = g_dir[i];
-        keep++;
-    }
-    int full = n == SH_DIR_MAX;
-    n = keep;
-    if (n == 0) { outln(t, C_DIM, "(empty)"); return; }
-    /* Columns sized to the longest name */
-    int w = 1;
-    for (uint32_t i = 0; i < n; i++) {
-        g_dir[i].name[NX_DIRENT_NAME_MAX] = '\0';
-        int l = s_len(g_dir[i].name) + (g_dir[i].type == NX_DIRENT_DIR ? 1 : 0);
-        if (l > w) w = l;
-    }
-    int colw = w + 2;
-    int per = V.cols > 0 ? V.cols / colw : 1;
-    if (per < 1) per = 1;
-    for (uint32_t i = 0; i < n; i++) {
-        int dir = g_dir[i].type == NX_DIRENT_DIR;
-        out(t, dir ? C_DIR : C_TEXT, g_dir[i].name);
-        if (dir) out(t, C_DIR, "/");
-        int pad = colw - s_len(g_dir[i].name) - (dir ? 1 : 0);
-        if ((int)(i % (uint32_t)per) == per - 1 || i + 1 == n) { out(t, C_TEXT, "\n"); continue; }
-        while (pad-- > 0) out(t, C_TEXT, " ");
-    }
-    if (full) outln(t, C_DIM, "(listing stopped at 128 entries)");
 }
 
 static void cmd_show(sh_tab_t *t, int argc, char **argv) {
@@ -550,23 +533,6 @@ static void cmd_show(sh_tab_t *t, int argc, char **argv) {
     if (binary) outln(t, C_WARN, "(binary file, not shown)");
     else if (failed) err(t, argv[0], "read error");
     else if (total >= SH_CAT_LIMIT) outln(t, C_DIM, "(stopped after 64 KB)");
-}
-
-static void cmd_make(sh_tab_t *t, int argc, char **argv) {
-    /* "mkdir <path>" or "make dir <path>" */
-    const char *arg = 0;
-    if (s_eq(argv[0], "mkdir") && argc == 2) arg = argv[1];
-    else if (s_eq(argv[0], "make") && argc == 3 && s_eq(argv[1], "dir")) arg = argv[2];
-    if (!arg) { err(t, argv[0], "usage: make dir <folder>"); return; }
-    char path[SH_PATH_MAX];
-    if (resolve_path(t->cwd, arg, path, (int)sizeof(path)) != 0 || s_eq(path, "/")) {
-        err(t, argv[0], "invalid or too long path");
-        return;
-    }
-    if (nx_mkdir(path) < 0) { err(t, argv[0], "could not create folder"); return; }
-    sh_log2("folder created: ", path);
-    out(t, C_OK, "created ");
-    outln(t, C_TEXT, path);
 }
 
 static void cmd_date(sh_tab_t *t, int argc, char **argv) {
@@ -623,8 +589,354 @@ static void pad_out(sh_tab_t *t, int color, const char *s, int width, int right)
     if (!right) for (int i = n; i < width; i++) out(t, color, " ");
 }
 
+/* ---- Path policy ----
+ * There are no file owners in the kernel yet, so "system path" is decided
+ * here by location: the boot volume's firmware and kernel files, /System
+ * and installed programs. Plain commands never write or delete there; the
+ * spec's `sys <command>` form is required, and that needs a system
+ * capability the kernel cannot grant yet (see cmd_sys). FAT names are
+ * case-insensitive, so the comparison is too. */
+static int path_has_prefix_ci(const char *path, const char *prefix) {
+    int n = s_len(prefix);
+    for (int i = 0; i < n; i++) {
+        char a = path[i], b = prefix[i];
+        if (a >= 'A' && a <= 'Z') a = (char)(a + 32);
+        if (b >= 'A' && b <= 'Z') b = (char)(b + 32);
+        if (a != b) return 0;
+    }
+    return path[n] == '\0' || path[n] == '/';
+}
+
+static int is_system_path(const char *path) {
+    static const char *const sys_roots[] = {
+        "/System", "/EFI", "/apps", "/Applications", "/kernel.bin", "/INSTALLED.MRK", "/NvVars",
+    };
+    if (s_eq(path, "/")) return 1;
+    for (unsigned i = 0; i < sizeof(sys_roots) / sizeof(sys_roots[0]); i++)
+        if (path_has_prefix_ci(path, sys_roots[i])) return 1;
+    return 0;
+}
+
+/* Resolve and print the error itself; returns 0 on success. */
+static int arg_path(sh_tab_t *t, const char *cmd, const char *arg, char *out_path) {
+    if (resolve_path(t->cwd, arg, out_path, SH_PATH_MAX) != 0) {
+        err(t, cmd, "invalid or too long path");
+        return -1;
+    }
+    return 0;
+}
+
+static int refuse_system(sh_tab_t *t, const char *cmd, const char *path) {
+    if (!is_system_path(path)) return 0;
+    out(t, C_ERR, cmd);
+    out(t, C_ERR, ": ");
+    out(t, C_TEXT, path);
+    out(t, C_TEXT, " is a system path. Use ");
+    out(t, C_CMD, "sys ");
+    out(t, C_CMD, cmd);
+    outln(t, C_TEXT, " (needs a system capability).");
+    sh_log2("refused write to system path: ", path);
+    return 1;
+}
+
+static int file_exists(const char *path) {
+    int fd = nx_open(path, O_RDONLY);
+    if (fd < 0) return 0;
+    if (nx_close(fd) < 0) sh_log("warning: close failed in exists check");
+    return 1;
+}
+
+/* Directory listing with "." and ".." removed. Returns count or -1. */
+static int read_dir(const char *path, int *truncated) {
+    uint32_t n = 0;
+    if (nx_readdir(path, g_dir, SH_DIR_MAX, &n) < 0) return -1;
+    if (n > SH_DIR_MAX) n = SH_DIR_MAX;
+    if (truncated) *truncated = n == SH_DIR_MAX;
+    uint32_t keep = 0;
+    for (uint32_t i = 0; i < n; i++) {
+        g_dir[i].name[NX_DIRENT_NAME_MAX] = '\0';
+        if (s_eq(g_dir[i].name, ".") || s_eq(g_dir[i].name, "..")) continue;
+        if (keep != i) g_dir[keep] = g_dir[i];
+        keep++;
+    }
+    return (int)keep;
+}
+
+/* list [all] [long] [folder] */
+static void cmd_list(sh_tab_t *t, int argc, char **argv) {
+    int all = 0, lng = 0;
+    const char *arg = ".";
+    for (int i = 1; i < argc; i++) {
+        if (s_eq(argv[i], "all")) all = 1;
+        else if (s_eq(argv[i], "long")) lng = 1;
+        else if (s_eq(arg, ".")) arg = argv[i];
+        else { err(t, "list", "usage: list [all] [long] [folder]"); return; }
+    }
+    char path[SH_PATH_MAX];
+    if (arg_path(t, "list", arg, path)) return;
+    int full = 0;
+    int n = read_dir(path, &full);
+    if (n < 0) { err(t, "list", "cannot read folder (it may not exist)"); return; }
+    /* Hidden entries start with '.' */
+    int shown = 0;
+    for (int i = 0; i < n; i++) {
+        if (!all && g_dir[i].name[0] == '.') continue;
+        if (shown != i) g_dir[shown] = g_dir[i];
+        shown++;
+    }
+    n = shown;
+    if (n == 0) { outln(t, C_DIM, "(empty)"); return; }
+    if (lng) {
+        for (int i = 0; i < n; i++) {
+            int dir = g_dir[i].type == NX_DIRENT_DIR;
+            char sz[24];
+            if (dir) s_copy(sz, "-", (int)sizeof(sz));
+            else s_size(sz, (int)sizeof(sz), g_dir[i].size);
+            pad_out(t, C_DIM, dir ? "folder" : "file", 8, 0);
+            pad_out(t, C_TEXT, sz, 10, 1);
+            out(t, C_TEXT, "  ");
+            out(t, dir ? C_DIR : C_TEXT, g_dir[i].name);
+            outln(t, dir ? C_DIR : C_TEXT, dir ? "/" : "");
+        }
+    } else {
+        int w = 1;
+        for (int i = 0; i < n; i++) {
+            int l = s_len(g_dir[i].name) + (g_dir[i].type == NX_DIRENT_DIR ? 1 : 0);
+            if (l > w) w = l;
+        }
+        int colw = w + 2;
+        int per = V.cols > 0 ? V.cols / colw : 1;
+        if (per < 1) per = 1;
+        for (int i = 0; i < n; i++) {
+            int dir = g_dir[i].type == NX_DIRENT_DIR;
+            out(t, dir ? C_DIR : C_TEXT, g_dir[i].name);
+            if (dir) out(t, C_DIR, "/");
+            int pad = colw - s_len(g_dir[i].name) - (dir ? 1 : 0);
+            if (i % per == per - 1 || i + 1 == n) { out(t, C_TEXT, "\n"); continue; }
+            while (pad-- > 0) out(t, C_TEXT, " ");
+        }
+    }
+    if (full) outln(t, C_DIM, "(listing stopped at 128 entries)");
+}
+
+/* Dry-run flag for the command being run (set by run_line from --dry). */
+static int g_dry;
+/* Set by run_line when the command line is a confirmed replay. */
+static int g_confirmed;
+
+static void dry_note(sh_tab_t *t, const char *what, const char *path) {
+    out(t, C_WARN, "dry run: ");
+    out(t, C_TEXT, "would ");
+    out(t, C_TEXT, what);
+    out(t, C_TEXT, " ");
+    outln(t, C_TEXT, path);
+}
+
+/* make file <name> | make dir <name> */
+static void cmd_make(sh_tab_t *t, int argc, char **argv) {
+    if (argc != 3 || (!s_eq(argv[1], "file") && !s_eq(argv[1], "dir"))) {
+        err(t, "make", "usage: make file <name>  |  make dir <name>");
+        return;
+    }
+    int dir = s_eq(argv[1], "dir");
+    char path[SH_PATH_MAX];
+    if (arg_path(t, "make", argv[2], path) || refuse_system(t, "make", path)) return;
+    if (file_exists(path) || dir_exists(path)) { err(t, "make", "something with that name already exists"); return; }
+    if (g_dry) { dry_note(t, dir ? "create folder" : "create file", path); return; }
+    if (dir) {
+        if (nx_mkdir(path) < 0) { err(t, "make", "could not create folder"); return; }
+    } else {
+        int fd = nx_open(path, O_WRONLY | O_CREAT);
+        if (fd < 0) { err(t, "make", "could not create file"); return; }
+        if (nx_close(fd) < 0) { err(t, "make", "file created but close failed"); return; }
+    }
+    sh_log2(dir ? "folder created: " : "file created: ", path);
+    out(t, C_OK, "created ");
+    outln(t, C_TEXT, path);
+}
+
+/* Kernel syscall 32 is registered as "rmdir" but removes any VFS node
+ * (sys_unlink_impl). */
+static int nx_remove_node(const char *path) { return (int)syscall1(32, (int64_t)path); }
+
+/* Ask for typed intent before a destructive action. */
+static void ask_confirm(sh_tab_t *t, const char *phrase, const char *line) {
+    s_copy(t->confirm_phrase, phrase, SH_INPUT_MAX);
+    s_copy(t->confirm_line, line, SH_INPUT_MAX);
+    out(t, C_WARN, "Type: ");
+    out(t, C_TEXT, phrase);
+    outln(t, C_WARN, "  to confirm (anything else cancels)");
+}
+
+/* remove <path> [--dry]: files and empty folders outside system paths.
+ * Folders ask for typed confirmation. */
+static void cmd_remove(sh_tab_t *t, int argc, char **argv) {
+    if (argc != 2) { err(t, "remove", "usage: remove <path> [--dry]"); return; }
+    char path[SH_PATH_MAX];
+    if (arg_path(t, "remove", argv[1], path) || refuse_system(t, "remove", path)) return;
+    if (s_eq(path, t->cwd) || path_has_prefix_ci(t->cwd, path)) {
+        err(t, "remove", "cannot remove the folder you are in (cd out of it first)");
+        return;
+    }
+    int dir = dir_exists(path);
+    if (dir) {
+        int n = read_dir(path, 0);
+        if (n > 0) { err(t, "remove", "folder is not empty"); return; }
+    } else if (!file_exists(path)) {
+        err(t, "remove", "no such file or folder");
+        return;
+    }
+    if (g_dry) { dry_note(t, dir ? "remove folder" : "remove file", path); return; }
+    if (dir && !g_confirmed) {
+        char phrase[SH_INPUT_MAX], line[SH_INPUT_MAX];
+        s_copy(phrase, "REMOVE ", SH_INPUT_MAX);
+        if (s_cat(phrase, path, SH_INPUT_MAX)) { err(t, "remove", "path too long to confirm"); return; }
+        s_copy(line, "remove \"", SH_INPUT_MAX);
+        if (s_cat(line, path, SH_INPUT_MAX) || s_cat(line, "\"", SH_INPUT_MAX)) { err(t, "remove", "path too long"); return; }
+        ask_confirm(t, phrase, line);
+        return;
+    }
+    if (nx_remove_node(path) < 0) {
+        err(t, "remove", "the file system refused (deleting may not be supported on this disk yet)");
+        return;
+    }
+    sh_log2("removed: ", path);
+    out(t, C_OK, "removed ");
+    outln(t, C_TEXT, path);
+}
+
+/* Copy one file. Returns 0, or prints the error and returns -1. */
+static int copy_file(sh_tab_t *t, const char *cmd, const char *src, const char *dst) {
+    int in = nx_open(src, O_RDONLY);
+    if (in < 0) { err(t, cmd, "cannot open the source file"); return -1; }
+    int outfd = nx_open(dst, O_WRONLY | O_CREAT | O_TRUNC);
+    if (outfd < 0) { nx_close(in); err(t, cmd, "cannot create the destination"); return -1; }
+    static char buf[4096];
+    uint32_t total = 0;
+    int rc = 0;
+    for (;;) {
+        int64_t r = nx_read(in, buf, sizeof(buf));
+        if (r < 0) { err(t, cmd, "read error"); rc = -1; break; }
+        if (r == 0) break;
+        if (r > (int64_t)sizeof(buf)) r = (int64_t)sizeof(buf);
+        if (nx_write(outfd, buf, (uint64_t)r) != r) { err(t, cmd, "write error (disk full?)"); rc = -1; break; }
+        total += (uint32_t)r;
+        if (total > SH_COPY_LIMIT) { err(t, cmd, "file is larger than 16 MB; not copied"); rc = -1; break; }
+    }
+    if (nx_close(in) < 0) sh_log("warning: close failed on copy source");
+    if (nx_close(outfd) < 0) { if (rc == 0) err(t, cmd, "close failed on destination"); rc = -1; }
+    if (rc != 0 && nx_remove_node(dst) < 0) sh_log2("warning: partial copy left at ", dst);
+    return rc;
+}
+
+/* Resolve source/destination for copy and move; a folder destination
+ * receives the source's name. Returns 0 when both are usable. */
+static int two_paths(sh_tab_t *t, const char *cmd, int argc, char **argv, char *src, char *dst) {
+    if (argc != 3) { err(t, cmd, "usage: <source> <destination> [--dry]"); return -1; }
+    if (arg_path(t, cmd, argv[1], src) || arg_path(t, cmd, argv[2], dst)) return -1;
+    if (dir_exists(src)) { err(t, cmd, "folders are not supported yet; files only"); return -1; }
+    if (!file_exists(src)) { err(t, cmd, "no such file"); return -1; }
+    if (dir_exists(dst)) {
+        const char *base = src;
+        for (const char *p = src; *p; p++) if (*p == '/' && p[1]) base = p + 1;
+        if ((!s_eq(dst, "/") && s_cat(dst, "/", SH_PATH_MAX)) || s_cat(dst, base, SH_PATH_MAX)) {
+            err(t, cmd, "destination path too long");
+            return -1;
+        }
+    }
+    if (s_eq(src, dst)) { err(t, cmd, "source and destination are the same"); return -1; }
+    if (refuse_system(t, cmd, dst)) return -1;
+    if (file_exists(dst) || dir_exists(dst)) { err(t, cmd, "destination already exists (remove it first)"); return -1; }
+    return 0;
+}
+
+static void cmd_copy(sh_tab_t *t, int argc, char **argv) {
+    char src[SH_PATH_MAX], dst[SH_PATH_MAX];
+    if (two_paths(t, "copy", argc, argv, src, dst)) return;
+    if (g_dry) { out(t, C_WARN, "dry run: "); out(t, C_TEXT, "would copy "); out(t, C_TEXT, src); out(t, C_TEXT, " to "); outln(t, C_TEXT, dst); return; }
+    if (copy_file(t, "copy", src, dst)) return;
+    sh_log2("copied to ", dst);
+    out(t, C_OK, "copied ");
+    outln(t, C_TEXT, dst);
+}
+
+/* move = copy, then remove the source (the kernel has no rename yet). */
+static void cmd_move(sh_tab_t *t, int argc, char **argv) {
+    char src[SH_PATH_MAX], dst[SH_PATH_MAX];
+    if (two_paths(t, "move", argc, argv, src, dst)) return;
+    if (refuse_system(t, "move", src)) return;
+    if (g_dry) { out(t, C_WARN, "dry run: "); out(t, C_TEXT, "would move "); out(t, C_TEXT, src); out(t, C_TEXT, " to "); outln(t, C_TEXT, dst); return; }
+    if (copy_file(t, "move", src, dst)) return;
+    if (nx_remove_node(src) < 0) {
+        /* Undo the copy so a failed move changes nothing */
+        if (nx_remove_node(dst) == 0) {
+            err(t, "move", "the file system cannot delete the original, so nothing was moved");
+        } else {
+            err(t, "move", "the file system cannot delete files here; a copy was left at:");
+            outln(t, C_TEXT, dst);
+            sh_log2("move left a copy at ", dst);
+        }
+        return;
+    }
+    sh_log2("moved to ", dst);
+    out(t, C_OK, "moved ");
+    outln(t, C_TEXT, dst);
+}
+
+/* find <name> [in <folder>]: case-insensitive substring match on names,
+ * walking at most SH_FIND_DIRS folders. */
+static char g_find_stack[SH_FIND_DIRS][SH_PATH_MAX];
+
+static int contains_ci(const char *hay, const char *needle) {
+    int n = s_len(needle);
+    for (const char *h = hay; *h; h++) {
+        int i = 0;
+        for (; i < n && h[i]; i++) {
+            char a = h[i], b = needle[i];
+            if (a >= 'A' && a <= 'Z') a = (char)(a + 32);
+            if (b >= 'A' && b <= 'Z') b = (char)(b + 32);
+            if (a != b) break;
+        }
+        if (i == n) return 1;
+    }
+    return 0;
+}
+
+static void cmd_find(sh_tab_t *t, int argc, char **argv) {
+    const char *root = ".";
+    if (argc == 4 && s_eq(argv[2], "in")) root = argv[3];
+    else if (argc != 2) { err(t, "find", "usage: find <name> [in <folder>]"); return; }
+    char start[SH_PATH_MAX];
+    if (arg_path(t, "find", root, start)) return;
+    if (!dir_exists(start)) { err(t, "find", "no such folder"); return; }
+    int top = 0, visited = 0, hits = 0, capped = 0;
+    s_copy(g_find_stack[top++], start, SH_PATH_MAX);
+    while (top > 0) {
+        char dir[SH_PATH_MAX];
+        s_copy(dir, g_find_stack[--top], SH_PATH_MAX);
+        if (++visited > SH_FIND_DIRS) { capped = 1; break; }
+        int n = read_dir(dir, 0);
+        if (n < 0) continue;
+        for (int i = 0; i < n; i++) {
+            char full[SH_PATH_MAX];
+            s_copy(full, dir, SH_PATH_MAX);
+            if ((!s_eq(dir, "/") && s_cat(full, "/", SH_PATH_MAX)) || s_cat(full, g_dir[i].name, SH_PATH_MAX)) continue;
+            int isdir = g_dir[i].type == NX_DIRENT_DIR;
+            if (contains_ci(g_dir[i].name, argv[1])) {
+                outln(t, isdir ? C_DIR : C_TEXT, full);
+                if (++hits >= SH_FIND_HITS) { capped = 1; break; }
+            }
+            if (isdir && top < SH_FIND_DIRS) s_copy(g_find_stack[top++], full, SH_PATH_MAX);
+        }
+        if (hits >= SH_FIND_HITS) break;
+    }
+    if (hits == 0) outln(t, C_DIM, "nothing found");
+    if (capped) outln(t, C_DIM, "(search stopped early; narrow it with: find <name> in <folder>)");
+}
+
 static void cmd_tasks(sh_tab_t *t, int argc, char **argv) {
-    (void)argc;
+    int all = argc == 2 && s_eq(argv[1], "all");
+    if (argc > 2 || (argc == 2 && !all)) { err(t, "tasks", "usage: tasks [all]"); return; }
     if (sampler() != 0) { err(t, argv[0], "process sampler unavailable"); return; }
     nxproc_status_t st = nxproc_snapshot(&g_sampler, &g_snap);
     if (st != NXPROC_OK && st != NXPROC_ERR_TRUNCATED) {
@@ -637,8 +949,10 @@ static void cmd_tasks(sh_tab_t *t, int argc, char **argv) {
     pad_out(t, C_DIM, "STATE", 10, 0);
     pad_out(t, C_DIM, "MEMORY", 10, 1);
     out(t, C_DIM, "\n");
+    int hidden = 0;
     for (uint32_t i = 0; i < g_snap.count && i < NXPROC_MAX_PROCS; i++) {
         const nxproc_info_t *p = &g_snap.procs[i];
+        if (!all && (p->flags & (NXPROC_F_KERNEL | NXPROC_F_SYSTEM))) { hidden++; continue; }
         char n[24], name[NXPROC_NAME_MAX];
         s_u64(n, (int)sizeof(n), p->pid);
         pad_out(t, C_TEXT, n, 6, 1);
@@ -652,12 +966,23 @@ static void cmd_tasks(sh_tab_t *t, int argc, char **argv) {
         out(t, C_TEXT, "\n");
     }
     if (st == NXPROC_ERR_TRUNCATED) outln(t, C_DIM, "(list truncated)");
+    if (hidden) {
+        char n[12];
+        s_u64(n, (int)sizeof(n), (uint64_t)hidden);
+        out(t, C_DIM, n);
+        outln(t, C_DIM, " system processes hidden (tasks all shows them)");
+    }
 }
 
 static void cmd_info(sh_tab_t *t, int argc, char **argv) {
     const char *what = argc > 1 ? argv[1] : "system";
     int sys = s_eq(what, "system"), mem = s_eq(what, "memory"), cpu = s_eq(what, "cpu");
-    if (!sys && !mem && !cpu) { err(t, "info", "usage: info [system|memory|cpu]"); return; }
+    if (s_eq(what, "disk")) {
+        out(t, C_DIM, "Disk      ");
+        outln(t, C_DIM, "unavailable (the kernel has no disk-usage call for apps yet)");
+        return;
+    }
+    if (!sys && !mem && !cpu) { err(t, "info", "usage: info [system|memory|cpu|disk]"); return; }
     nxproc_sys_stats_t s;
     int have = sampler() == 0 && nxproc_sys_stats(&g_sampler, &s) == NXPROC_OK;
     char n[32];
@@ -696,9 +1021,39 @@ static void ip_out(sh_tab_t *t, int color, nxnet_ipv4_t ip) {
     out(t, color, b);
 }
 
+static void net_list(sh_tab_t *t) {
+    static nxnet_wifi_network_t nets[NXNET_MAX_SCAN];
+    uint32_t n = 0;
+    nxnet_status_t st = nxnet_wifi_scan_results(nets, NXNET_MAX_SCAN, &n);
+    if (st != NXNET_OK && st != NXNET_ERR_BUFFER_TOO_SMALL) { err(t, "net list", nxnet_status_str(st)); return; }
+    if (n > NXNET_MAX_SCAN) n = NXNET_MAX_SCAN;
+    if (n == 0) { outln(t, C_DIM, "no Wi-Fi networks found"); return; }
+    for (uint32_t i = 0; i < n; i++) {
+        char ssid[NXNET_SSID_MAX + 1], bars[6];
+        s_copy(ssid, nets[i].ssid, (int)sizeof(ssid));
+        int b = nxnet_rssi_bars(nets[i].rssi_dbm);
+        for (int k = 0; k < 4; k++) bars[k] = k < b ? '|' : '.';
+        bars[4] = '\0';
+        out(t, C_OK, bars);
+        out(t, C_TEXT, "  ");
+        pad_out(t, C_TEXT, ssid[0] ? ssid : "(hidden)", 34, 0);
+        outln(t, C_DIM, nxnet_security_str(nets[i].security));
+    }
+}
+
 static void cmd_net(sh_tab_t *t, int argc, char **argv) {
-    (void)argv;
-    if (argc > 1 && !s_eq(argv[1], "status")) { err(t, "net", "usage: net status"); return; }
+    const char *sub = argc > 1 ? argv[1] : "status";
+    if (s_eq(sub, "connect") || s_eq(sub, "disconnect")) {
+        /* Joining needs a passphrase and system rights; Settings owns that
+         * flow (masked entry, keychain), so send the user there. */
+        out(t, C_TEXT, "Opening ");
+        out(t, C_CMD, "Settings > Network");
+        outln(t, C_TEXT, " to choose a network.");
+        if (settings_view_show_pane("network") != 0) err(t, "net", "Settings could not open");
+        return;
+    }
+    int list = s_eq(sub, "list");
+    if (argc > 2 || (!list && !s_eq(sub, "status"))) { err(t, "net", "usage: net status | net list | net connect"); return; }
     nxnet_status_t st = nxnet_available();
     if (st != NXNET_OK) st = nxnet_init();
     if (st != NXNET_OK) {
@@ -708,6 +1063,7 @@ static void cmd_net(sh_tab_t *t, int argc, char **argv) {
         outln(t, C_TEXT, ")");
         return;
     }
+    if (list) { net_list(t); return; }
     nxnet_summary_t sum;
     if ((st = nxnet_summary(&sum)) != NXNET_OK) { err(t, "net", nxnet_status_str(st)); return; }
     static const char *const conn[] = { "offline", "link only, no address", "local network only", "connected" };
@@ -796,7 +1152,14 @@ static void cmd_run(sh_tab_t *t, int argc, char **argv) {
 }
 
 static void cmd_history(sh_tab_t *t, int argc, char **argv) {
-    (void)argc; (void)argv;
+    if (argc == 2 && s_eq(argv[1], "clear")) {
+        for (int i = 0; i < SH_HIST; i++) wipe(t->hist[i], SH_INPUT_MAX);
+        t->hist_count = 0;
+        t->hist_pos = 0;
+        outln(t, C_OK, "history cleared");
+        return;
+    }
+    if (argc != 1) { err(t, "history", "usage: history [clear]"); return; }
     for (int i = 0; i < t->hist_count; i++) {
         char n[8];
         s_u64(n, (int)sizeof(n), (uint64_t)(i + 1));
@@ -811,7 +1174,7 @@ static void cmd_hostname(sh_tab_t *t, int argc, char **argv) { (void)argc; (void
 
 static void cmd_version(sh_tab_t *t, int argc, char **argv) {
     (void)argc; (void)argv;
-    outln(t, C_TEXT, "NeolyxOS Shell 1.0 (Vajra desktop)");
+    outln(t, C_TEXT, "NeolyxOS Shell 1.0 (Vajra desktop), command spec 1.0");
 }
 
 static void cmd_exit(sh_tab_t *t, int argc, char **argv) {
@@ -819,88 +1182,262 @@ static void cmd_exit(sh_tab_t *t, int argc, char **argv) {
     tab_close(V.cur);
 }
 
-/* `sys <command>`: system-level commands. The desktop has no privilege
- * service to elevate through yet (there is no accounts or privilege
- * syscall for apps), so nothing here claims elevated rights. */
-static void cmd_sys(sh_tab_t *t, int argc, char **argv) {
-    if (argc < 2) {
-        err(t, "sys", "usage: sys <command>   (sys status, sys root, sys info)");
+/* kill <pid>: ask a process to quit (the kernel forces it after a grace
+ * period). System processes need `sys kill`. */
+static void cmd_kill(sh_tab_t *t, int argc, char **argv) {
+    if (argc != 2) { err(t, "kill", "usage: kill <pid>"); return; }
+    uint32_t pid = 0;
+    for (const char *p = argv[1]; *p; p++) {
+        if (*p < '0' || *p > '9' || pid > 100000000u) { err(t, "kill", "pid must be a number"); return; }
+        pid = pid * 10u + (uint32_t)(*p - '0');
+    }
+    if (sampler() != 0) { err(t, "kill", "process service unavailable"); return; }
+    nxproc_status_t st = nxproc_snapshot(&g_sampler, &g_snap);   /* fresh flags for the protection check */
+    if (st != NXPROC_OK && st != NXPROC_ERR_TRUNCATED) { err(t, "kill", nxproc_status_str(st)); return; }
+    if (g_dry) { out(t, C_WARN, "dry run: "); out(t, C_TEXT, "would end pid "); outln(t, C_TEXT, argv[1]); return; }
+    st = nxproc_end(pid, NXPROC_END_GRACEFUL, NXPROC_GRACE_MS);
+    if (st == NXPROC_OK) { out(t, C_OK, "asked pid "); out(t, C_OK, argv[1]); outln(t, C_OK, " to quit"); return; }
+    if (st == NXPROC_ERR_PROTECTED || st == NXPROC_ERR_PERMISSION) {
+        out(t, C_ERR, "kill: ");
+        out(t, C_TEXT, "pid ");
+        out(t, C_TEXT, argv[1]);
+        out(t, C_TEXT, " is a system process. Use ");
+        out(t, C_CMD, "sys kill");
+        outln(t, C_TEXT, " (needs a system capability).");
         return;
     }
-    if (s_eq(argv[1], "root")) {
-        sh_log("sys root requested: refused, no privilege service");
-        out(t, C_ERR, "[Warning!]");
-        outln(t, C_TEXT, " sys root needs the NeolyxOS accounts service, which is not available yet.");
-        outln(t, C_DIM, "You are still signed in as a normal user. Nothing was changed.");
-        return;
-    }
-    if (s_eq(argv[1], "status")) {
-        out(t, C_DIM, "User        "); outln(t, C_TEXT, V.user);
-        out(t, C_DIM, "Privilege   "); outln(t, C_TEXT, "user");
-        out(t, C_DIM, "Elevation   "); outln(t, C_WARN, "unavailable (no accounts service)");
-        return;
-    }
-    if (s_eq(argv[1], "info")) { cmd_info(t, argc - 1, argv + 1); return; }
-    if (find_cmd(argv[1])) {
-        err(t, "sys", "this command does not need sys; run it without the prefix");
-        return;
-    }
-    err(t, "sys", "unknown system command (try sys status)");
+    err(t, "kill", nxproc_status_str(st));
 }
 
+/* alias                 list aliases in this tab
+ * alias <name> '<cmd>'  add or replace one (single or double quotes) */
+static void cmd_alias(sh_tab_t *t, int argc, char **argv) {
+    if (argc == 1) {
+        if (t->alias_count == 0) outln(t, C_DIM, "no aliases in this tab");
+        for (int i = 0; i < t->alias_count; i++) {
+            pad_out(t, C_CMD, t->alias_name[i], 12, 0);
+            outln(t, C_TEXT, t->alias_cmd[i]);
+        }
+        return;
+    }
+    if (argc != 3) { err(t, "alias", "usage: alias <name> '<command>'"); return; }
+    if (!name_ok(argv[1]) || find_cmd(argv[1])) { err(t, "alias", "pick a name that is not a built-in command"); return; }
+    char cmd[SH_INPUT_MAX];
+    int n = s_copy(cmd, argv[2], SH_INPUT_MAX);
+    if (n >= 2 && cmd[0] == '\'' && cmd[n - 1] == '\'') { cmd[n - 1] = '\0'; s_copy(cmd, argv[2] + 1, n - 1); }
+    if (!cmd[0]) { err(t, "alias", "the command is empty"); return; }
+    int slot = -1;
+    for (int i = 0; i < t->alias_count; i++) if (s_eq(t->alias_name[i], argv[1])) slot = i;
+    if (slot < 0) {
+        if (t->alias_count >= SH_ALIAS_MAX) { err(t, "alias", "alias limit reached (8 per tab)"); return; }
+        slot = t->alias_count++;
+    }
+    s_copy(t->alias_name[slot], argv[1], SH_NAME_MAX);
+    s_copy(t->alias_cmd[slot], cmd, SH_INPUT_MAX);
+    out(t, C_OK, "alias ");
+    out(t, C_CMD, argv[1]);
+    out(t, C_TEXT, " = ");
+    outln(t, C_TEXT, cmd);
+}
+
+/* ============ Planned commands ============
+ * Part of the NeoLyx command spec, but the system service behind them does
+ * not exist yet. They say what is missing instead of failing silently. */
+typedef struct { const char *name; const char *needs; } sh_planned_t;
+
+static const sh_planned_t g_planned[] = {
+    { "pkg",      "the package service (npa) for apps" },
+    { "users",    "the accounts service" },
+    { "logs",     "a log-reading syscall for apps" },
+    { "ping",     "ICMP support for apps in the network stack" },
+    { "download", "an HTTP client for apps" },
+    { "edit",     "a text editor app" },
+    { "nano",     "a text editor app" },
+    { "vim",      "a text editor app" },
+    { "permit",   "file permissions in the kernel file system" },
+};
+#define PLANNED_COUNT ((int)(sizeof(g_planned) / sizeof(g_planned[0])))
+
+/* System commands that need a capability the kernel cannot grant yet. */
+static const sh_planned_t g_sys_planned[] = {
+    { "remove",  "remove system files" },
+    { "kill",    "end system processes" },
+    { "pkg",     "install and update packages" },
+    { "service", "start and stop services" },
+    { "user",    "add and change users" },
+    { "permit",  "change permissions" },
+    { "own",     "change owners" },
+    { "update",  "update the system" },
+    { "cleanup", "clean temporary files" },
+    { "logs",    "read critical logs" },
+};
+#define SYS_PLANNED_COUNT ((int)(sizeof(g_sys_planned) / sizeof(g_sys_planned[0])))
+
+static const sh_planned_t *find_planned(const sh_planned_t *tab, int n, const char *name) {
+    for (int i = 0; i < n; i++) if (s_eq(tab[i].name, name)) return &tab[i];
+    return 0;
+}
+
+static void not_yet(sh_tab_t *t, const char *cmd, const char *needs) {
+    out(t, C_WARN, cmd);
+    out(t, C_WARN, ": ");
+    out(t, C_TEXT, "not available yet. It needs ");
+    out(t, C_TEXT, needs);
+    outln(t, C_TEXT, ".");
+}
+
+/* ============ sys: the privilege model ============
+ *
+ * Per the command spec, `sys <command>` runs one command with system
+ * rights and `sys enter` opens a system shell. Both map to a capability
+ * token that the kernel would grant after the user authenticates. The
+ * kernel has no such token yet (docs/desktop/proposals/sys-capabilities.md),
+ * so every privileged path here is refused or is passed to the kernel,
+ * which refuses it, and the shell never claims rights it does not have. */
+static void no_capability(sh_tab_t *t, const char *what) {
+    out(t, C_ERR, "[Warning!] ");
+    out(t, C_TEXT, "sys ");
+    out(t, C_TEXT, what);
+    outln(t, C_TEXT, " needs a system capability, and the kernel cannot grant one yet.");
+    outln(t, C_DIM, "Nothing was changed. See: help sys");
+    sh_log2("sys refused (no capability): ", what);
+}
+
+static void cmd_sys(sh_tab_t *t, int argc, char **argv) {
+    if (argc < 2) { err(t, "sys", "usage: sys <command>   (try: help sys)"); return; }
+    const char *sub = argv[1];
+    if (s_eq(sub, "status")) {
+        out(t, C_DIM, "User         "); outln(t, C_TEXT, V.user);
+        out(t, C_DIM, "Privilege    "); outln(t, C_TEXT, "user");
+        out(t, C_DIM, "Capability   "); outln(t, C_WARN, "none (the kernel has no capability tokens yet)");
+        return;
+    }
+    if (s_eq(sub, "enter") || s_eq(sub, "root")) { no_capability(t, "enter"); return; }
+    if (s_eq(sub, "exit")) { outln(t, C_DIM, "You are not in a system shell."); return; }
+    if (s_eq(sub, "info")) { cmd_info(t, argc - 1, argv + 1); return; }
+    if (s_eq(sub, "reboot") || s_eq(sub, "shutdown")) {
+        int reboot = s_eq(sub, "reboot");
+        if (g_dry) { out(t, C_WARN, "dry run: "); outln(t, C_TEXT, reboot ? "would restart the computer" : "would power off the computer"); return; }
+        if (!g_confirmed) {
+            ask_confirm(t, reboot ? "REBOOT" : "SHUTDOWN", reboot ? "sys reboot" : "sys shutdown");
+            return;
+        }
+        sh_log2("sys request sent to kernel: ", sub);
+        int64_t rc = reboot ? syscall1(100, 0) : syscall0(101);
+        if (rc < 0) no_capability(t, sub);
+        return;
+    }
+    const sh_planned_t *p = find_planned(g_sys_planned, SYS_PLANNED_COUNT, sub);
+    if (p) { no_capability(t, sub); return; }
+    if (find_cmd(sub)) { err(t, "sys", "this command does not need sys; run it without the prefix"); return; }
+    err(t, "sys", "unknown system command (try: help sys)");
+}
+
+/* ============ Command table ============ */
+
+#define SHF_DRY 0x1   /* understands --dry */
+
 static const sh_cmd_t g_cmds[] = {
-    { "help",     "[command]",       "Show commands",                     cmd_help },
-    { "clear",    "",                "Clear the screen (Ctrl L)",         cmd_clear },
-    { "echo",     "<text>",          "Print text",                        cmd_echo },
-    { "pwd",      "",                "Show the current folder",           cmd_pwd },
-    { "cd",       "[folder]",        "Change folder (~ is home)",         cmd_cd },
-    { "list",     "[folder]",        "List a folder",                     cmd_list },
-    { "ls",       "[folder]",        "List a folder",                     cmd_list },
-    { "show",     "<file>",          "Print a text file",                 cmd_show },
-    { "cat",      "<file>",          "Print a text file",                 cmd_show },
-    { "make",     "dir <folder>",    "Create a folder",                   cmd_make },
-    { "mkdir",    "<folder>",        "Create a folder",                   cmd_make },
-    { "tasks",    "",                "List running processes",            cmd_tasks },
-    { "ps",       "",                "List running processes",            cmd_tasks },
-    { "info",     "[system|memory|cpu]", "System information",            cmd_info },
-    { "net",      "status",          "Network status",                    cmd_net },
-    { "date",     "",                "Show date and time",                cmd_date },
-    { "uptime",   "",                "Time since boot",                   cmd_uptime },
-    { "open",     "<app>",           "Open or focus an app",              cmd_open },
-    { "run",      "<program> [args]","Start a program from disk",         cmd_run },
-    { "exec",     "<program> [args]","Start a program from disk",         cmd_run },
-    { "history",  "",                "Commands typed in this tab",        cmd_history },
-    { "whoami",   "",                "Current user",                      cmd_whoami },
-    { "hostname", "",                "This computer's name",              cmd_hostname },
-    { "version",  "",                "Shell version",                     cmd_version },
-    { "sys",      "<command>",       "System commands (sys status)",      cmd_sys },
-    { "exit",     "",                "Close this tab",                    cmd_exit },
+    { "help",     "[command]",                 "Show commands, or help for one",          cmd_help,    0 },
+    { "clear",    "",                          "Clear the screen (Ctrl L)",               cmd_clear,   0 },
+    { "history",  "[clear]",                   "Commands typed in this tab",              cmd_history, 0 },
+    { "alias",    "[<name> '<command>']",      "Short names for commands, per tab",       cmd_alias,   0 },
+    { "version",  "",                          "Shell version",                           cmd_version, 0 },
+    { "cd",       "[folder]",                  "Change folder (~ is home, .. is up)",     cmd_cd,      0 },
+    { "pwd",      "",                          "Show the current folder",                 cmd_pwd,     0 },
+    { "list",     "[all] [long] [folder]",     "List a folder",                           cmd_list,    0 },
+    { "show",     "<file>",                    "Print a text file",                       cmd_show,    0 },
+    { "find",     "<name> [in <folder>]",      "Search for files by name",                cmd_find,    0 },
+    { "make",     "file|dir <name>",           "Create a file or folder",                 cmd_make,    SHF_DRY },
+    { "remove",   "<path> [--dry]",            "Delete a file or empty folder",           cmd_remove,  SHF_DRY },
+    { "copy",     "<source> <dest> [--dry]",   "Copy a file",                             cmd_copy,    SHF_DRY },
+    { "move",     "<source> <dest> [--dry]",   "Move or rename a file",                   cmd_move,    SHF_DRY },
+    { "tasks",    "[all]",                     "Running processes",                       cmd_tasks,   0 },
+    { "kill",     "<pid>",                     "Ask a process to quit",                   cmd_kill,    SHF_DRY },
+    { "info",     "system|memory|cpu|disk",    "System information",                      cmd_info,    0 },
+    { "uptime",   "",                          "Time since boot",                         cmd_uptime,  0 },
+    { "date",     "",                          "Date and time",                           cmd_date,    0 },
+    { "net",      "status|list|connect",       "Network status and Wi-Fi",                cmd_net,     0 },
+    { "open",     "<app>",                     "Open or focus an app",                    cmd_open,    0 },
+    { "run",      "<program> [args]",          "Start a program from disk",               cmd_run,     0 },
+    { "whoami",   "",                          "Current user",                            cmd_whoami,  0 },
+    { "hostname", "",                          "This computer's name",                    cmd_hostname,0 },
+    { "echo",     "<text>",                    "Print text",                              cmd_echo,    0 },
+    { "sys",      "<command>",                 "System commands (help sys)",              cmd_sys,     SHF_DRY },
+    { "exit",     "",                          "Close this tab",                          cmd_exit,    0 },
 };
 #define CMD_COUNT ((int)(sizeof(g_cmds) / sizeof(g_cmds[0])))
+
+/* Compatibility aliases for Unix habits. Not official commands: help and
+ * documentation use the native names. */
+static const struct { const char *name; const char *to; } g_compat[] = {
+    { "ls", "list" }, { "dir", "list" }, { "cat", "show" }, { "rm", "remove" },
+    { "mkdir", "make dir" }, { "touch", "make file" }, { "cp", "copy" }, { "mv", "move" },
+    { "ps", "tasks" }, { "top", "tasks all" }, { "exec", "run" },
+};
+#define COMPAT_COUNT ((int)(sizeof(g_compat) / sizeof(g_compat[0])))
 
 static const sh_cmd_t *find_cmd(const char *name) {
     for (int i = 0; i < CMD_COUNT; i++) if (s_eq(g_cmds[i].name, name)) return &g_cmds[i];
     return 0;
 }
 
-static void cmd_help(sh_tab_t *t, int argc, char **argv) {
-    if (argc > 1) {
-        const sh_cmd_t *c = find_cmd(argv[1]);
-        if (!c) { err(t, "help", "no such command"); return; }
-        out(t, C_CMD, c->name); out(t, C_TEXT, " "); outln(t, C_TEXT, c->args);
-        outln(t, C_DIM, c->help);
-        return;
-    }
-    for (int i = 0; i < CMD_COUNT; i++) {
-        pad_out(t, C_CMD, g_cmds[i].name, 10, 0);
-        pad_out(t, C_TEXT, g_cmds[i].args, 20, 0);
-        outln(t, C_DIM, g_cmds[i].help);
-    }
-    outln(t, C_DIM, "Keys: Up/Down history, Tab completes, Ctrl C cancels, Ctrl T new tab, Ctrl W close tab");
+static void help_line(sh_tab_t *t, const sh_cmd_t *c) {
+    pad_out(t, C_CMD, c->name, 10, 0);
+    pad_out(t, C_TEXT, c->args, 26, 0);
+    outln(t, C_DIM, c->help);
 }
 
-/* Split a line into words; double quotes group words. Returns argc, or
- * -1 on an unterminated quote. Writes into buf. */
+static void cmd_help(sh_tab_t *t, int argc, char **argv) {
+    if (argc >= 2 && s_eq(argv[1], "sys")) {
+        if (argc >= 3) {
+            const sh_planned_t *p = find_planned(g_sys_planned, SYS_PLANNED_COUNT, argv[2]);
+            out(t, C_CMD, "sys "); out(t, C_CMD, argv[2]); out(t, C_TEXT, "  ");
+            if (p) { out(t, C_TEXT, "would "); out(t, C_TEXT, p->needs); outln(t, C_DIM, "; needs a system capability (not available yet)"); }
+            else outln(t, C_DIM, "is not a system command");
+            return;
+        }
+        outln(t, C_TEXT, "sys runs one command with system rights; sys enter opens a system shell.");
+        outln(t, C_DIM, "Both need a system capability. The kernel cannot grant one yet, so these are refused.");
+        out(t, C_CMD, "  sys status      "); outln(t, C_DIM, "your privilege level");
+        out(t, C_CMD, "  sys enter/exit  "); outln(t, C_DIM, "system shell");
+        out(t, C_CMD, "  sys reboot      "); outln(t, C_DIM, "restart (type REBOOT to confirm)");
+        out(t, C_CMD, "  sys shutdown    "); outln(t, C_DIM, "power off (type SHUTDOWN to confirm)");
+        for (int i = 0; i < SYS_PLANNED_COUNT; i++) {
+            char l[40];
+            s_copy(l, "  sys ", (int)sizeof(l));
+            s_cat(l, g_sys_planned[i].name, (int)sizeof(l));
+            pad_out(t, C_CMD, l, 18, 0);
+            outln(t, C_DIM, g_sys_planned[i].needs);
+        }
+        outln(t, C_DIM, "Add --dry to preview: sys reboot --dry");
+        return;
+    }
+    if (argc == 2) {
+        const sh_cmd_t *c = find_cmd(argv[1]);
+        if (c) { help_line(t, c); if (c->flags & SHF_DRY) outln(t, C_DIM, "Supports --dry to preview without changing anything."); return; }
+        for (int i = 0; i < COMPAT_COUNT; i++) {
+            if (s_eq(g_compat[i].name, argv[1])) {
+                out(t, C_CMD, argv[1]); out(t, C_TEXT, " is a compatibility alias for "); outln(t, C_CMD, g_compat[i].to);
+                return;
+            }
+        }
+        const sh_planned_t *p = find_planned(g_planned, PLANNED_COUNT, argv[1]);
+        if (p) { not_yet(t, argv[1], p->needs); return; }
+        err(t, "help", "no such command");
+        return;
+    }
+    if (argc > 2) { err(t, "help", "usage: help [command]  |  help sys [command]"); return; }
+    for (int i = 0; i < CMD_COUNT; i++) help_line(t, &g_cmds[i]);
+    out(t, C_DIM, "Compatibility aliases: ");
+    for (int i = 0; i < COMPAT_COUNT; i++) { out(t, C_TEXT, g_compat[i].name); out(t, C_DIM, i + 1 < COMPAT_COUNT ? ", " : "\n"); }
+    out(t, C_DIM, "Coming later: ");
+    for (int i = 0; i < PLANNED_COUNT; i++) { out(t, C_TEXT, g_planned[i].name); out(t, C_DIM, i + 1 < PLANNED_COUNT ? ", " : "\n"); }
+    outln(t, C_DIM, "Keys: Up/Down history, Tab completes, Ctrl C cancels, Ctrl T new tab, Ctrl W close tab. Add --dry to preview changes.");
+}
+
+/* Split a line into words; double quotes group words, single quotes are
+ * kept (alias uses them). Returns argc, or -1 on an unterminated quote. */
 static int split(const char *line, char *buf, int cap, char **argv, int max) {
     int argc = 0, o = 0;
     const char *p = line;
@@ -909,25 +1446,114 @@ static int split(const char *line, char *buf, int cap, char **argv, int max) {
         if (!*p) break;
         if (argc >= max || o >= cap - 1) break;
         argv[argc++] = &buf[o];
-        int quoted = 0;
-        while (*p && (quoted || *p != ' ')) {
-            if (*p == '"') { quoted = !quoted; p++; continue; }
+        char q = 0;
+        while (*p && (q || *p != ' ')) {
+            if (!q && (*p == '"' || *p == '\'')) {
+                q = *p;
+                if (q == '"') { p++; continue; }
+            } else if (q && *p == q) {
+                char was = q;
+                q = 0;
+                if (was == '"') { p++; continue; }
+            }
             if (o >= cap - 1) break;
             buf[o++] = *p++;
         }
-        if (quoted) return -1;
+        if (q) return -1;
         buf[o++] = '\0';
     }
     if (o < cap) buf[o] = '\0';
     return argc;
 }
 
+/* Join expansion + argv[from..] into out (quoting words with spaces). */
+static int join_expanded(char *dst, int cap, const char *expansion, int argc, char **argv, int from) {
+    s_copy(dst, expansion, cap);
+    for (int i = from; i < argc; i++) {
+        int sp = 0;
+        for (const char *p = argv[i]; *p; p++) if (*p == ' ') sp = 1;
+        if (s_cat(dst, " ", cap) || (sp && s_cat(dst, "\"", cap)) || s_cat(dst, argv[i], cap) || (sp && s_cat(dst, "\"", cap)))
+            return -1;
+    }
+    return 0;
+}
+
+/* Run a command line without echoing it. depth limits alias expansion. */
+static void exec_line(sh_tab_t *t, const char *line, int depth) {
+    static char bufs[3][SH_INPUT_MAX];
+    if (depth > 2) { err(t, "shell", "alias expands into itself"); return; }
+    char *buf = bufs[depth];
+    char *argv[SH_ARGS_MAX];
+    int argc = split(line, buf, SH_INPUT_MAX, argv, SH_ARGS_MAX);
+    if (argc < 0) { err(t, "shell", "missing closing quote"); return; }
+    /* --dry anywhere previews instead of acting */
+    int dry = 0, k = 0;
+    for (int i = 0; i < argc; i++) { if (s_eq(argv[i], "--dry") || s_eq(argv[i], "--preview")) dry = 1; else argv[k++] = argv[i]; }
+    argc = k;
+    if (argc == 0) return;
+
+    /* Session aliases, then compatibility aliases, expand to text */
+    const char *expansion = 0;
+    for (int i = 0; i < t->alias_count && !expansion; i++) if (s_eq(t->alias_name[i], argv[0])) expansion = t->alias_cmd[i];
+    for (int i = 0; i < COMPAT_COUNT && !expansion; i++) if (s_eq(g_compat[i].name, argv[0])) expansion = g_compat[i].to;
+    if (expansion) {
+        char next[SH_INPUT_MAX];
+        if (join_expanded(next, SH_INPUT_MAX, expansion, argc, argv, 1) || (dry && s_cat(next, " --dry", SH_INPUT_MAX))) {
+            err(t, "shell", "command too long after alias expansion");
+            return;
+        }
+        exec_line(t, next, depth + 1);
+        return;
+    }
+
+    const sh_cmd_t *c = find_cmd(argv[0]);
+    if (!c) {
+        const sh_planned_t *p = find_planned(g_planned, PLANNED_COUNT, argv[0]);
+        if (p) { not_yet(t, argv[0], p->needs); return; }
+        out(t, C_ERR, "shell: ");
+        out(t, C_TEXT, "command not found: ");
+        out(t, C_CMD, argv[0]);
+        outln(t, C_DIM, "  (type help)");
+        return;
+    }
+    if (dry && !(c->flags & SHF_DRY)) {
+        out(t, C_WARN, c->name);
+        outln(t, C_TEXT, " has no dry run; nothing was done.");
+        return;
+    }
+    s_copy(t->last_cmd, argv[0], SH_NAME_MAX);
+    if (argc > 1 && s_len(t->last_cmd) + s_len(argv[1]) + 1 < SH_NAME_MAX && !s_eq(argv[0], "echo")) {
+        s_cat(t->last_cmd, " ", SH_NAME_MAX);
+        s_cat(t->last_cmd, argv[1], SH_NAME_MAX);
+    }
+    g_dry = dry;
+    c->fn(t, argc, argv);
+    g_dry = 0;
+    end_line(t);
+}
+
 /* Echo "prompt + command" into the scrollback, the first word in the
- * command color, then run it. */
+ * command color, then run it (or answer a pending confirmation). */
 static void run_line(sh_tab_t *t, const char *line) {
     char prompt[SH_PATH_MAX + 2 * SH_NAME_MAX];
     prompt_text(t, prompt, (int)sizeof(prompt));
     end_line(t);
+    t->scroll = 0;
+    if (t->confirm_phrase[0]) {
+        out(t, C_WARN, "confirm> ");
+        outln(t, C_TEXT, line);
+        char phrase[SH_INPUT_MAX], todo[SH_INPUT_MAX];
+        s_copy(phrase, t->confirm_phrase, SH_INPUT_MAX);
+        s_copy(todo, t->confirm_line, SH_INPUT_MAX);
+        t->confirm_phrase[0] = '\0';
+        t->confirm_line[0] = '\0';
+        if (!s_eq(line, phrase)) { outln(t, C_DIM, "cancelled; nothing was changed"); sh_log("confirmation cancelled"); return; }
+        sh_log2("confirmed: ", todo);
+        g_confirmed = 1;
+        exec_line(t, todo, 0);
+        g_confirmed = 0;
+        return;
+    }
     out(t, C_TEXT, prompt);
     const char *p = line;
     while (*p == ' ') p++;
@@ -946,29 +1572,8 @@ static void run_line(sh_tab_t *t, const char *line) {
     out(t, C_CMD, word);
     out(t, C_TEXT, p);
     out(t, C_TEXT, "\n");
-    t->scroll = 0;
     if (!word[0]) return;
-
-    static char buf[SH_INPUT_MAX];
-    char *argv[SH_ARGS_MAX];
-    int argc = split(line, buf, (int)sizeof(buf), argv, SH_ARGS_MAX);
-    if (argc < 0) { err(t, "shell", "missing closing quote"); return; }
-    if (argc == 0) return;
-    const sh_cmd_t *c = find_cmd(argv[0]);
-    if (!c) {
-        out(t, C_ERR, "shell: ");
-        out(t, C_TEXT, "command not found: ");
-        out(t, C_CMD, argv[0]);
-        outln(t, C_DIM, "  (type help)");
-        return;
-    }
-    s_copy(t->last_cmd, argv[0], SH_NAME_MAX);
-    if (argc > 1 && s_len(t->last_cmd) + s_len(argv[1]) + 1 < SH_NAME_MAX && !s_eq(argv[0], "echo")) {
-        s_cat(t->last_cmd, " ", SH_NAME_MAX);
-        s_cat(t->last_cmd, argv[1], SH_NAME_MAX);
-    }
-    c->fn(t, argc, argv);
-    end_line(t);
+    exec_line(t, line, 0);
 }
 
 /* ============ Line editing ============ */
@@ -992,7 +1597,7 @@ static void submit(sh_tab_t *t) {
     char line[SH_INPUT_MAX];
     s_copy(line, t->input, SH_INPUT_MAX);
     set_input(t, "");
-    history_add(t, line);
+    if (!t->confirm_phrase[0]) history_add(t, line);
     t->hist_pos = t->hist_count;
     run_line(t, line);
 }
@@ -1345,6 +1950,11 @@ void shell_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ct
                 { char p[SH_PATH_MAX + 2 * SH_NAME_MAX]; prompt_text(t, p, (int)sizeof(p)); out(t, C_TEXT, p); }
                 out(t, C_TEXT, t->input);
                 outln(t, C_DIM, "^C");
+                if (t->confirm_phrase[0]) {
+                    t->confirm_phrase[0] = '\0';
+                    t->confirm_line[0] = '\0';
+                    outln(t, C_DIM, "cancelled; nothing was changed");
+                }
                 set_input(t, "");
                 t->hist_pos = t->hist_count;
                 t->scroll = 0;
@@ -1366,7 +1976,16 @@ void shell_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ct
         case 0x47: t->in_cur = 0; return;                                   /* Home */
         case 0x4F: t->in_cur = t->in_len; return;                           /* End */
         case 0x0F: complete(t); return;                                     /* Tab */
-        case 0x01: set_input(t, ""); t->hist_pos = t->hist_count; return;   /* Esc */
+        case 0x01:                                                          /* Esc */
+            if (t->confirm_phrase[0]) {
+                t->confirm_phrase[0] = '\0';
+                t->confirm_line[0] = '\0';
+                end_line(t);
+                outln(t, C_DIM, "cancelled; nothing was changed");
+            }
+            set_input(t, "");
+            t->hist_pos = t->hist_count;
+            return;
         case 0x49: scroll_by(t, V.shift ? (1 << 20) : (V.rows > 2 ? V.rows - 2 : 1)); return;   /* PgUp */
         case 0x51: if (V.shift) t->scroll = 0; else scroll_by(t, -(V.rows > 2 ? V.rows - 2 : 1)); return;
         case 0x48:                                                          /* Up: older */
