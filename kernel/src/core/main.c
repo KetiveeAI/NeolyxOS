@@ -25,6 +25,7 @@
 #include <core/process.h>
 #include <core/runtime.h>
 #include <utils/string.h>
+#include <video/splash.h>
 
 /* ============ Framebuffer Globals for Syscalls ============ */
 /* 
@@ -216,6 +217,7 @@ void nx_kernel_start(void) {
     // Initialize logging
     serial_puts("[KERNEL] Initializing logging...\n");
     klog_init("../bin/kernel.log");
+    splash_update(20, 0);
     klog("Kernel log started");
     
     // ============ FAULT TOLERANCE SUBSYSTEM ============
@@ -231,6 +233,7 @@ void nx_kernel_start(void) {
     fault_router_init();      // Routes faults by origin
     reboot_guard_init();      // Blocks software reboots
     watchdog_init();          // Passive kernel-owned monitoring
+    splash_update(30, 0);
     serial_puts("[KERNEL] Fault tolerance ACTIVE - kernel never crashes\n");
     
     klog("Initializing high-level subsystems...");
@@ -238,18 +241,22 @@ void nx_kernel_start(void) {
     // Initialize system calls (safe to re-register)
     serial_puts("[KERNEL] Initializing syscalls...\n");
     init_system_calls();
+    splash_update(40, 0);
     
     // Initialize process management
     serial_puts("[KERNEL] Initializing process management...\n");
     init_process_management();
+    splash_update(50, 0);
     
     // Initialize runtime system
     serial_puts("[KERNEL] Initializing runtime...\n");
     init_runtime_system();
+    splash_update(55, 0);
     
     // Hardware drivers - many may already be initialized, but this should be safe
     serial_puts("[KERNEL] Initializing hardware drivers...\n");
     init_hardware_drivers();
+    splash_update(65, 0);
     
     // Storage and network - already done by boot manager, skip or make idempotent
     serial_puts("[KERNEL] Storage/Network already initialized by boot manager\n");
@@ -260,6 +267,7 @@ void nx_kernel_start(void) {
     extern int ramfs_mount_root(void);
     ramfs_init();
     int ramfs_ret = ramfs_mount_root();
+    splash_update(75, 0);
     if (ramfs_ret == 0) {
         serial_puts("[KERNEL] RAMFS mounted at /ramfs\n");
     } else {
@@ -355,6 +363,7 @@ void nx_kernel_start(void) {
         serial_puts("[KERNEL] Desktop service registered (STARTING)\n");
         
         serial_puts("[KERNEL] Loading desktop from embedded ELF data...\n");
+        splash_update(80, 0);
         
         /*
          * The embedded desktop ELF lives once, at file scope, in ramfs.c
@@ -418,6 +427,7 @@ void nx_kernel_start(void) {
             /* Mark service as RUNNING before jump */
             svc_set_state(desktop_svc_id, SVC_STATE_RUNNING);
             serial_puts("[KERNEL] Desktop service state: RUNNING\n");
+            splash_update(95, 0);
             
             /*
              * DYNAMIC MEMORY ALLOCATION:
@@ -492,6 +502,7 @@ void nx_kernel_start(void) {
              * identity-mapped 2MB pages for 0-4GB, which includes our ELF.
              * Then we activate these tables and add PAGE_USER flags.
              */
+            splash_update(100, 0);
             serial_puts("[KERNEL] Creating kernel page tables...\n");
             extern void paging_init(void);
             extern void paging_activate(void);
