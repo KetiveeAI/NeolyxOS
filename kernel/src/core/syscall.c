@@ -1150,7 +1150,7 @@ int64_t sys_fb_flip_impl(uint64_t src_ptr, uint64_t a2, uint64_t a3, uint64_t a4
 
 /* External input functions from keyboard/mouse drivers */
 extern int keyboard_get_event(uint8_t *scancode, uint8_t *ascii, uint8_t *pressed);
-extern int mouse_get_event(int16_t *dx, int16_t *dy, uint8_t *buttons);
+extern int mouse_get_event(int16_t *dx, int16_t *dy, int8_t *dz, uint8_t *buttons);
 
 int64_t sys_input_poll_impl(uint64_t events_ptr, uint64_t max_events, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a3; (void)a4; (void)a5;
@@ -1189,14 +1189,18 @@ int64_t sys_input_poll_impl(uint64_t events_ptr, uint64_t max_events, uint64_t a
     /* This is critical: Apple/Linux always emit events from hardware */
     /* Userspace decides what "movement" means, not the kernel */
     int16_t dx, dy;
+    int8_t dz;
     uint8_t buttons;
-    while (count < (int)max_events && mouse_get_event(&dx, &dy, &buttons) == 0) {
+    while (count < (int)max_events && mouse_get_event(&dx, &dy, &dz, &buttons) == 0) {
         /* Always emit mouse event - even if dx=dy=0 */
         events[count].type = INPUT_TYPE_MOUSE_MOVE;
         events[count].timestamp = (uint32_t)pit_get_ticks();
         events[count].mouse.dx = dx;
         events[count].mouse.dy = dy;
         events[count].mouse.buttons = buttons;
+        events[count].mouse.wheel = dz;
+        events[count].mouse._pad[0] = 0;
+        events[count].mouse._pad[1] = 0;
         count++;
     }
     
@@ -1340,4 +1344,4 @@ void syscall_trace(uint64_t num, uint64_t ret) {
     serial_puts(" = ");
     serial_dec(ret);
     serial_puts("\n");
-}
+}

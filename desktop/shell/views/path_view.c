@@ -451,6 +451,17 @@ void path_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ctx
     }
 }
 
+/* Scroll wheel: three rows per notch over the file list; the render pass
+ * clamps P.scroll to the listing. */
+void path_view_scroll(desktop_window_t *win, int32_t lx, int32_t ly, int32_t notches, void *ctx) {
+    (void)ctx;
+    if (!win || notches == 0) return;
+    pv_layout_t L = pv_layout(win);
+    if (!pv_in(L.list, (float)win->x + (float)lx, (float)win->y + (float)APP_VIEW_TITLE_H + (float)ly)) return;
+    P.scroll += notches * 3;
+    if (P.scroll < 0) P.scroll = 0;
+}
+
 void path_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t b, uint8_t pb, void *ctx) {
     (void)ctx;
     if (!win) return;

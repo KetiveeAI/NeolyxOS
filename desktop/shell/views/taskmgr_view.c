@@ -1395,6 +1395,20 @@ void taskmgr_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *
     }
 }
 
+/* Scroll wheel: three rows per notch through the Processes or Apps table
+ * (the selection stays put); the render pass clamps to the row count. */
+void taskmgr_view_scroll(desktop_window_t *win, int32_t lx, int32_t ly, int32_t notches, void *ctx) {
+    (void)ctx; (void)lx; (void)ly;
+    if (!win || notches == 0) return;
+    if (g_tm.tab == TAB_PROC) {
+        g_tm.scroll += notches * 3;
+        if (g_tm.scroll < 0) g_tm.scroll = 0;
+    } else if (g_tm.tab == TAB_APPS) {
+        g_tm.app_scroll += notches * 3;
+        if (g_tm.app_scroll < 0) g_tm.app_scroll = 0;
+    }
+}
+
 void taskmgr_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t b, uint8_t pb, void *ctx) {
     (void)ctx;
     if (!win) return;

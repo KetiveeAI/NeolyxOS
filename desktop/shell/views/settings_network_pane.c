@@ -1003,7 +1003,8 @@ static void network_pane_on_show(void) {
 }
 
 const settings_pane_t settings_pane_network = {
-    "network", "Network", network_pane_render, network_pane_mouse, network_pane_key, network_pane_on_show
+    "network", "Network", network_pane_render, network_pane_mouse, network_pane_key, network_pane_on_show,
+    0   /* no scrolling: the pane fits its area */
 };
 
 /* ============ Entry points for other shell modules ============ */

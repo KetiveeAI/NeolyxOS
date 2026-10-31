@@ -1709,6 +1709,8 @@ uint32_t desktop_create_window(const char *title, int32_t x, int32_t y,
     win->key_ctx = NULL;
     win->mouse_handler = NULL;
     win->mouse_ctx = NULL;
+    win->scroll_handler = NULL;
+    win->scroll_ctx = NULL;
 
     g_desktop.window_count++;
 
@@ -2027,6 +2029,21 @@ void desktop_set_window_key_handler(uint32_t window_id,
     }
 }
 
+void desktop_set_window_scroll_handler(uint32_t window_id,
+                                       void (*handler)(desktop_window_t *win,
+                                                       int32_t lx, int32_t ly,
+                                                       int32_t notches,
+                                                       void *ctx),
+                                       void *ctx) {
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (g_windows[i].id == window_id) {
+            g_windows[i].scroll_handler = handler;
+            g_windows[i].scroll_ctx = ctx;
+            break;
+        }
+    }
+}
+
 void desktop_set_window_mouse_handler(uint32_t window_id,
                                       void (*handler)(desktop_window_t *win,
                                                       int32_t lx, int32_t ly,
@@ -2141,6 +2158,39 @@ static int route_content_mouse(uint8_t buttons, uint8_t prev_buttons) {
     }
     if (w->focused) deliver_content_mouse(w, buttons, prev_buttons);   /* hover */
     return 0;
+}
+
+/* ============ Scroll wheel ============ */
+
+extern int sprefs_get_bool(const char *sec, const char *key, int def);
+
+/*
+ * Scroll goes to the window under the pointer, focused or not (as on
+ * macOS), never to a window hidden behind a shell overlay. A button drag
+ * in progress keeps it on the captured window.
+ */
+void desktop_handle_scroll(int32_t notches) {
+    if (notches == 0) return;
+    static int s_logged;
+    if (!s_logged) { s_logged = 1; serial_puts("[DESKTOP] Scroll wheel input received\n"); }
+    if (notches > 127) notches = 127;
+    if (notches < -127) notches = -127;
+
+    if (setup_assistant_active() || app_drawer_is_open() || switcher_active() ||
+        overview_active() || menubar_is_open() || anveshan_is_active() ||
+        control_center_is_visible() || notification_center_is_visible()) {
+        return;
+    }
+
+    if (sprefs_get_bool("mouse", "natural_scrolling", 0)) notches = -notches;
+
+    desktop_window_t *w = window_by_id(g_mouse_capture_id);
+    if (!w || w->minimized || !w->visible)
+        w = window_at_point(g_desktop.mouse_x, g_desktop.mouse_y);
+    if (!w || !w->scroll_handler) return;
+    if (g_desktop.mouse_y < w->y + WIN_TITLE_H) return;   /* title bar */
+    w->scroll_handler(w, g_desktop.mouse_x - w->x, g_desktop.mouse_y - (w->y + WIN_TITLE_H),
+                      notches, w->scroll_ctx);
 }
 
 /* ============ Window move / resize gestures ============ */
@@ -3053,6 +3103,7 @@ int desktop_launch_app(const char *name) {
         desktop_set_window_render(win_id, view->render, NULL);
         if (view->key) desktop_set_window_key_handler(win_id, view->key, NULL);
         if (view->mouse) desktop_set_window_mouse_handler(win_id, view->mouse, NULL);
+        if (view->scroll) desktop_set_window_scroll_handler(win_id, view->scroll, NULL);
         return 0;
     }
     for (int i = 0; g_startup_apps[i].name != NULL; i++) {
@@ -3121,6 +3172,7 @@ void desktop_run(void) {
             if (event.type == INPUT_TYPE_MOUSE_MOVE || event.type == INPUT_TYPE_MOUSE_BUTTON) {
                 /* Mouse event */
                 desktop_handle_mouse(event.mouse.dx, event.mouse.dy, event.mouse.buttons);
+                if (event.mouse.wheel != 0) desktop_handle_scroll(event.mouse.wheel);
                 mouse_moved = 1;
                 
                 /* Debug: log first 10 mouse events */

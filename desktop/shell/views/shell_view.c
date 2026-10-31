@@ -2044,6 +2044,15 @@ void shell_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ct
     if (ch) { insert_char(t, ch); t->scroll = 0; }
 }
 
+/* Scroll wheel: three rows per notch through the scrollback (wheel
+ * toward the user moves toward the live prompt). */
+void shell_view_scroll(desktop_window_t *win, int32_t lx, int32_t ly, int32_t notches, void *ctx) {
+    (void)ctx; (void)lx; (void)ly;
+    if (!win || notches == 0) return;
+    sh_tab_t *t = cur_tab();
+    if (t) scroll_by(t, -notches * 3);
+}
+
 void shell_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t b, uint8_t pb, void *ctx) {
     (void)ctx;
     if (!win) return;
