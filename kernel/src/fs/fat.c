@@ -32,11 +32,6 @@ static void *fat_memcpy(void *dst, const void *src, size_t n) {
     return dst;
 }
 
-static int fat_strcmp(const char *a, const char *b) {
-    while (*a && *a == *b) { a++; b++; }
-    return *a - *b;
-}
-
 static void fat_strcpy(char *dst, const char *src, int max) {
     int i = 0;
     while (src[i] && i < max - 1) { dst[i] = src[i]; i++; }
@@ -93,6 +88,8 @@ void fat_set_block_ops(nxfs_block_ops_t *ops) {
 
 /* ============ FAT Table Operations ============ */
 
+static int fat_set_entry(fat_mount_t *fat, uint32_t cluster, uint32_t value);
+
 uint32_t fat_get_next_cluster(fat_mount_t *fat, uint32_t cluster) {
     if (cluster < 2) return 0;
     
@@ -126,9 +123,8 @@ uint32_t fat_alloc_cluster(fat_mount_t *fat) {
         
         uint32_t entry = *(uint32_t *)(buffer + offset_in_sector) & 0x0FFFFFFF;
         if (entry == FAT32_FREE) {
-            /* Mark as end of chain */
-            *(uint32_t *)(buffer + offset_in_sector) = FAT32_EOC;
-            fat_write_sector(fat->device, fat_sector, buffer);
+            /* Mark as end of chain in every FAT copy */
+            if (fat_set_entry(fat, cluster, 0x0FFFFFFF) != 0) return 0;
             return cluster;
         }
     }
@@ -150,8 +146,7 @@ int fat_free_chain(fat_mount_t *fat, uint32_t start) {
         }
         
         uint32_t next = *(uint32_t *)(buffer + offset_in_sector) & 0x0FFFFFFF;
-        *(uint32_t *)(buffer + offset_in_sector) = FAT32_FREE;
-        fat_write_sector(fat->device, fat_sector, buffer);
+        if (fat_set_entry(fat, cluster, FAT32_FREE) != 0) return -1;
         
         if (next >= FAT32_EOC) break;
         cluster = next;
@@ -220,6 +215,235 @@ static void fat_8_3_to_name(const fat_dirent_t *entry, char *name) {
     }
 }
 
+/* ============ FAT Table Updates ============ */
+
+/*
+ * fat_set_entry - Set one FAT32 table entry in every FAT copy.
+ * Keeping all copies in step is what other FAT implementations expect;
+ * a stale second FAT is reported as corruption by disk checkers.
+ * Returns 0 on success, -1 on I/O error or unsupported geometry.
+ */
+static int fat_set_entry(fat_mount_t *fat, uint32_t cluster, uint32_t value) {
+    if (!fat || cluster < 2 || cluster >= fat->total_clusters + 2) return -1;
+    if (fat->bytes_per_sector > FAT_SECTOR_SIZE) return -1;
+    
+    uint32_t fat_offset = cluster * 4;
+    uint32_t sector_in_fat = fat_offset / fat->bytes_per_sector;
+    uint32_t off_in_sector = fat_offset % fat->bytes_per_sector;
+    uint32_t copies = fat->num_fats ? fat->num_fats : 1;
+    uint8_t buf[FAT_SECTOR_SIZE];
+    
+    for (uint32_t c = 0; c < copies; c++) {
+        uint32_t sector = fat->fat_start + c * fat->fat_sectors + sector_in_fat;
+        if (fat_read_sector(fat->device, sector, buf) != 0) return -1;
+        uint32_t old = *(uint32_t *)(buf + off_in_sector);
+        /* The top 4 bits of a FAT32 entry are reserved and must be kept */
+        *(uint32_t *)(buf + off_in_sector) = (old & 0xF0000000) | (value & 0x0FFFFFFF);
+        if (fat_write_sector(fat->device, sector, buf) != 0) return -1;
+    }
+    return 0;
+}
+
+/* Allocate a cluster, link it after @prev (0 = none) and zero it. */
+static uint32_t fat_alloc_linked(fat_mount_t *fat, uint32_t prev, uint8_t *scratch) {
+    uint32_t c = fat_alloc_cluster(fat);
+    if (c < 2) return 0;
+    if (scratch) {
+        fat_memset(scratch, 0, fat->bytes_per_cluster);
+        if (fat_write_cluster(fat, c, scratch) != 0) {
+            fat_set_entry(fat, c, FAT32_FREE);
+            return 0;
+        }
+    }
+    if (prev >= 2 && fat_set_entry(fat, prev, c) != 0) {
+        fat_set_entry(fat, c, FAT32_FREE);
+        return 0;
+    }
+    return c;
+}
+
+/* ============ Node Helpers ============ */
+
+/*
+ * A FAT node keeps its first cluster in private_data and the location of
+ * its own directory entry in inode: directory cluster in the high 32
+ * bits, entry index + 1 in the low 32 bits. 0 means the node has no
+ * directory entry (the root directory).
+ */
+static uint64_t fat_loc(uint32_t cluster, uint32_t index) {
+    return ((uint64_t)cluster << 32) | ((uint64_t)index + 1);
+}
+
+static uint32_t fat_node_cluster(fat_mount_t *fat, vfs_node_t *node) {
+    uint32_t c = (uint32_t)(uintptr_t)node->private_data;
+    if (c < 2 && node == fat->root && fat->fat_type == FAT_TYPE_FAT32) c = fat->root_cluster;
+    return c;
+}
+
+static int fat_ci_eq(const char *a, const char *b) {
+    while (*a && *b) {
+        char x = *a++, y = *b++;
+        if (x >= 'A' && x <= 'Z') x = (char)(x - 'A' + 'a');
+        if (y >= 'A' && y <= 'Z') y = (char)(y - 'A' + 'a');
+        if (x != y) return 0;
+    }
+    return *a == 0 && *b == 0;
+}
+
+static uint8_t fat_lfn_checksum(const fat_dirent_t *de) {
+    const uint8_t *p = (const uint8_t *)de;   /* name[8] + ext[3] */
+    uint8_t sum = 0;
+    for (int i = 0; i < 11; i++) sum = (uint8_t)(((sum & 1) << 7) + (sum >> 1) + p[i]);
+    return sum;
+}
+
+/* 1980-01-01 in FAT date format (day 1, month 1, year 0) */
+#define FAT_DATE_EPOCH 0x0021
+
+/* Byte offsets of the 13 UCS-2 characters inside an LFN entry */
+static const uint8_t k_lfn_off[13] = { 1, 3, 5, 7, 9, 14, 16, 18, 20, 22, 24, 28, 30 };
+
+/* Write the directory entry of @node back with its first cluster and size. */
+static int fat_update_dirent(fat_mount_t *fat, vfs_node_t *node, uint8_t *scratch) {
+    if (node->inode == 0) return VFS_OK;                 /* root has no entry */
+    if (node->size > 0xFFFFFFFFULL) return VFS_ERR_NO_SPACE;
+    uint32_t dcl = (uint32_t)(node->inode >> 32);
+    uint32_t idx = (uint32_t)(node->inode & 0xFFFFFFFF) - 1;
+    if (idx >= fat->bytes_per_cluster / sizeof(fat_dirent_t)) return VFS_ERR_INVALID;
+    if (fat_read_cluster(fat, dcl, scratch) != 0) return VFS_ERR_IO;
+    fat_dirent_t *de = &((fat_dirent_t *)scratch)[idx];
+    uint32_t first = (uint32_t)(uintptr_t)node->private_data;
+    de->first_cluster_lo = first & 0xFFFF;
+    de->first_cluster_hi = (first >> 16) & 0xFFFF;
+    if (node->type != VFS_DIRECTORY) de->file_size = (uint32_t)node->size;
+    return fat_write_cluster(fat, dcl, scratch) == 0 ? VFS_OK : VFS_ERR_IO;
+}
+
+/* ============ Directory Iteration ============ */
+
+typedef struct {
+    fat_mount_t *fat;
+    uint8_t     *buf;           /* one cluster of directory entries */
+    uint32_t     cluster;       /* cluster held in buf, 0 at end */
+    uint32_t     index;         /* next entry to examine */
+    uint32_t     per_cluster;
+    char         lfn[VFS_NAME_MAX + 1];
+    uint32_t     lfn_len;
+    uint8_t      lfn_sum;
+    uint8_t      lfn_next;      /* next expected LFN sequence, 0 = none pending */
+    uint8_t      lfn_ok;        /* a complete LFN precedes the next entry */
+} fat_dir_iter_t;
+
+typedef struct {
+    fat_dirent_t de;
+    char         name[VFS_NAME_MAX + 1];   /* long name if present */
+    char         short_name[13];           /* 8.3 name, lower case */
+    uint32_t     cluster, index;           /* location of the 8.3 entry */
+} fat_dir_item_t;
+
+static int fat_dir_iter_open(fat_dir_iter_t *it, fat_mount_t *fat, uint32_t dir_cluster) {
+    fat_memset(it, 0, sizeof(*it));
+    it->fat = fat;
+    if (dir_cluster < 2) return VFS_ERR_INVALID;      /* FAT12/16 fixed root: unsupported */
+    it->per_cluster = fat->bytes_per_cluster / sizeof(fat_dirent_t);
+    it->buf = (uint8_t *)kmalloc(fat->bytes_per_cluster);
+    if (!it->buf) return VFS_ERR_NO_MEM;
+    if (fat_read_cluster(fat, dir_cluster, it->buf) != 0) {
+        kfree(it->buf);
+        it->buf = NULL;
+        return VFS_ERR_IO;
+    }
+    it->cluster = dir_cluster;
+    return VFS_OK;
+}
+
+static void fat_dir_iter_close(fat_dir_iter_t *it) {
+    if (it->buf) kfree(it->buf);
+    it->buf = NULL;
+}
+
+static void fat_lfn_reset(fat_dir_iter_t *it) {
+    it->lfn_next = 0;
+    it->lfn_ok = 0;
+    it->lfn_len = 0;
+}
+
+/* Fold one LFN entry into the pending long name. */
+static void fat_lfn_take(fat_dir_iter_t *it, const uint8_t *raw) {
+    uint8_t ord = raw[0];
+    uint8_t seq = ord & 0x1F;
+    if (ord & 0x40) {
+        if (seq == 0 || seq > 20) { fat_lfn_reset(it); return; }
+        it->lfn_sum = raw[13];
+        it->lfn_len = (uint32_t)seq * 13;
+        if (it->lfn_len > VFS_NAME_MAX) it->lfn_len = VFS_NAME_MAX;
+        it->lfn_next = seq;
+        it->lfn_ok = 0;
+    }
+    if (it->lfn_next == 0 || seq != it->lfn_next || raw[13] != it->lfn_sum) {
+        fat_lfn_reset(it);
+        return;
+    }
+    for (int k = 0; k < 13; k++) {
+        uint32_t pos = (uint32_t)(seq - 1) * 13 + (uint32_t)k;
+        uint16_t ch = (uint16_t)(raw[k_lfn_off[k]] | (raw[k_lfn_off[k] + 1] << 8));
+        if (ch == 0x0000) { if (pos < it->lfn_len) it->lfn_len = pos; break; }
+        if (pos >= VFS_NAME_MAX) break;
+        it->lfn[pos] = (ch == 0xFFFF) ? 0 : (ch < 0x20 || ch > 0x7E) ? '?' : (char)ch;
+    }
+    it->lfn_next = (uint8_t)(seq - 1);
+    if (it->lfn_next == 0) it->lfn_ok = 1;
+}
+
+/* Returns 1 with the next entry, 0 at the end of the directory, <0 on error. */
+static int fat_dir_iter_next(fat_dir_iter_t *it, fat_dir_item_t *out) {
+    while (it->cluster >= 2) {
+        if (it->index >= it->per_cluster) {
+            uint32_t next = fat_get_next_cluster(it->fat, it->cluster);
+            if (next < 2) { it->cluster = 0; return 0; }
+            if (fat_read_cluster(it->fat, next, it->buf) != 0) return VFS_ERR_IO;
+            it->cluster = next;
+            it->index = 0;
+        }
+        uint32_t idx = it->index++;
+        fat_dirent_t *de = &((fat_dirent_t *)it->buf)[idx];
+        uint8_t first = (uint8_t)de->name[0];
+        if (first == 0x00) { it->cluster = 0; return 0; }
+        if (first == 0xE5) { fat_lfn_reset(it); continue; }
+        if (de->attr == FAT_ATTR_LFN) { fat_lfn_take(it, (const uint8_t *)de); continue; }
+        if (de->attr & FAT_ATTR_VOLUME_ID) { fat_lfn_reset(it); continue; }
+        
+        out->de = *de;
+        out->cluster = it->cluster;
+        out->index = idx;
+        fat_8_3_to_name(de, out->short_name);
+        if (it->lfn_ok && it->lfn_len > 0 && fat_lfn_checksum(de) == it->lfn_sum) {
+            fat_memcpy(out->name, it->lfn, it->lfn_len);
+            out->name[it->lfn_len] = '\0';
+        } else {
+            fat_strcpy(out->name, out->short_name, sizeof(out->name));
+        }
+        fat_lfn_reset(it);
+        return 1;
+    }
+    return 0;
+}
+
+/* Find @name (long or 8.3, case-insensitive) in a directory. */
+static int fat_dir_lookup(fat_mount_t *fat, uint32_t dir_cluster, const char *name, fat_dir_item_t *out) {
+    fat_dir_iter_t it;
+    int rc = fat_dir_iter_open(&it, fat, dir_cluster);
+    if (rc != VFS_OK) return rc;
+    while ((rc = fat_dir_iter_next(&it, out)) > 0) {
+        if (fat_ci_eq(out->name, name) || fat_ci_eq(out->short_name, name)) {
+            fat_dir_iter_close(&it);
+            return VFS_OK;
+        }
+    }
+    fat_dir_iter_close(&it);
+    return rc < 0 ? rc : VFS_ERR_NOT_FOUND;
+}
+
 /* ============ VFS Operations ============ */
 
 static int fat_vfs_open(vfs_node_t *node, uint32_t mode) {
@@ -276,278 +500,391 @@ static int64_t fat_vfs_read(vfs_node_t *node, void *buffer, uint64_t offset, uin
 
 static int64_t fat_vfs_write(vfs_node_t *node, const void *buffer, uint64_t offset, uint64_t size) {
     if (!node || !node->mount || !buffer || size == 0) return VFS_ERR_INVALID;
+    if (node->type == VFS_DIRECTORY) return VFS_ERR_IS_DIR;
     
     fat_mount_t *fat = (fat_mount_t *)node->mount->private_data;
     if (!fat) return VFS_ERR_INVALID;
+    if (fat->fat_type != FAT_TYPE_FAT32) return VFS_ERR_READ_ONLY;
+    if (offset > 0xFFFFFFFFULL || size > 0xFFFFFFFFULL - offset) return VFS_ERR_NO_SPACE;
+    
+    uint8_t *cluster_buffer = (uint8_t *)kmalloc(fat->bytes_per_cluster);
+    if (!cluster_buffer) return VFS_ERR_NO_MEM;
     
     /* Get or allocate first cluster */
     uint32_t first_cluster = (uint32_t)(uintptr_t)node->private_data;
-    
     if (first_cluster < 2) {
-        /* File has no clusters, allocate first one */
-        first_cluster = fat_alloc_cluster(fat);
+        first_cluster = fat_alloc_linked(fat, 0, cluster_buffer);
         if (first_cluster < 2) {
             serial_puts("[FAT] Write error: no free clusters\n");
+            kfree(cluster_buffer);
             return VFS_ERR_NO_SPACE;
         }
         node->private_data = (void *)(uintptr_t)first_cluster;
     }
     
-    /* Allocate cluster buffer */
-    uint8_t *cluster_buffer = (uint8_t *)kmalloc(fat->bytes_per_cluster);
-    if (!cluster_buffer) return VFS_ERR_NO_MEM;
-    
-    /* Clear cluster buffer and copy data */
-    fat_memset(cluster_buffer, 0, fat->bytes_per_cluster);
-    
     uint64_t bytes_written = 0;
     uint32_t current_cluster = first_cluster;
     uint64_t cluster_offset = offset % fat->bytes_per_cluster;
+    int64_t result = 0;
     
-    /* Skip to starting cluster */
-    uint32_t skip_clusters = offset / fat->bytes_per_cluster;
-    for (uint32_t i = 0; i < skip_clusters && current_cluster >= 2; i++) {
+    /* Skip to starting cluster, extending the chain with zeroed clusters */
+    uint32_t skip_clusters = (uint32_t)(offset / fat->bytes_per_cluster);
+    for (uint32_t i = 0; i < skip_clusters; i++) {
         uint32_t next = fat_get_next_cluster(fat, current_cluster);
-        if (next < 2) {
-            /* Allocate a new cluster */
-            next = fat_alloc_cluster(fat);
-            if (next < 2) {
-                kfree(cluster_buffer);
-                return VFS_ERR_NO_SPACE;
-            }
-            /* Link clusters */
-            uint32_t fat_offset = current_cluster * 4;
-            uint32_t fat_sector = fat->fat_start + (fat_offset / fat->bytes_per_sector);
-            uint32_t off_in_sector = fat_offset % fat->bytes_per_sector;
-            uint8_t fat_buf[512];
-            fat_read_sector(fat->device, fat_sector, fat_buf);
-            *(uint32_t *)(fat_buf + off_in_sector) = next;
-            fat_write_sector(fat->device, fat_sector, fat_buf);
-        }
+        if (next < 2) next = fat_alloc_linked(fat, current_cluster, cluster_buffer);
+        if (next < 2) { result = VFS_ERR_NO_SPACE; goto out; }
         current_cluster = next;
     }
     
-    /* Write data */
     const uint8_t *src = (const uint8_t *)buffer;
-    
-    while (bytes_written < size && current_cluster >= 2) {
-        /* Read existing cluster data for partial write */
-        if (cluster_offset > 0 || (size - bytes_written) < fat->bytes_per_cluster) {
-            fat_read_cluster(fat, current_cluster, cluster_buffer);
-        }
-        
-        /* Calculate how much to write to this cluster */
+    while (bytes_written < size) {
         uint64_t to_write = fat->bytes_per_cluster - cluster_offset;
-        if (to_write > size - bytes_written) {
-            to_write = size - bytes_written;
+        if (to_write > size - bytes_written) to_write = size - bytes_written;
+        
+        /* Partial cluster: keep the bytes around the written range */
+        if (to_write < fat->bytes_per_cluster &&
+            fat_read_cluster(fat, current_cluster, cluster_buffer) != 0) {
+            result = VFS_ERR_IO;
+            break;
         }
-        
-        /* Copy data into cluster buffer */
         fat_memcpy(cluster_buffer + cluster_offset, src + bytes_written, to_write);
-        
-        /* Write cluster to disk */
         if (fat_write_cluster(fat, current_cluster, cluster_buffer) != 0) {
             serial_puts("[FAT] Write error: cluster write failed\n");
-            kfree(cluster_buffer);
-            return VFS_ERR_IO;
+            result = VFS_ERR_IO;
+            break;
         }
-        
         bytes_written += to_write;
         cluster_offset = 0;
         
-        /* Move to next cluster */
         if (bytes_written < size) {
             uint32_t next = fat_get_next_cluster(fat, current_cluster);
-            if (next < 2) {
-                /* Allocate new cluster */
-                next = fat_alloc_cluster(fat);
-                if (next < 2) {
-                    kfree(cluster_buffer);
-                    return bytes_written; /* Return partial write */
-                }
-                /* Link */
-                uint32_t fat_offset = current_cluster * 4;
-                uint32_t fat_sector = fat->fat_start + (fat_offset / fat->bytes_per_sector);
-                uint32_t off_in_sector = fat_offset % fat->bytes_per_sector;
-                uint8_t fat_buf[512];
-                fat_read_sector(fat->device, fat_sector, fat_buf);
-                *(uint32_t *)(fat_buf + off_in_sector) = next;
-                fat_write_sector(fat->device, fat_sector, fat_buf);
-            }
+            if (next < 2) next = fat_alloc_linked(fat, current_cluster, cluster_buffer);
+            if (next < 2) { result = VFS_ERR_NO_SPACE; break; }
             current_cluster = next;
         }
     }
     
-    /* Update file size */
-    if (offset + bytes_written > node->size) {
-        node->size = offset + bytes_written;
+out:
+    if (offset + bytes_written > node->size) node->size = offset + bytes_written;
+    /* Persist first cluster and size so the data survives a remount */
+    if (fat_update_dirent(fat, node, cluster_buffer) != VFS_OK) {
+        serial_puts("[FAT] Write error: directory entry update failed\n");
+        if (result == 0) result = VFS_ERR_IO;
     }
-    
     kfree(cluster_buffer);
-    serial_puts("[FAT] Write complete\n");
-    return bytes_written;
+    if (bytes_written > 0) return (int64_t)bytes_written;   /* partial write */
+    return result;
+}
+
+/* Shrink a file to zero length. Other sizes are not supported yet. */
+static int fat_vfs_truncate(vfs_node_t *node, uint64_t size) {
+    if (!node || !node->mount) return VFS_ERR_INVALID;
+    if (node->type == VFS_DIRECTORY) return VFS_ERR_IS_DIR;
+    if (size != 0) return VFS_ERR_INVALID;
+    fat_mount_t *fat = (fat_mount_t *)node->mount->private_data;
+    if (!fat) return VFS_ERR_INVALID;
+    if (fat->fat_type != FAT_TYPE_FAT32) return VFS_ERR_READ_ONLY;
+    
+    uint8_t *scratch = (uint8_t *)kmalloc(fat->bytes_per_cluster);
+    if (!scratch) return VFS_ERR_NO_MEM;
+    uint32_t first = (uint32_t)(uintptr_t)node->private_data;
+    node->private_data = (void *)(uintptr_t)0;
+    node->size = 0;
+    /* Detach the chain from the entry first: a crash then leaks clusters
+     * instead of leaving an entry that points at freed ones. */
+    int rc = fat_update_dirent(fat, node, scratch);
+    kfree(scratch);
+    if (rc != VFS_OK) return rc;
+    if (first >= 2 && fat_free_chain(fat, first) != 0) {
+        serial_puts("[FAT] Truncate: freeing cluster chain failed (clusters leaked)\n");
+    }
+    return VFS_OK;
 }
 
 static vfs_node_t *fat_vfs_finddir(vfs_node_t *dir, const char *name);
 static int fat_vfs_readdir(vfs_node_t *dir, vfs_dirent_t *entries, uint32_t count, uint32_t *read);
 
-/* Convert filename to FAT 8.3 format */
-static void fat_name_to_8_3(const char *name, char *name8, char *ext3) {
-    int i;
-    
-    /* Initialize with spaces */
-    for (i = 0; i < 8; i++) name8[i] = ' ';
-    for (i = 0; i < 3; i++) ext3[i] = ' ';
-    
-    /* Find extension */
-    const char *dot = NULL;
-    for (const char *p = name; *p; p++) {
-        if (*p == '.') dot = p;
+/* ============ Name Handling ============ */
+
+static int fat_short_char_ok(char c) {
+    if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) return 1;
+    switch (c) {
+        case '!': case '#': case '$': case '%': case '&': case '\'': case '(': case ')':
+        case '-': case '@': case '^': case '_': case '`': case '{': case '}': case '~':
+            return 1;
     }
-    
-    /* Copy name part (up to 8 chars, uppercase) */
-    i = 0;
-    for (const char *p = name; *p && p != dot && i < 8; p++) {
-        char c = *p;
-        if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
-        if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
-            name8[i++] = c;
-        }
-    }
-    
-    /* Copy extension part (up to 3 chars, uppercase) */
-    if (dot && dot[1]) {
-        i = 0;
-        for (const char *p = dot + 1; *p && i < 3; p++) {
-            char c = *p;
-            if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
-            if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
-                ext3[i++] = c;
-            }
-        }
-    }
+    return 0;
 }
 
-/* Create file or directory in FAT filesystem */
+/*
+ * Validate a name for a new directory entry. Printable ASCII only, no
+ * path separators or characters FAT forbids, no trailing dot or space.
+ */
+static int fat_name_valid(const char *name) {
+    int len = 0;
+    for (const char *p = name; *p; p++, len++) {
+        char c = *p;
+        if (c < 0x20 || c > 0x7E) return 0;
+        if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' ||
+            c == '"' || c == '<' || c == '>' || c == '|') return 0;
+    }
+    if (len == 0 || len > VFS_NAME_MAX) return 0;
+    if (name[len - 1] == '.' || name[len - 1] == ' ') return 0;
+    if (fat_ci_eq(name, ".") || fat_ci_eq(name, "..")) return 0;
+    return 1;
+}
+
+/*
+ * If @name (upper-cased) is a valid 8.3 name, fill name8/ext3 and return 1.
+ * *exact is set when the name has no lower-case letters, so the 8.3 entry
+ * alone reproduces it and no long-name entries are needed.
+ */
+static int fat_as_short(const char *name, char *name8, char *ext3, int *exact) {
+    const char *dot = NULL;
+    int base = 0, ext = 0;
+    *exact = 1;
+    for (int i = 0; i < 8; i++) name8[i] = ' ';
+    for (int i = 0; i < 3; i++) ext3[i] = ' ';
+    for (const char *p = name; *p; p++) {
+        if (*p == '.') { if (dot) return 0; dot = p; continue; }
+        char c = *p;
+        if (c >= 'a' && c <= 'z') { c = (char)(c - 'a' + 'A'); *exact = 0; }
+        if (!fat_short_char_ok(c)) return 0;
+        if (!dot) { if (base >= 8) return 0; name8[base++] = c; }
+        else      { if (ext >= 3) return 0; ext3[ext++] = c; }
+    }
+    if (base == 0) return 0;
+    if (dot && ext == 0) return 0;
+    if ((uint8_t)name8[0] == 0xE5) name8[0] = 0x05;
+    return 1;
+}
+
+/* Does an entry with this raw 8.3 name exist in the directory? */
+static int fat_short_exists(fat_mount_t *fat, uint32_t dir_cluster, const char *name8, const char *ext3) {
+    fat_dir_iter_t it;
+    fat_dir_item_t item;
+    if (fat_dir_iter_open(&it, fat, dir_cluster) != VFS_OK) return -1;
+    int rc, found = 0;
+    while ((rc = fat_dir_iter_next(&it, &item)) > 0) {
+        int same = 1;
+        for (int i = 0; i < 8 && same; i++) if (item.de.name[i] != name8[i]) same = 0;
+        for (int i = 0; i < 3 && same; i++) if (item.de.ext[i] != ext3[i]) same = 0;
+        if (same) { found = 1; break; }
+    }
+    fat_dir_iter_close(&it);
+    return rc < 0 ? -1 : found;
+}
+
+/* Build a unique BASE~N.EXT alias for a long name. */
+static int fat_make_alias(fat_mount_t *fat, uint32_t dir_cluster, const char *name, char *name8, char *ext3) {
+    const char *dot = NULL;
+    for (const char *p = name; *p; p++) if (*p == '.') dot = p;
+    if (dot == name) dot = NULL;                        /* ".profile": no extension */
+    
+    char base[8];
+    int nb = 0;
+    for (const char *p = name; *p && p != dot && nb < 8; p++) {
+        char c = *p;
+        if (c == ' ' || c == '.') continue;
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        base[nb++] = fat_short_char_ok(c) ? c : '_';
+    }
+    if (nb == 0) base[nb++] = '_';
+    
+    for (int i = 0; i < 3; i++) ext3[i] = ' ';
+    if (dot) {
+        int ne = 0;
+        for (const char *p = dot + 1; *p && ne < 3; p++) {
+            char c = *p;
+            if (c == ' ' || c == '.') continue;
+            if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+            ext3[ne++] = fat_short_char_ok(c) ? c : '_';
+        }
+    }
+    
+    for (int n = 1; n <= 9999; n++) {
+        char tail[6];
+        int nt = 0;
+        char digits[5];
+        int nd = 0;
+        for (int v = n; v > 0; v /= 10) digits[nd++] = (char)('0' + v % 10);
+        tail[nt++] = '~';
+        while (nd > 0) tail[nt++] = digits[--nd];
+        int keep = nb < 8 - nt ? nb : 8 - nt;
+        for (int i = 0; i < 8; i++) name8[i] = ' ';
+        for (int i = 0; i < keep; i++) name8[i] = base[i];
+        for (int i = 0; i < nt; i++) name8[keep + i] = tail[i];
+        if ((uint8_t)name8[0] == 0xE5) name8[0] = 0x05;
+        int ex = fat_short_exists(fat, dir_cluster, name8, ext3);
+        if (ex < 0) return VFS_ERR_IO;
+        if (!ex) return VFS_OK;
+    }
+    return VFS_ERR_EXIST;
+}
+
+/*
+ * Find @count consecutive free entries in a directory, extending it with
+ * zeroed clusters when needed. Slot positions go to cl[]/ix[].
+ */
+static int fat_dir_find_slots(fat_mount_t *fat, uint32_t dir_cluster, uint32_t count,
+                              uint32_t *cl, uint32_t *ix, uint8_t *buf) {
+    uint32_t per = fat->bytes_per_cluster / sizeof(fat_dirent_t);
+    uint32_t run = 0;
+    uint32_t cluster = dir_cluster;
+    uint32_t guard = 0;
+    
+    while (guard++ < 65536) {
+        if (fat_read_cluster(fat, cluster, buf) != 0) return VFS_ERR_IO;
+        fat_dirent_t *de = (fat_dirent_t *)buf;
+        for (uint32_t i = 0; i < per; i++) {
+            uint8_t f = (uint8_t)de[i].name[0];
+            if (f == 0x00 || f == 0xE5) {
+                cl[run] = cluster;
+                ix[run] = i;
+                if (++run == count) return VFS_OK;
+            } else {
+                run = 0;
+            }
+        }
+        uint32_t next = fat_get_next_cluster(fat, cluster);
+        if (next < 2) {
+            next = fat_alloc_linked(fat, cluster, buf);
+            if (next < 2) return VFS_ERR_NO_SPACE;
+        }
+        cluster = next;
+    }
+    return VFS_ERR_NO_SPACE;
+}
+
+static int fat_dir_put_entry(fat_mount_t *fat, uint32_t cluster, uint32_t index,
+                             const void *entry, uint8_t *buf) {
+    if (fat_read_cluster(fat, cluster, buf) != 0) return VFS_ERR_IO;
+    fat_memcpy(buf + index * sizeof(fat_dirent_t), entry, sizeof(fat_dirent_t));
+    return fat_write_cluster(fat, cluster, buf) == 0 ? VFS_OK : VFS_ERR_IO;
+}
+
+/* Create file or directory in FAT filesystem (long names supported) */
 static int fat_vfs_create(vfs_node_t *parent, const char *name, vfs_type_t type, uint32_t mode) {
     if (!parent || !name || !parent->mount) return VFS_ERR_INVALID;
     if (parent->type != VFS_DIRECTORY) return VFS_ERR_NOT_DIR;
-    
     (void)mode; /* FAT doesn't use Unix modes */
     
     fat_mount_t *fat = (fat_mount_t *)parent->mount->private_data;
     if (!fat) return VFS_ERR_INVALID;
+    if (fat->fat_type != FAT_TYPE_FAT32) return VFS_ERR_READ_ONLY;
+    if (!fat_name_valid(name)) return VFS_ERR_INVALID;
     
-    uint32_t dir_cluster = (uint32_t)(uintptr_t)parent->private_data;
-    if (dir_cluster < 2 && fat->fat_type == FAT_TYPE_FAT32) {
-        dir_cluster = fat->root_cluster;
+    uint32_t dir_cluster = fat_node_cluster(fat, parent);
+    if (dir_cluster < 2) return VFS_ERR_INVALID;
+    
+    fat_dir_item_t existing;
+    int rc = fat_dir_lookup(fat, dir_cluster, name, &existing);
+    if (rc == VFS_OK) return VFS_ERR_EXIST;
+    if (rc != VFS_ERR_NOT_FOUND) return rc;
+    
+    /* Short entry: the name itself when it fits 8.3, else a BASE~N alias */
+    char name8[8], ext3[3];
+    int exact = 0;
+    int need_lfn = 1;
+    if (fat_as_short(name, name8, ext3, &exact)) {
+        int ex = fat_short_exists(fat, dir_cluster, name8, ext3);
+        if (ex < 0) return VFS_ERR_IO;
+        if (!ex) need_lfn = !exact;
+        else if ((rc = fat_make_alias(fat, dir_cluster, name, name8, ext3)) != VFS_OK) return rc;
+    } else if ((rc = fat_make_alias(fat, dir_cluster, name, name8, ext3)) != VFS_OK) {
+        return rc;
     }
     
-    /* Convert name to 8.3 format */
-    char name8[8], ext3[3];
-    fat_name_to_8_3(name, name8, ext3);
+    uint32_t len = 0;
+    while (name[len]) len++;
+    uint32_t nlfn = need_lfn ? (len + 12) / 13 : 0;
+    uint32_t slot_cl[21], slot_ix[21];
     
-    /* Allocate cluster buffer */
-    uint8_t *cluster_buffer = (uint8_t *)kmalloc(fat->bytes_per_cluster);
-    if (!cluster_buffer) return VFS_ERR_NO_MEM;
+    uint8_t *buf = (uint8_t *)kmalloc(fat->bytes_per_cluster);
+    if (!buf) return VFS_ERR_NO_MEM;
     
-    /* Search for empty slot in directory */
-    uint32_t current_cluster = dir_cluster;
-    int found_slot = 0;
-    uint32_t slot_cluster = 0;
-    uint32_t slot_index = 0;
+    rc = fat_dir_find_slots(fat, dir_cluster, nlfn + 1, slot_cl, slot_ix, buf);
+    if (rc != VFS_OK) { kfree(buf); return rc; }
     
-    while (current_cluster >= 2 && !found_slot) {
-        if (fat_read_cluster(fat, current_cluster, cluster_buffer) != 0) {
-            kfree(cluster_buffer);
+    fat_dirent_t entry;
+    fat_memset(&entry, 0, sizeof(entry));
+    fat_memcpy(entry.name, name8, 8);
+    fat_memcpy(entry.ext, ext3, 3);
+    /* No RTC date plumbing here yet: use the FAT epoch, 1980-01-01, which
+     * unlike an all-zero date is a valid FAT date. */
+    entry.create_date = entry.modify_date = entry.access_date = FAT_DATE_EPOCH;
+    
+    uint32_t data_cluster = 0;
+    if (type == VFS_DIRECTORY) {
+        entry.attr = FAT_ATTR_DIRECTORY;
+        data_cluster = fat_alloc_linked(fat, 0, buf);
+        if (data_cluster < 2) { kfree(buf); return VFS_ERR_NO_SPACE; }
+        /* "." and ".." entries; ".." is 0 when the parent is the root */
+        fat_dirent_t *de = (fat_dirent_t *)buf;
+        fat_memset(buf, 0, fat->bytes_per_cluster);
+        fat_memset(de[0].name, ' ', 11);
+        de[0].name[0] = '.';
+        de[0].attr = FAT_ATTR_DIRECTORY;
+        de[0].create_date = de[0].modify_date = de[0].access_date = FAT_DATE_EPOCH;
+        de[0].first_cluster_lo = data_cluster & 0xFFFF;
+        de[0].first_cluster_hi = (data_cluster >> 16) & 0xFFFF;
+        fat_memset(de[1].name, ' ', 11);
+        de[1].name[0] = '.';
+        de[1].name[1] = '.';
+        de[1].attr = FAT_ATTR_DIRECTORY;
+        de[1].create_date = de[1].modify_date = de[1].access_date = FAT_DATE_EPOCH;
+        uint32_t up = (dir_cluster == fat->root_cluster) ? 0 : dir_cluster;
+        de[1].first_cluster_lo = up & 0xFFFF;
+        de[1].first_cluster_hi = (up >> 16) & 0xFFFF;
+        if (fat_write_cluster(fat, data_cluster, buf) != 0) {
+            fat_free_chain(fat, data_cluster);
+            kfree(buf);
             return VFS_ERR_IO;
         }
-        
-        uint32_t entries_per_cluster = fat->bytes_per_cluster / sizeof(fat_dirent_t);
-        fat_dirent_t *de = (fat_dirent_t *)cluster_buffer;
-        
-        for (uint32_t i = 0; i < entries_per_cluster; i++) {
-            if (de[i].name[0] == 0x00 || de[i].name[0] == 0xE5) {
-                /* Empty or deleted entry - use it */
-                slot_cluster = current_cluster;
-                slot_index = i;
-                found_slot = 1;
-                break;
-            }
-        }
-        
-        if (!found_slot) {
-            current_cluster = fat_get_next_cluster(fat, current_cluster);
-        }
-    }
-    
-    if (!found_slot) {
-        /* Need to allocate new cluster for directory */
-        uint32_t new_cluster = fat_alloc_cluster(fat);
-        if (new_cluster < 2) {
-            kfree(cluster_buffer);
-            return VFS_ERR_NO_SPACE;
-        }
-        
-        /* Link to directory chain */
-        uint32_t fat_offset = current_cluster * 4;
-        uint32_t fat_sector_num = fat->fat_start + (fat_offset / fat->bytes_per_sector);
-        uint32_t off_in_sector = fat_offset % fat->bytes_per_sector;
-        uint8_t fat_buf[512];
-        fat_read_sector(fat->device, fat_sector_num, fat_buf);
-        *(uint32_t *)(fat_buf + off_in_sector) = new_cluster;
-        fat_write_sector(fat->device, fat_sector_num, fat_buf);
-        
-        /* Clear new cluster */
-        fat_memset(cluster_buffer, 0, fat->bytes_per_cluster);
-        fat_write_cluster(fat, new_cluster, cluster_buffer);
-        
-        slot_cluster = new_cluster;
-        slot_index = 0;
-    }
-    
-    /* Read cluster containing slot */
-    if (fat_read_cluster(fat, slot_cluster, cluster_buffer) != 0) {
-        kfree(cluster_buffer);
-        return VFS_ERR_IO;
-    }
-    
-    fat_dirent_t *de = (fat_dirent_t *)cluster_buffer;
-    fat_dirent_t *entry = &de[slot_index];
-    
-    /* Clear and fill entry */
-    fat_memset(entry, 0, sizeof(fat_dirent_t));
-    fat_memcpy(entry->name, name8, 8);
-    fat_memcpy(entry->ext, ext3, 3);
-    
-    if (type == VFS_DIRECTORY) {
-        entry->attr = FAT_ATTR_DIRECTORY;
-        /* Allocate cluster for directory contents */
-        uint32_t dir_data_cluster = fat_alloc_cluster(fat);
-        if (dir_data_cluster >= 2) {
-            entry->first_cluster_lo = dir_data_cluster & 0xFFFF;
-            entry->first_cluster_hi = (dir_data_cluster >> 16) & 0xFFFF;
-        }
+        entry.first_cluster_lo = data_cluster & 0xFFFF;
+        entry.first_cluster_hi = (data_cluster >> 16) & 0xFFFF;
     } else {
-        entry->attr = FAT_ATTR_ARCHIVE;
         /* Files start with no clusters (allocated on first write) */
-        entry->first_cluster_lo = 0;
-        entry->first_cluster_hi = 0;
+        entry.attr = FAT_ATTR_ARCHIVE;
     }
     
-    entry->file_size = 0;
+    /* Long-name entries, highest sequence first, then the 8.3 entry */
+    uint8_t sum = fat_lfn_checksum(&entry);
+    for (uint32_t k = 0; k < nlfn && rc == VFS_OK; k++) {
+        uint32_t seq = nlfn - k;
+        uint8_t raw[32];
+        fat_memset(raw, 0, sizeof(raw));
+        raw[0] = (uint8_t)(seq | (k == 0 ? 0x40 : 0));
+        raw[11] = FAT_ATTR_LFN;
+        raw[13] = sum;
+        for (int c = 0; c < 13; c++) {
+            uint32_t pos = (seq - 1) * 13 + (uint32_t)c;
+            uint16_t ch = pos < len ? (uint8_t)name[pos] : (pos == len ? 0x0000 : 0xFFFF);
+            raw[k_lfn_off[c]] = (uint8_t)(ch & 0xFF);
+            raw[k_lfn_off[c] + 1] = (uint8_t)(ch >> 8);
+        }
+        rc = fat_dir_put_entry(fat, slot_cl[k], slot_ix[k], raw, buf);
+    }
+    if (rc == VFS_OK) rc = fat_dir_put_entry(fat, slot_cl[nlfn], slot_ix[nlfn], &entry, buf);
     
-    /* Write directory cluster back */
-    if (fat_write_cluster(fat, slot_cluster, cluster_buffer) != 0) {
-        kfree(cluster_buffer);
-        return VFS_ERR_IO;
+    if (rc != VFS_OK) {
+        /* Leave nothing half-made: mark any written long-name slots deleted */
+        uint8_t del[32];
+        fat_memset(del, 0, sizeof(del));
+        del[0] = 0xE5;
+        for (uint32_t k = 0; k < nlfn; k++) fat_dir_put_entry(fat, slot_cl[k], slot_ix[k], del, buf);
+        if (data_cluster >= 2) fat_free_chain(fat, data_cluster);
+        kfree(buf);
+        serial_puts("[FAT] Create failed: ");
+        serial_puts(name);
+        serial_puts("\n");
+        return rc;
     }
     
-    kfree(cluster_buffer);
-    serial_puts("[FAT] Created file: ");
+    kfree(buf);
+    serial_puts(type == VFS_DIRECTORY ? "[FAT] Created directory: " : "[FAT] Created file: ");
     serial_puts(name);
     serial_puts("\n");
-    
     return VFS_OK;
 }
 
@@ -561,7 +898,7 @@ static vfs_operations_t fat_ops = {
     .create = fat_vfs_create,
     .unlink = NULL,
     .rename = NULL,
-    .truncate = NULL,
+    .truncate = fat_vfs_truncate,
     .stat = NULL,
     .chmod = NULL,
     .chown = NULL,
@@ -570,84 +907,55 @@ static vfs_operations_t fat_ops = {
 /* ============ Directory Operations ============ */
 
 static int fat_vfs_readdir(vfs_node_t *dir, vfs_dirent_t *entries, uint32_t count, uint32_t *read) {
-    if (!dir || dir->type != VFS_DIRECTORY) return VFS_ERR_NOT_DIR;
-    
-    fat_mount_t *fat = (fat_mount_t *)dir->mount->private_data;
-    uint32_t cluster = (uint32_t)(uintptr_t)dir->private_data;
-    
-    uint8_t *cluster_buffer = (uint8_t *)kmalloc(fat->bytes_per_cluster);
-    if (!cluster_buffer) return VFS_ERR_NO_MEM;
-    
+    if (!dir || !entries || !read) return VFS_ERR_INVALID;
+    if (dir->type != VFS_DIRECTORY) return VFS_ERR_NOT_DIR;
     *read = 0;
     
-    while (cluster >= 2 && *read < count) {
-        if (fat_read_cluster(fat, cluster, cluster_buffer) != 0) {
-            break;
-        }
-        
-        uint32_t entries_per_cluster = fat->bytes_per_cluster / sizeof(fat_dirent_t);
-        fat_dirent_t *de = (fat_dirent_t *)cluster_buffer;
-        
-        for (uint32_t i = 0; i < entries_per_cluster && *read < count; i++) {
-            if (de[i].name[0] == 0x00) {
-                /* No more entries */
-                goto done;
-            }
-            if (de[i].name[0] == 0xE5) {
-                /* Deleted entry */
-                continue;
-            }
-            if (de[i].attr == FAT_ATTR_LFN) {
-                /* Skip long filename entries for now */
-                continue;
-            }
-            if (de[i].attr & FAT_ATTR_VOLUME_ID) {
-                continue;
-            }
-            
-            /* Valid entry */
-            fat_8_3_to_name(&de[i], entries[*read].name);
-            entries[*read].type = (de[i].attr & FAT_ATTR_DIRECTORY) ? VFS_DIRECTORY : VFS_FILE;
-            entries[*read].inode = ((uint32_t)de[i].first_cluster_hi << 16) | de[i].first_cluster_lo;
-            entries[*read].size = de[i].file_size;
-            (*read)++;
-        }
-        
-        cluster = fat_get_next_cluster(fat, cluster);
-    }
+    fat_mount_t *fat = (fat_mount_t *)dir->mount->private_data;
+    if (!fat) return VFS_ERR_INVALID;
     
-done:
-    kfree(cluster_buffer);
-    return VFS_OK;
+    fat_dir_iter_t it;
+    fat_dir_item_t item;
+    int rc = fat_dir_iter_open(&it, fat, fat_node_cluster(fat, dir));
+    if (rc != VFS_OK) return rc;
+    
+    while (*read < count && (rc = fat_dir_iter_next(&it, &item)) > 0) {
+        vfs_dirent_t *e = &entries[*read];
+        fat_strcpy(e->name, item.name, sizeof(e->name));
+        e->type = (item.de.attr & FAT_ATTR_DIRECTORY) ? VFS_DIRECTORY : VFS_FILE;
+        e->inode = ((uint32_t)item.de.first_cluster_hi << 16) | item.de.first_cluster_lo;
+        e->size = item.de.file_size;
+        (*read)++;
+    }
+    fat_dir_iter_close(&it);
+    return rc < 0 ? rc : VFS_OK;
 }
 
 static vfs_node_t *fat_vfs_finddir(vfs_node_t *dir, const char *name) {
-    vfs_dirent_t entries[32];
-    uint32_t read = 0;
+    if (!dir || !name || !dir->mount || dir->type != VFS_DIRECTORY) return NULL;
+    fat_mount_t *fat = (fat_mount_t *)dir->mount->private_data;
+    if (!fat) return NULL;
     
-    if (fat_vfs_readdir(dir, entries, 32, &read) != VFS_OK) {
-        return NULL;
+    fat_dir_item_t item;
+    if (fat_dir_lookup(fat, fat_node_cluster(fat, dir), name, &item) != VFS_OK) return NULL;
+    
+    vfs_node_t *node = (vfs_node_t *)kzalloc(sizeof(vfs_node_t));
+    if (!node) return NULL;
+    
+    uint32_t first = ((uint32_t)item.de.first_cluster_hi << 16) | item.de.first_cluster_lo;
+    fat_strcpy(node->name, item.name, VFS_NAME_MAX);
+    node->type = (item.de.attr & FAT_ATTR_DIRECTORY) ? VFS_DIRECTORY : VFS_FILE;
+    node->size = item.de.file_size;
+    node->inode = fat_loc(item.cluster, item.index);    /* where the entry lives */
+    node->mount = dir->mount;
+    node->parent = dir;
+    node->ops = &fat_ops;
+    node->private_data = (void *)(uintptr_t)first;      /* first cluster */
+    /* ".." of a top-level directory is stored as cluster 0 */
+    if (node->type == VFS_DIRECTORY && first < 2 && fat->fat_type == FAT_TYPE_FAT32) {
+        node->private_data = (void *)(uintptr_t)fat->root_cluster;
     }
-    
-    for (uint32_t i = 0; i < read; i++) {
-        if (fat_strcmp(entries[i].name, name) == 0) {
-            vfs_node_t *node = (vfs_node_t *)kzalloc(sizeof(vfs_node_t));
-            if (!node) return NULL;
-            
-            fat_strcpy(node->name, name, VFS_NAME_MAX);
-            node->type = entries[i].type;
-            node->size = entries[i].size;
-            node->inode = entries[i].inode;
-            node->mount = dir->mount;
-            node->parent = dir;
-            node->ops = &fat_ops;
-            node->private_data = (void *)(uintptr_t)entries[i].inode;  /* First cluster */
-            
-            return node;
-        }
-    }
-    
-    return NULL;
+    return node;
 }
 
 /* ============ FAT Mount ============ */
@@ -708,6 +1016,7 @@ int fat_mount(vfs_mount_t *mount) {
     fat->bytes_per_sector = bpb->bpb.bytes_per_sector;
     fat->sectors_per_cluster = bpb->bpb.sectors_per_cluster;
     fat->bytes_per_cluster = fat->bytes_per_sector * fat->sectors_per_cluster;
+    fat->num_fats = bpb->bpb.num_fats;
     
     /* Calculate FAT locations */
     fat->fat_start = bpb->bpb.reserved_sectors;

@@ -540,6 +540,10 @@ int setup_store_write_marker(const setup_model_t *m) {
         return SETUP_ERR_IO;
     }
 
+    /* The marker's folders may not exist on a fresh disk. mkdir fails
+     * harmlessly when they do; a real failure shows up at the open below. */
+    (void)nx_mkdir("/System");
+    (void)nx_mkdir("/System/Config");
     int fd = nx_open(SETUP_MARKER_PATH, O_WRONLY | O_CREAT | O_TRUNC);
     if (fd < 0) {
         setup_log("[SETUP] ERROR: cannot create " SETUP_MARKER_PATH "\n");
