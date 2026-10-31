@@ -1344,4 +1344,4 @@ void syscall_trace(uint64_t num, uint64_t ret) {
     serial_puts(" = ");
     serial_dec(ret);
     serial_puts("\n");
-}
+}
