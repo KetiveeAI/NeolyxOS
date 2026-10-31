@@ -2,21 +2,32 @@
  * NeolyxOS - NXCanvas text
  *
  * UTF-8 decoding, line layout (advances, kerning, tracking, alignment,
- * ellipsis truncation), a glyph coverage cache and text drawing.
+ * ellipsis truncation, per-code-point font fallback), a glyph coverage
+ * cache and text drawing.
  *
  * Glyph cache
- *   Lives in the engine's glyph pool. The pool holds a hash table of
+ *   Lives in the engine's glyph pool: an open-addressed hash table of
  *   entries followed by a ring arena of 8-bit coverage bitmaps. Bitmaps
- *   are rendered once per (font, size/8 px, glyph, x phase/4 px) and
- *   evicted when the ring wraps over them; the table is open addressed
- *   with a short probe window so lookups stay O(1). Glyphs too large for
- *   the ring (big display text) are rasterized straight to the canvas.
+ *   are rendered once per (font, size in 1/8 px, glyph, x phase) and are
+ *   implicitly evicted when the ring wraps over them: every entry records
+ *   the monotonic ring position it was written at, so validity is one
+ *   subtraction at lookup time and allocation never scans the table.
+ *   Glyphs too large for the cache (display text) are rasterized straight
+ *   to the canvas.
  *
- * Crispness
- *   Baselines are snapped to whole pixels and glyph x positions keep a
- *   quarter-pixel phase, so UI text is sharp while spacing stays even.
- *   A gentle contrast curve on coverage keeps light text on dark
- *   backgrounds from looking thin and dark text on light from bolding.
+ * Quality (nxc_text_quality_t)
+ *   - Baselines snap to whole pixels; glyph x positions keep a subpixel
+ *     phase (1/4 px by default) so spacing stays even and kerning shows.
+ *   - Vertical hinting: at UI sizes the outline is stretched vertically
+ *     by at most a few percent so the x-height ends on a pixel boundary.
+ *     Combined with the snapped baseline, the tops and bottoms of
+ *     lowercase letters become crisp instead of straddling two rows.
+ *     Advances are unchanged, so layout widths do not depend on it.
+ *   - Coverage correction: blending happens in gamma-encoded space, which
+ *     makes light-on-dark text look thin and dark-on-light text heavy.
+ *     A per-polarity exponent compensates, stronger at small sizes where
+ *     stems are one or two pixels wide, plus an optional edge contrast
+ *     boost at small sizes.
  *
  * Copyright (c) 2025 KetiveeAI
  */
@@ -27,7 +38,7 @@
 
 #define NXT_MAX_BYTES        8192u    /* longest string accepted */
 #define NXT_MAX_GLYPHS       1024u    /* glyphs laid out per call */
-#define NXT_PHASES           4u       /* horizontal subpixel positions */
+#define NXT_MAX_PHASES       4u       /* horizontal subpixel positions */
 #define NXT_SIZE_Q           8.0f     /* size quantization (1/8 px) */
 #define NXT_MIN_PX           1.0f
 #define NXT_MAX_PX           NXC_FONT_MAX_PX
@@ -36,6 +47,8 @@
 #define NXT_PATH_PTS         16384u   /* outline scratch path capacity */
 #define NXT_PATH_VERBS       8192u
 #define NXT_ENTRY_BYTES      sizeof(nxt_entry_t)
+#define NXT_SIZE_CLASSES     4u       /* coverage curve buckets by px size */
+#define NXT_HINT_MAX_STRETCH 0.10f    /* largest relative x-height change */
 
 #define NXT_REPLACEMENT      0xFFFDu
 #define NXT_ELLIPSIS         0x2026u
@@ -46,31 +59,65 @@ typedef struct {
     uint32_t font_id;      /* 0 = empty slot */
     uint32_t glyph;
     uint16_t size_q;       /* px * 8 */
-    uint8_t  phase;        /* 0..3 */
+    uint8_t  phase;        /* 0 .. phases-1 */
     uint8_t  empty;        /* 1: glyph has no ink (w == h == 0) */
     int16_t  bx, by;       /* bitmap origin relative to pen (phase removed) */
     uint16_t w, h;
     uint32_t off;          /* arena offset of the bitmap */
-    uint32_t stamp;        /* allocation stamp, for ring validity */
+    uint32_t stamp;        /* allocation stamp (replacement order) */
+    uint64_t pos;          /* monotonic ring position of the bitmap */
 } nxt_entry_t;
 
 typedef struct {
     uint32_t     generation;
+    uint32_t     quality_gen;  /* g_quality_gen the cache was built for */
     nxt_entry_t *entries;
     uint32_t     nentries;     /* power of two */
     uint8_t     *arena;
     uint32_t     arena_bytes;
-    uint32_t     head;         /* next free arena byte */
+    uint64_t     head;         /* monotonic ring position of the next byte */
     uint32_t     stamp;        /* increments per allocation */
-    uint32_t     hits, misses, evictions;
+    nxc_text_stats_t stats;
     nxc_path_t   path;         /* outline scratch (allocated once) */
     int          path_ready;
-    uint8_t      lut_light[256];   /* coverage curve for light text */
-    uint8_t      lut_dark[256];    /* coverage curve for dark text */
-    int          lut_ready;
+    uint8_t      lut[2][NXT_SIZE_CLASSES][256];   /* [dark text][size class] */
 } nxt_cache_t;
 
 static nxt_cache_t g_text;
+
+/* ============ Quality settings ============ */
+
+static const nxc_text_quality_t k_default_quality = { 1, 24.0f, 4, 0.5f, 1 };
+static nxc_text_quality_t g_quality = { 1, 24.0f, 4, 0.5f, 1 };
+static uint32_t g_quality_gen = 1;     /* bumped by every accepted change */
+
+static int quality_valid(const nxc_text_quality_t *q) {
+    return (q->vertical_hinting == 0 || q->vertical_hinting == 1) &&
+           nxc__finitef(q->hint_max_px) && q->hint_max_px >= 8.0f && q->hint_max_px <= 64.0f &&
+           (q->subpixel_phases == 1 || q->subpixel_phases == 2 || q->subpixel_phases == 4) &&
+           nxc__finitef(q->contrast) && q->contrast >= 0.0f && q->contrast <= 1.0f &&
+           (q->gamma == 0 || q->gamma == 1);
+}
+
+nxc_status_t nxc_text_set_quality(const nxc_text_quality_t *q) {
+    if (!q) q = &k_default_quality;
+    if (!quality_valid(q)) return nxc__fail(NXC_ERR_INVALID_ARG, "nxc_text_set_quality");
+    g_quality = *q;
+    g_quality_gen++;
+    if (g_quality_gen == 0) g_quality_gen = 1;
+    return NXC_OK;
+}
+
+void nxc_text_get_quality(nxc_text_quality_t *out) {
+    if (out) *out = g_quality;
+}
+
+void nxc_text_stats(nxc_text_stats_t *out) {
+    if (!out) return;
+    *out = g_text.stats;
+    out->capacity = g_text.entries ? g_text.nentries : 0u;
+    out->arena_bytes = g_text.entries ? g_text.arena_bytes : 0u;
+}
 
 /* ============ UTF-8 ============ */
 
@@ -109,29 +156,56 @@ static uint32_t text_len(const char *utf8, int32_t len) {
     return n;
 }
 
-/* ============ Cache management ============ */
+/* ============ Coverage curves ============ */
 
-static void lut_build(void) {
-    /* Light text: cov' = cov^0.82 (fuller stems); dark text: cov^1.18. */
-    for (uint32_t i = 0; i < 256; i++) {
-        float c = (float)i / 255.0f;
-        float l = nxc__powf(c, 0.82f) * 255.0f + 0.5f;
-        float d = nxc__powf(c, 1.18f) * 255.0f + 0.5f;
-        g_text.lut_light[i] = (uint8_t)(l > 255.0f ? 255.0f : l);
-        g_text.lut_dark[i] = (uint8_t)(d > 255.0f ? 255.0f : d);
-    }
-    g_text.lut_light[0] = 0;
-    g_text.lut_dark[0] = 0;
-    g_text.lut_light[255] = 255;
-    g_text.lut_dark[255] = 255;
-    g_text.lut_ready = 1;
+/* Size bucket of a px size: <= 12, <= 16, <= 22, larger. */
+static uint32_t size_class(float px) {
+    if (px <= 12.5f) return 0;
+    if (px <= 16.5f) return 1;
+    if (px <= 22.5f) return 2;
+    return 3;
 }
 
-/* (Re)build the cache layout over the pool when the engine was re-inited. */
+/*
+ * Build the coverage curves for the current quality settings.
+ *   light text: cov^e with e < 1 (fuller stems on dark backgrounds)
+ *   dark text:  cov^e with e > 1 (no smeared bolding on light ones)
+ * Small sizes get the stronger correction and, with contrast > 0, a
+ * smoothstep blend that sharpens anti-aliased edges.
+ */
+static void lut_build(void) {
+    static const float e_light[NXT_SIZE_CLASSES] = { 0.74f, 0.78f, 0.84f, 0.90f };
+    static const float e_dark[NXT_SIZE_CLASSES]  = { 1.06f, 1.10f, 1.15f, 1.20f };
+    static const float k_size[NXT_SIZE_CLASSES]  = { 0.60f, 0.45f, 0.25f, 0.0f };
+    for (uint32_t pol = 0; pol < 2; pol++) {
+        for (uint32_t sc = 0; sc < NXT_SIZE_CLASSES; sc++) {
+            float e = g_quality.gamma ? (pol ? e_dark[sc] : e_light[sc]) : 1.0f;
+            float k = g_quality.contrast * k_size[sc];
+            uint8_t *lut = g_text.lut[pol][sc];
+            for (uint32_t i = 0; i < 256; i++) {
+                float c = (float)i / 255.0f;
+                float v = (e == 1.0f) ? c : nxc__powf(c, e);
+                float ss = v * v * (3.0f - 2.0f * v);
+                v = v + k * (ss - v);
+                float b = v * 255.0f + 0.5f;
+                lut[i] = (uint8_t)(b < 0.0f ? 0.0f : (b > 255.0f ? 255.0f : b));
+            }
+            lut[0] = 0;
+            lut[255] = 255;
+        }
+    }
+}
+
+/* ============ Cache management ============ */
+
+/* (Re)build the cache layout over the pool when the engine was re-inited
+ * or the quality settings changed. */
 static int cache_ready(void) {
     if (!nxc__ready()) return 0;
-    if (!g_text.lut_ready) lut_build();
-    if (g_text.generation == nxc__generation() && g_text.entries) return 1;
+    if (g_text.generation == nxc__generation() && g_text.entries &&
+        g_text.quality_gen == g_quality_gen) {
+        return 1;
+    }
     uint32_t bytes = 0;
     uint8_t *pool = (uint8_t *)nxc__glyph_pool(&bytes);
     if (!pool || bytes < 64u * 1024u) {
@@ -145,17 +219,24 @@ static int cache_ready(void) {
     while (n * 2u <= want) n *= 2u;
     if (n < 64u) n = 64u;
     uint32_t table_bytes = (n * (uint32_t)NXT_ENTRY_BYTES + 15u) & ~15u;
+    if (table_bytes >= bytes) {
+        (void)nxc__fail(NXC_ERR_NO_MEMORY, "nxc_text cache");
+        return 0;
+    }
+    int engine_changed = g_text.generation != nxc__generation();
     g_text.entries = (nxt_entry_t *)pool;
     g_text.nentries = n;
     nxc__zero(g_text.entries, table_bytes);
     g_text.arena = pool + table_bytes;
-    g_text.arena_bytes = bytes - table_bytes;
+    g_text.arena_bytes = (bytes - table_bytes) & ~15u;
     g_text.head = 0;
     g_text.stamp = 1;
-    g_text.hits = g_text.misses = g_text.evictions = 0;
+    nxc__zero(&g_text.stats, sizeof(g_text.stats));
     g_text.generation = nxc__generation();
-    /* The scratch path is tied to the engine's allocator lifetime too. */
-    g_text.path_ready = 0;
+    g_text.quality_gen = g_quality_gen;
+    lut_build();
+    /* The scratch path is tied to the engine's allocator lifetime. */
+    if (engine_changed) g_text.path_ready = 0;
     return 1;
 }
 
@@ -176,49 +257,50 @@ static inline uint32_t key_hash(uint32_t font_id, uint32_t glyph, uint32_t size_
     return h;
 }
 
+/* 1 while the entry's bitmap has not been overwritten by the ring. */
+static inline int entry_live(const nxt_entry_t *e) {
+    return e->empty || g_text.head - e->pos <= (uint64_t)g_text.arena_bytes;
+}
+
 static nxt_entry_t *cache_find(uint32_t font_id, uint32_t glyph, uint32_t size_q, uint32_t phase) {
     uint32_t mask = g_text.nentries - 1u;
     uint32_t h = key_hash(font_id, glyph, size_q, phase);
     for (uint32_t k = 0; k < NXT_PROBES; k++) {
         nxt_entry_t *e = &g_text.entries[(h + k) & mask];
-        if (e->font_id == 0) return 0;
         if (e->font_id == font_id && e->glyph == glyph && e->size_q == size_q && e->phase == phase) {
-            return e;
+            if (entry_live(e)) return e;
+            e->font_id = 0;          /* overwritten: free the slot */
+            g_text.stats.evictions++;
+            return 0;
         }
     }
     return 0;
 }
 
-/* Allocate `bytes` in the ring, evicting entries that overlap the range. */
-static uint32_t arena_alloc(uint32_t bytes) {
+/* Allocate `bytes` in the ring. Never fails for bytes <= arena size. */
+static uint32_t arena_alloc(uint32_t bytes, uint64_t *pos_out) {
     bytes = (bytes + 15u) & ~15u;
     if (bytes == 0) bytes = 16;
     if (bytes > g_text.arena_bytes) return 0xFFFFFFFFu;
-    if (g_text.head + bytes > g_text.arena_bytes) g_text.head = 0;
-    uint32_t start = g_text.head, end = start + bytes;
-    for (uint32_t i = 0; i < g_text.nentries; i++) {
-        nxt_entry_t *e = &g_text.entries[i];
-        if (e->font_id == 0 || e->empty) continue;
-        uint32_t s = e->off, t = e->off + (uint32_t)e->w * e->h;
-        if (s < end && t > start) {
-            e->font_id = 0;
-            g_text.evictions++;
-        }
+    uint32_t phys = (uint32_t)(g_text.head % g_text.arena_bytes);
+    if (phys + bytes > g_text.arena_bytes) {        /* skip the tail, wrap */
+        g_text.head += g_text.arena_bytes - phys;
+        phys = 0;
     }
-    g_text.head = end;
-    return start;
+    *pos_out = g_text.head;
+    g_text.head += bytes;
+    return phys;
 }
 
-/* Pick the slot for a new key: an empty one in the probe window, else the
- * oldest in the window. Rebuilding tombstones is unnecessary because
- * eviction only ever clears slots. */
+/* Pick the slot for a new key: an empty or overwritten one in the probe
+ * window, else the oldest in the window. */
 static nxt_entry_t *cache_slot(uint32_t font_id, uint32_t glyph, uint32_t size_q, uint32_t phase) {
     uint32_t mask = g_text.nentries - 1u;
     uint32_t h = key_hash(font_id, glyph, size_q, phase);
     nxt_entry_t *oldest = 0;
     for (uint32_t k = 0; k < NXT_PROBES; k++) {
         nxt_entry_t *e = &g_text.entries[(h + k) & mask];
-        if (e->font_id == 0) return e;
+        if (e->font_id == 0 || !entry_live(e)) return e;
         if (!oldest || (int32_t)(e->stamp - oldest->stamp) < 0) oldest = e;
     }
     return oldest;
@@ -248,12 +330,12 @@ typedef struct {
     const uint8_t *lut;
 } canvas_sink_t;
 
-/* Direct-to-canvas sink for uncached glyphs, with the contrast curve. */
+/* Direct-to-canvas sink for uncached glyphs, with the coverage curve. */
 static void canvas_sink(void *ctx, int32_t y, int32_t x0, const uint8_t *cov, int32_t n) {
     canvas_sink_t *cs = (canvas_sink_t *)ctx;
     uint64_t cap = 0;
     uint8_t *tmp = (uint8_t *)nxc__scratch(NXC_SCRATCH_COLOR, &cap);   /* raster owns COV */
-    if (!tmp) return;
+    if (!tmp || cap == 0) return;
     while (n > 0) {
         int32_t len = (int32_t)(cap < (uint64_t)n ? cap : (uint64_t)n);
         for (int32_t i = 0; i < len; i++) tmp[i] = cs->lut[cov[i]];
@@ -262,41 +344,56 @@ static void canvas_sink(void *ctx, int32_t y, int32_t x0, const uint8_t *cov, in
     }
 }
 
+/*
+ * Vertical scale for a font at px: the plain scale, or with hinting at
+ * UI sizes, the scale that puts the x-height on a whole pixel (rounded to
+ * nearest, limited to NXT_HINT_MAX_STRETCH).
+ */
+static float vertical_scale(const nxc_font_t *f, float px) {
+    float scale = px / nxc__font_units_per_em(f);
+    if (!g_quality.vertical_hinting || px > g_quality.hint_max_px || f->x_height <= 0) return scale;
+    float xh = (float)f->x_height * scale;
+    if (xh < 3.0f) return scale;                 /* too small to matter */
+    float target = nxc__floorf(xh + 0.5f);
+    float k = target / xh;
+    if (k < 1.0f - NXT_HINT_MAX_STRETCH || k > 1.0f + NXT_HINT_MAX_STRETCH) return scale;
+    return scale * k;
+}
+
 /* Build the outline of `glyph` at px size with the pen at (x, y). */
 static nxc_status_t glyph_outline(const nxc_font_t *f, uint32_t glyph, float px, float x, float y) {
     if (!path_ready()) return NXC_ERR_NO_MEMORY;
     nxc_path_reset(&g_text.path);
-    float scale = px / nxc__font_units_per_em(f);
-    nxc_status_t st = nxc__font_glyph_outline(f, glyph, &g_text.path, scale, x, y);
+    float sx = px / nxc__font_units_per_em(f);
+    float sy = vertical_scale(f, px);
+    nxc_status_t st = nxc__font_glyph_outline_xy(f, glyph, &g_text.path, sx, sy, x, y);
     if (st == NXC_ERR_UNSUPPORTED) st = NXC_OK;    /* partial composite: draw what we have */
     return st;
 }
 
 /* Render a glyph into the cache; returns the entry or NULL (not cacheable). */
 static nxt_entry_t *cache_render(const nxc_font_t *f, uint32_t glyph, float px, uint32_t size_q,
-                                 uint32_t phase) {
+                                 uint32_t phase, uint32_t phases) {
     uint32_t font_id = nxc__font_id(f);
-    float fx = (float)phase / (float)NXT_PHASES;
+    float fx = (float)phase / (float)phases;
     if (glyph_outline(f, glyph, px, fx, 0.0f) != NXC_OK) return 0;
     nxc_rect_t b;
     if (nxc_path_bounds(&g_text.path, &b) != NXC_OK) return 0;
-    nxt_entry_t *e = cache_slot(font_id, glyph, size_q, phase);
-    if (!e) return 0;
     if (g_text.path.nverbs == 0 || b.w <= 0.0f || b.h <= 0.0f) {
+        nxt_entry_t *e = cache_slot(font_id, glyph, size_q, phase);
+        if (!e) return 0;
         e->font_id = font_id; e->glyph = glyph; e->size_q = (uint16_t)size_q;
         e->phase = (uint8_t)phase; e->empty = 1; e->bx = e->by = 0; e->w = e->h = 0;
-        e->off = 0; e->stamp = g_text.stamp++;
+        e->off = 0; e->pos = g_text.head; e->stamp = g_text.stamp++;
         return e;
     }
     int32_t x0 = (int32_t)nxc__floorf(b.x) - 1, y0 = (int32_t)nxc__floorf(b.y) - 1;
     int32_t x1 = (int32_t)nxc__ceilf(b.x + b.w) + 1, y1 = (int32_t)nxc__ceilf(b.y + b.h) + 1;
     int32_t w = x1 - x0, h = y1 - y0;
     if (w <= 0 || h <= 0 || w > NXT_MAX_CACHED_DIM || h > NXT_MAX_CACHED_DIM) return 0;
-    uint32_t off = arena_alloc((uint32_t)w * (uint32_t)h);
+    uint64_t pos = 0;
+    uint32_t off = arena_alloc((uint32_t)w * (uint32_t)h, &pos);
     if (off == 0xFFFFFFFFu) return 0;
-    /* The slot may have just been evicted by arena_alloc; re-pick it. */
-    e = cache_slot(font_id, glyph, size_q, phase);
-    if (!e) return 0;
     mask_sink_t ms;
     ms.mask = g_text.arena + off;
     ms.w = w; ms.h = h;
@@ -304,20 +401,23 @@ static nxt_entry_t *cache_render(const nxc_font_t *f, uint32_t glyph, float px, 
     nxc_status_t st = nxc__raster_path(&g_text.path, 1.0f, (float)-x0, (float)-y0, NXC_FILL_NONZERO,
                                        nxc_irect(0, 0, w, h), mask_sink, &ms);
     if (st != NXC_OK) return 0;
+    nxt_entry_t *e = cache_slot(font_id, glyph, size_q, phase);
+    if (!e) return 0;
     e->font_id = font_id; e->glyph = glyph; e->size_q = (uint16_t)size_q;
     e->phase = (uint8_t)phase; e->empty = 0;
     e->bx = (int16_t)x0; e->by = (int16_t)y0;
     e->w = (uint16_t)w; e->h = (uint16_t)h;
-    e->off = off; e->stamp = g_text.stamp++;
-    g_text.misses++;
+    e->off = off; e->pos = pos; e->stamp = g_text.stamp++;
+    g_text.stats.misses++;
     return e;
 }
 
 /* ============ Layout ============ */
 
 typedef struct {
-    uint32_t glyph;
-    float    x;          /* pen x relative to the line start */
+    const nxc_font_t *font;   /* primary font or one of its fallbacks */
+    uint32_t          glyph;
+    float             x;      /* pen x relative to the line start */
 } nxt_pos_t;
 
 typedef struct {
@@ -334,70 +434,101 @@ static int opts_valid(const nxc_text_opts_t *o) {
            (o->align == NXC_ALIGN_LEFT || o->align == NXC_ALIGN_CENTER || o->align == NXC_ALIGN_RIGHT);
 }
 
-/* Lay out up to NXT_MAX_GLYPHS glyphs. Width excludes trailing tracking. */
+/* Resolve a code point to (font, glyph): the primary font, else the first
+ * fallback that maps it, else the primary's .notdef. */
+static uint32_t resolve_glyph(const nxc_font_t *f, uint32_t cp, const nxc_font_t **used) {
+    uint32_t g = nxc__font_glyph_index(f, cp);
+    *used = f;
+    if (g != 0 || cp < 0x20u || f->nfallback == 0) return g;
+    for (uint32_t i = 0; i < f->nfallback; i++) {
+        const nxc_font_t *fb = nxc__font_fallback(f, i);
+        if (!fb) continue;
+        uint32_t g2 = nxc__font_glyph_index(fb, cp);
+        if (g2 != 0) {
+            *used = fb;
+            g_text.stats.fallbacks++;
+            return g2;
+        }
+    }
+    return 0;
+}
+
+static inline float font_scale(const nxc_font_t *f, float px) {
+    return px / nxc__font_units_per_em(f);
+}
+
+/* Lay out up to NXT_MAX_GLYPHS glyphs. Width excludes trailing tracking.
+ * Kerning applies only between adjacent glyphs of the same face. */
 static void layout(const nxc_font_t *f, float px, const uint8_t *s, uint32_t n,
                    const nxc_text_opts_t *o, nxt_line_t *ln) {
-    float scale = px / nxc__font_units_per_em(f);
     float tracking = o ? o->letter_spacing : 0.0f;
-    int kern = !(o && o->no_kerning) && nxc__font_has_kerning(f);
+    int kern_on = !(o && o->no_kerning);
     uint32_t i = 0, prev = 0;
+    const nxc_font_t *prev_font = 0;
     float pen = 0.0f;
     ln->count = 0;
     ln->truncated = 0;
     while (i < n && ln->count < NXT_MAX_GLYPHS) {
         uint32_t cp = utf8_next(s, n, &i);
-        if (cp == '\n' || cp == '\r') cp = ' ';
-        uint32_t g = nxc__font_glyph_index(f, cp);
+        if (cp == '\n' || cp == '\r' || cp == '\t') cp = ' ';
+        const nxc_font_t *gf = f;
+        uint32_t g = resolve_glyph(f, cp, &gf);
+        float sc = font_scale(gf, px);
         if (ln->count > 0) {
-            if (kern) pen += (float)nxc__font_kerning(f, prev, g) * scale;
+            if (kern_on && gf == prev_font && nxc__font_has_kerning(gf))
+                pen += (float)nxc__font_kerning(gf, prev, g) * sc;
             pen += tracking;
         }
+        ln->pos[ln->count].font = gf;
         ln->pos[ln->count].glyph = g;
         ln->pos[ln->count].x = pen;
         ln->count++;
-        pen += (float)nxc__font_advance(f, g) * scale;
+        pen += (float)nxc__font_advance(gf, g) * sc;
         prev = g;
+        prev_font = gf;
     }
     if (i < n) ln->truncated = 1;
     ln->width = pen;
+}
+
+static inline float pos_end(const nxt_pos_t *p, float px) {
+    return p->x + (float)nxc__font_advance(p->font, p->glyph) * font_scale(p->font, px);
 }
 
 /* Truncate to max_width with an ellipsis (U+2026 or "..."). */
 static void truncate_line(const nxc_font_t *f, float px, const nxc_text_opts_t *o, nxt_line_t *ln) {
     float maxw = o->max_width;
     if (ln->width <= maxw && !ln->truncated) return;
-    float scale = px / nxc__font_units_per_em(f);
     float tracking = o->letter_spacing;
-    uint32_t ell = nxc__font_glyph_index(f, NXT_ELLIPSIS);
+    const nxc_font_t *ef = f;
+    uint32_t ell = resolve_glyph(f, NXT_ELLIPSIS, &ef);
     uint32_t dots[3];
     uint32_t ndots;
     float ellw;
     if (ell != 0) {
         dots[0] = ell; ndots = 1;
-        ellw = (float)nxc__font_advance(f, ell) * scale;
+        ellw = (float)nxc__font_advance(ef, ell) * font_scale(ef, px);
     } else {
+        ef = f;
         uint32_t dot = nxc__font_glyph_index(f, '.');
         dots[0] = dots[1] = dots[2] = dot; ndots = 3;
-        ellw = 3.0f * (float)nxc__font_advance(f, dot) * scale + 2.0f * tracking;
+        ellw = 3.0f * (float)nxc__font_advance(f, dot) * font_scale(f, px) + 2.0f * tracking;
     }
     /* Longest prefix whose width plus the ellipsis fits. */
     uint32_t keep = ln->count;
     while (keep > 0) {
-        float w = ln->pos[keep - 1].x + (float)nxc__font_advance(f, ln->pos[keep - 1].glyph) * scale;
-        if (w + tracking + ellw <= maxw) break;
+        if (pos_end(&ln->pos[keep - 1], px) + tracking + ellw <= maxw) break;
         keep--;
     }
-    float pen = 0.0f;
-    if (keep > 0) {
-        pen = ln->pos[keep - 1].x + (float)nxc__font_advance(f, ln->pos[keep - 1].glyph) * scale + tracking;
-    }
+    float pen = keep > 0 ? pos_end(&ln->pos[keep - 1], px) + tracking : 0.0f;
     ln->count = keep;
     for (uint32_t k = 0; k < ndots && ln->count < NXT_MAX_GLYPHS; k++) {
         if (k > 0) pen += tracking;
+        ln->pos[ln->count].font = ef;
         ln->pos[ln->count].glyph = dots[k];
         ln->pos[ln->count].x = pen;
         ln->count++;
-        pen += (float)nxc__font_advance(f, dots[k]) * scale;
+        pen += (float)nxc__font_advance(ef, dots[k]) * font_scale(ef, px);
     }
     ln->width = pen;
     ln->truncated = 1;
@@ -436,6 +567,25 @@ static uint32_t luminance(nxc_color_t c) {
     return (r * 54u + g * 183u + b * 19u) >> 8;
 }
 
+/* Blit a cached coverage bitmap through the curve, clipped by rows. */
+static void blit_entry(nxc_canvas_t *c, const nxt_entry_t *e, int32_t dx, int32_t dy,
+                       nxc_irect_t clip, const uint8_t *lut, uint8_t *tmp, uint64_t cap,
+                       uint32_t premul) {
+    const uint8_t *bm = g_text.arena + e->off;
+    int32_t w = e->w;
+    if (dy + e->h <= clip.y || dy >= clip.y + clip.h) return;
+    if (dx + w <= clip.x || dx >= clip.x + clip.w) return;
+    int32_t len_px = w < (int32_t)cap ? w : (int32_t)cap;
+    int32_t r0 = clip.y > dy ? clip.y - dy : 0;
+    int32_t r1 = clip.y + clip.h - dy < e->h ? clip.y + clip.h - dy : e->h;
+    for (int32_t row = r0; row < r1; row++) {
+        const uint8_t *src = bm + (int64_t)row * w;
+        uint32_t any = 0;
+        for (int32_t i = 0; i < len_px; i++) { tmp[i] = lut[src[i]]; any |= tmp[i]; }
+        if (any) nxc__span_cov(c, dy + row, dx, tmp, len_px, premul);
+    }
+}
+
 nxc_status_t nxc_draw_text(nxc_canvas_t *c, const nxc_font_t *font, float px_size,
                            float x, float baseline_y, const char *utf8, int32_t len,
                            nxc_color_t color, const nxc_text_opts_t *opts) {
@@ -456,7 +606,7 @@ nxc_status_t nxc_draw_text(nxc_canvas_t *c, const nxc_font_t *font, float px_siz
     /* Device origin: snapped baseline, line start with alignment. */
     float ox = x + c->st.tx + align_offset(opts, ln.width);
     int32_t by = (int32_t)nxc__floorf(baseline_y + c->st.ty + 0.5f);
-    const uint8_t *lut = luminance(color) >= 128u ? g_text.lut_light : g_text.lut_dark;
+    const uint8_t *lut = g_text.lut[luminance(color) >= 128u ? 0 : 1][size_class(px_size)];
 
     nxc_irect_t clip = nxc__device_clip(c);
     if (clip.w == 0 || clip.h == 0) return NXC_OK;
@@ -465,52 +615,42 @@ nxc_status_t nxc_draw_text(nxc_canvas_t *c, const nxc_font_t *font, float px_siz
 
     uint32_t size_q = (uint32_t)(px_size * NXT_SIZE_Q + 0.5f);
     if (size_q == 0) size_q = 1;
-    uint32_t font_id = nxc__font_id(font);
+    if (size_q > 0xFFFFu) size_q = 0xFFFFu;       /* huge sizes are never cached anyway */
+    uint32_t phases = (uint32_t)g_quality.subpixel_phases;
+    if (phases == 0 || phases > NXT_MAX_PHASES) phases = NXT_MAX_PHASES;
     uint64_t cap = 0;
     uint8_t *tmp = (uint8_t *)nxc__scratch(NXC_SCRATCH_COV, &cap);
-    if (!tmp) return nxc__fail(NXC_ERR_STATE, "nxc_draw_text");
+    if (!tmp || cap == 0) return nxc__fail(NXC_ERR_STATE, "nxc_draw_text");
     nxc_status_t worst = NXC_OK;
 
     for (uint32_t k = 0; k < ln.count; k++) {
+        const nxc_font_t *gf = ln.pos[k].font;
         float gx = ox + ln.pos[k].x;
         float fl = nxc__floorf(gx);
         int32_t ix = (int32_t)fl;
-        uint32_t phase = (uint32_t)((gx - fl) * (float)NXT_PHASES + 0.5f);
-        if (phase >= NXT_PHASES) { phase = 0; ix++; }
+        uint32_t phase = (uint32_t)((gx - fl) * (float)phases + 0.5f);
+        if (phase >= phases) { phase = 0; ix++; }
         /* Horizontal reject before touching the cache. */
         if (ix > clip.x + clip.w + (int32_t)px_size * 2 || ix + (int32_t)px_size * 3 < clip.x) continue;
 
+        uint32_t font_id = nxc__font_id(gf);
         nxt_entry_t *e = cache_find(font_id, ln.pos[k].glyph, size_q, phase);
         if (e) {
-            g_text.hits++;
+            g_text.stats.hits++;
         } else {
-            e = cache_render(font, ln.pos[k].glyph, px_size, size_q, phase);
+            e = cache_render(gf, ln.pos[k].glyph, px_size, size_q, phase, phases);
         }
         if (e) {
-            if (e->empty) continue;
-            /* Bitmaps were rendered with the raster using scratch COV; it is free again now. */
-            const uint8_t *bm = g_text.arena + e->off;
-            int32_t dx = ix + e->bx, dy = by + e->by;
-            int32_t w = e->w;
-            if (dy + e->h <= clip.y || dy >= clip.y + clip.h) continue;
-            for (int32_t row = 0; row < e->h; row++) {
-                int32_t yy = dy + row;
-                if (yy < clip.y) continue;
-                if (yy >= clip.y + clip.h) break;
-                const uint8_t *src = bm + (int64_t)row * w;
-                int32_t len_px = w < (int32_t)cap ? w : (int32_t)cap;
-                int any = 0;
-                for (int32_t i = 0; i < len_px; i++) { tmp[i] = lut[src[i]]; any |= tmp[i]; }
-                if (any) nxc__span_cov(c, yy, dx, tmp, len_px, premul);
-            }
+            if (!e->empty) blit_entry(c, e, ix + e->bx, by + e->by, clip, lut, tmp, cap, premul);
             continue;
         }
         /* Not cacheable (huge or capacity): rasterize to the canvas. */
-        if (glyph_outline(font, ln.pos[k].glyph, px_size,
-                          (float)ix + (float)phase / (float)NXT_PHASES, (float)by) != NXC_OK) {
+        if (glyph_outline(gf, ln.pos[k].glyph, px_size,
+                          (float)ix + (float)phase / (float)phases, (float)by) != NXC_OK) {
             worst = NXC_ERR_OVERFLOW;
             continue;
         }
+        g_text.stats.uncached++;
         canvas_sink_t cs;
         cs.c = c; cs.premul = premul; cs.lut = lut;
         nxc_status_t st = nxc__raster_path(&g_text.path, 1.0f, 0.0f, 0.0f, NXC_FILL_NONZERO,

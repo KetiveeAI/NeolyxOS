@@ -43,6 +43,14 @@ static volatile int kbd_e0_prefix = 0;
 /* Key buffer (ring buffer) */
 #define KEY_BUFFER_SIZE     64
 static volatile uint16_t key_buffer[KEY_BUFFER_SIZE];
+/* Make code (scancode without the release bit) of each buffered key, kept
+ * in step with key_buffer. The syscall reports it per event: last_scancode
+ * is overwritten by the key's release long before userspace polls. */
+static volatile uint8_t key_scan_buffer[KEY_BUFFER_SIZE];
+/* ASCII of each buffered key (0 for special keys). Kept separately because
+ * the 0x100 special-key marker in key_buffer is the same bit as
+ * KEY_FLAG_SHIFT, so the keycode alone cannot tell 'T' from a special key. */
+static volatile uint8_t key_ascii_buffer[KEY_BUFFER_SIZE];
 static volatile int key_buffer_head = 0;
 static volatile int key_buffer_tail = 0;
 
@@ -93,10 +101,12 @@ static const char kbd_map_shift[128] = {
 
 /* ============ Buffer Operations ============ */
 
-static void buffer_push(uint16_t key) {
+static void buffer_push(uint16_t key, uint8_t scan, uint8_t ascii) {
     int next = (key_buffer_head + 1) % KEY_BUFFER_SIZE;
     if (next != key_buffer_tail) {
         key_buffer[key_buffer_head] = key;
+        key_scan_buffer[key_buffer_head] = scan;
+        key_ascii_buffer[key_buffer_head] = ascii;
         key_buffer_head = next;
     }
     /* Buffer full - drop key */
@@ -199,7 +209,7 @@ void keyboard_irq(void) {
         if (kbd_shift) keycode |= KEY_FLAG_SHIFT;
         if (kbd_ctrl)  keycode |= KEY_FLAG_CTRL;
         if (kbd_alt)   keycode |= KEY_FLAG_ALT;
-        buffer_push(keycode);
+        buffer_push(keycode, key, 0);
         return;
     }
     
@@ -261,7 +271,7 @@ void keyboard_irq(void) {
     }
     
     if (keycode) {
-        buffer_push(keycode);
+        buffer_push(keycode, key, (uint8_t)c);
     }
 }
 
@@ -345,8 +355,13 @@ int keyboard_is_capslock(void) {
 int keyboard_get_event(uint8_t *scancode, uint8_t *ascii, uint8_t *pressed) {
     if (!scancode || !ascii || !pressed) return -1;
     
-    /* Called from syscalls with interrupts masked, so no race with the IRQ */
+    /* Pop the event with IRQs off so the IRQ handler cannot push into the
+     * slot being read. Syscalls usually arrive with IF clear, but a caller
+     * may run with interrupts enabled (e.g. after a scheduler switch). */
+    uint64_t flags;
+    __asm__ volatile("pushfq; popq %0; cli" : "=r"(flags) :: "memory");
     if (kbd_evq_tail == kbd_evq_head) {
+        if (flags & 0x200) __asm__ volatile("sti" ::: "memory");
         return -1;  /* No event */
     }
     
@@ -354,6 +369,7 @@ int keyboard_get_event(uint8_t *scancode, uint8_t *ascii, uint8_t *pressed) {
     *ascii = kbd_evq[kbd_evq_tail].ascii;
     *pressed = kbd_evq[kbd_evq_tail].pressed;
     kbd_evq_tail = (kbd_evq_tail + 1) % KBD_EVQ_SIZE;
+    if (flags & 0x200) __asm__ volatile("sti" ::: "memory");
     
     return 0;
 }

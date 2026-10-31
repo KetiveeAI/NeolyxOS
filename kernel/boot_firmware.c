@@ -19,6 +19,7 @@
 #include "include/ui/disk_icons.h"
 #include "include/utils/nucleus.h"
 #include "include/ui/nxfont.h"
+#include "include/video/splash.h"
 #include "include/ui/vector_icons_v2.h"
 #include "fs/vfs.h"
 #include "fs/nxfs.h"
@@ -1445,15 +1446,16 @@ void kernel_main(NeolyxBootInfo *boot_info) {
             if (is_installed) {
                 serial_puts("[BOOT] NeolyxOS detected - Press F2 for boot menu...\n");
                 
-                /* Display quick message */
-                fb_clear(COLOR_PURPLE_BG);
-                nxf_draw_centered(framebuffer, fb_pitch, fb_width, fb_height/2 - 40,
-                    "NeolyxOS", 64, COLOR_WHITE, fb_width, fb_height);
-                nxf_draw_centered(framebuffer, fb_pitch, fb_width, fb_height/2 + 40,
-                    "Press F2 for Boot Menu...", 24, COLOR_GRAY, fb_width, fb_height);
+                /* Boot splash: logo, progress bar and the F2 hint */
+                splash_init((uint64_t)(uintptr_t)framebuffer, fb_width, fb_height, fb_pitch);
+                splash_show();
+                splash_update(0, "Press F2 for boot options");
                 
                 /* Check for F2 key (scancode 0x3C) with ~500ms timeout */
                 for (int i = 0; i < 5000000 && !f2_pressed; i++) {
+                    if ((i % 500000) == 0) {
+                        splash_update((uint32_t)(i / 500000), 0);   /* 0..9 % */
+                    }
                     if (key_available()) {
                         uint8_t key = inb(KEYBOARD_DATA_PORT);
                         if (key == 0x3C) {  /* F2 press */
@@ -1469,12 +1471,14 @@ void kernel_main(NeolyxBootInfo *boot_info) {
                     /* Direct boot to NeolyxOS */
                     serial_puts("[BOOT] Direct boot to NeolyxOS...\n");
                     
-                    fb_clear(COLOR_PURPLE_BG);
-                    nxf_draw_centered(framebuffer, fb_pitch, fb_width, fb_height/2 - 20,
-                        "Starting NeolyxOS...", 32, COLOR_WHITE, fb_width, fb_height);
+                    splash_update(10, "");
                     
                     /* Brief delay for user feedback */
-                    for (volatile int d = 0; d < 10000000; d++);
+                    for (volatile int d = 0; d < 10000000; d++) {
+                        if ((d % 1000000) == 0) {
+                            splash_update(10 + (uint32_t)(d / 1000000), 0);   /* 10..19 % */
+                        }
+                    }
                     
                     /* Launch full kernel / desktop environment */
                     nx_kernel_start();
@@ -1491,6 +1495,7 @@ void kernel_main(NeolyxBootInfo *boot_info) {
         }
         
         /* Initial draw - only reached if F2 pressed or not installed */
+        splash_hide();   /* the boot manager owns the screen from here */
         serial_puts("[BOOT] Drawing boot manager...\n");
         draw_boot_manager(selected, in_sidebar);
         cursor_draw();

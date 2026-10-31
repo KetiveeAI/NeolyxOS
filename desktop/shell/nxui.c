@@ -13,6 +13,7 @@
 #include <stddef.h>
 #include "../include/nxui.h"
 #include "../include/nxsyscall.h"
+#include "../include/nxfont_registry.h"
 
 /* ============ Embedded font data (nxui_assets.S) ============ */
 
@@ -21,6 +22,7 @@ extern const uint8_t nxui_font_medium[],  nxui_font_medium_end[];
 extern const uint8_t nxui_font_bold[],    nxui_font_bold_end[];
 extern const uint8_t nxui_font_display[], nxui_font_display_end[];
 extern const uint8_t nxui_font_mono[],    nxui_font_mono_end[];
+extern const uint8_t nxui_font_italic[],  nxui_font_italic_end[];
 
 /* ============ State ============ */
 
@@ -33,6 +35,7 @@ typedef struct {
     nxc_surface_t   wallpaper_blur;
     nxc_surface_t   cursor;         /* pre-rendered arrow with shadow */
     nxc_font_t     *fonts[NXUI_FONT_COUNT];
+    uint32_t        font_reg_ids[NXUI_FONT_COUNT];
     nxc_font_metrics_t metrics[NXUI_TEXT_COUNT];
     nxui_appearance_t appearance;
     nxui_theme_t    theme;
@@ -188,25 +191,36 @@ void nxui_set_appearance(nxui_appearance_t appearance) {
 /* ============ Typography ============ */
 
 static const nxui_type_t g_type_scale[NXUI_TEXT_COUNT] = {
-    [NXUI_TEXT_CAPTION]     = { NXUI_FONT_REGULAR, 11.0f,  0.10f },
-    [NXUI_TEXT_FOOTNOTE]    = { NXUI_FONT_REGULAR, 12.0f,  0.05f },
-    [NXUI_TEXT_BODY]        = { NXUI_FONT_REGULAR, 13.0f,  0.00f },
-    [NXUI_TEXT_BODY_MEDIUM] = { NXUI_FONT_MEDIUM,  13.0f,  0.00f },
-    [NXUI_TEXT_MENU]        = { NXUI_FONT_MEDIUM,  13.5f,  0.00f },
-    [NXUI_TEXT_MENU_BOLD]   = { NXUI_FONT_BOLD,    13.5f,  0.00f },
-    [NXUI_TEXT_HEADLINE]    = { NXUI_FONT_BOLD,    13.0f,  0.00f },
-    [NXUI_TEXT_TITLE3]      = { NXUI_FONT_MEDIUM,  15.0f, -0.10f },
-    [NXUI_TEXT_TITLE2]      = { NXUI_FONT_BOLD,    17.0f, -0.20f },
-    [NXUI_TEXT_TITLE1]      = { NXUI_FONT_BOLD,    22.0f, -0.30f },
-    [NXUI_TEXT_LARGE_TITLE] = { NXUI_FONT_BOLD,    28.0f, -0.45f },
-    [NXUI_TEXT_CLOCK]       = { NXUI_FONT_DISPLAY, 56.0f, -1.20f },
-    [NXUI_TEXT_MONO]        = { NXUI_FONT_MONO,    12.5f,  0.00f },
+    [NXUI_TEXT_CAPTION]       = { NXUI_FONT_REGULAR,  11.0f,  0.10f },
+    [NXUI_TEXT_FOOTNOTE]      = { NXUI_FONT_REGULAR,  12.0f,  0.05f },
+    [NXUI_TEXT_BODY]          = { NXUI_FONT_REGULAR,  13.0f,  0.00f },
+    [NXUI_TEXT_BODY_MEDIUM]   = { NXUI_FONT_MEDIUM,   13.0f,  0.00f },
+    [NXUI_TEXT_MENU]          = { NXUI_FONT_MEDIUM,   13.5f,  0.00f },
+    [NXUI_TEXT_MENU_BOLD]     = { NXUI_FONT_BOLD,     13.5f,  0.00f },
+    [NXUI_TEXT_HEADLINE]      = { NXUI_FONT_BOLD,     13.0f,  0.00f },
+    [NXUI_TEXT_TITLE3]        = { NXUI_FONT_MEDIUM,   15.0f, -0.10f },
+    [NXUI_TEXT_TITLE2]        = { NXUI_FONT_BOLD,     17.0f, -0.20f },
+    [NXUI_TEXT_TITLE1]        = { NXUI_FONT_BOLD,     22.0f, -0.30f },
+    [NXUI_TEXT_LARGE_TITLE]   = { NXUI_FONT_BOLD,     28.0f, -0.45f },
+    [NXUI_TEXT_CLOCK]         = { NXUI_FONT_DISPLAY,  56.0f, -1.20f },
+    [NXUI_TEXT_MONO]          = { NXUI_FONT_MONO,     12.5f,  0.00f },
+    [NXUI_TEXT_SUBHEADLINE]   = { NXUI_FONT_SEMIBOLD, 12.0f,  0.05f },
+    [NXUI_TEXT_CALLOUT]       = { NXUI_FONT_REGULAR,  15.0f, -0.05f },
+    [NXUI_TEXT_BODY_SEMIBOLD] = { NXUI_FONT_SEMIBOLD, 13.0f,  0.00f },
+    [NXUI_TEXT_BODY_ITALIC]   = { NXUI_FONT_ITALIC,   13.0f,  0.00f },
+    [NXUI_TEXT_DISPLAY]       = { NXUI_FONT_DISPLAY,  40.0f, -0.80f },
+    [NXUI_TEXT_MONO_SMALL]    = { NXUI_FONT_MONO,     11.0f,  0.00f },
 };
 
 const nxc_font_t *nxui_font(nxui_font_id_t id) {
     if (id < 0 || id >= NXUI_FONT_COUNT) id = NXUI_FONT_REGULAR;
     if (g_ui.fonts[id]) return g_ui.fonts[id];
     return g_ui.fonts[NXUI_FONT_REGULAR];   /* fallback for missing faces */
+}
+
+uint32_t nxui_font_registry_id(nxui_font_id_t id) {
+    if (id < 0 || id >= NXUI_FONT_COUNT) return 0;
+    return g_ui.font_reg_ids[id];
 }
 
 nxui_type_t nxui_type(nxui_text_style_t style) {
@@ -250,6 +264,14 @@ float nxui_text_descent(nxui_text_style_t style) {
     return g_ui.metrics[style].descent;
 }
 
+float nxui_text_line_height(nxui_text_style_t style) {
+    if (style < 0 || style >= NXUI_TEXT_COUNT) style = NXUI_TEXT_BODY;
+    const nxc_font_metrics_t *m = &g_ui.metrics[style];
+    float lh = m->ascent + m->descent + m->line_gap;
+    if (!(lh > 0.0f)) lh = nxui_type(style).size * 1.3f;
+    return (float)(int32_t)(lh + 0.5f);
+}
+
 nxc_status_t nxui_text_in_rect(nxc_canvas_t *c, nxui_text_style_t style, nxc_rect_t r,
                                const char *utf8, nxc_color_t color, nxc_align_t align) {
     if (!c || !utf8) return NXC_ERR_INVALID_ARG;
@@ -264,6 +286,102 @@ nxc_status_t nxui_text_in_rect(nxc_canvas_t *c, nxui_text_style_t style, nxc_rec
     nxc_text_opts_t o;
     o.letter_spacing = 0.0f; o.align = align; o.max_width = r.w; o.no_kerning = 0;
     return nxui_text(c, style, x, baseline, utf8, color, &o);
+}
+
+static inline int utf8_cont(char ch) { return ((uint8_t)ch & 0xC0u) == 0x80u; }
+
+/* Longest prefix of s[0..n) in bytes (ending on a UTF-8 boundary) whose
+ * width fits maxw; at least one character so wrapping always advances. */
+static int32_t wrap_fit(const nxc_font_t *f, float px, const nxc_text_opts_t *o,
+                        const char *s, int32_t n, float maxw) {
+    int32_t first = 1;
+    while (first < n && utf8_cont(s[first])) first++;
+    int32_t lo = first, hi = n, best = first;
+    while (lo <= hi) {
+        int32_t mid = lo + (hi - lo) / 2;
+        while (mid < hi && utf8_cont(s[mid])) mid++;
+        if (nxc_text_width(f, px, s, mid, o) <= maxw) {
+            best = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    while (best > first && best < n && utf8_cont(s[best])) best--;
+    return best;
+}
+
+/*
+ * Shared word-wrap engine. Lines are laid out top-down from r.y with the
+ * baseline centered on the cap height inside each line box; drawing stops
+ * at the bottom of r, ending the last line with an ellipsis when text is
+ * left over. Returns the height used.
+ */
+static float wrap_draw(nxc_canvas_t *c, const nxc_font_t *f, float px, float tracking,
+                       float cap_height, nxc_rect_t r, const char *utf8, nxc_color_t color,
+                       float lh) {
+    if (!f || !utf8 || !(px > 0.0f) || !(r.w > 0.0f) || !(lh > 0.0f)) return 0.0f;
+    nxc_text_opts_t o;
+    o.letter_spacing = tracking; o.align = NXC_ALIGN_LEFT; o.max_width = 0.0f; o.no_kerning = 0;
+    float y = r.y;
+    const char *s = utf8;
+    uint32_t guard = 0;
+    while (*s && guard++ < 4096) {
+        int32_t n = 0;                               /* this hard line */
+        while (s[n] && s[n] != '\n' && n < 8192) n++;
+        int32_t take = n, next = n;
+        if (n > 0 && nxc_text_width(f, px, s, n, &o) > r.w) {
+            int32_t fit = wrap_fit(f, px, &o, s, n, r.w);
+            int32_t sp = fit;
+            while (sp > 0 && s[sp] != ' ') sp--;
+            if (s[fit] == ' ') { take = fit; next = fit + 1; }
+            else if (sp > 0) { take = sp; next = sp + 1; }
+            else { take = fit; next = fit; }           /* one long word: split it */
+        }
+        const char *rest = s + next;
+        if (next == n && *rest == '\n') rest++;
+        while (*rest == ' ') rest++;
+        int last_line = y + 2.0f * lh > r.y + r.h + 0.5f;
+        float baseline = (float)(int32_t)(y + 0.5f * (lh + cap_height) + 0.5f);
+        if (c) {
+            if (last_line && *rest) {
+                /* Ellipsis: draw what fits of the visible part plus U+2026. */
+                float ew = nxc_text_width(f, px, "\xE2\x80\xA6", -1, &o);
+                int32_t keep = take;
+                if (nxc_text_width(f, px, s, keep, &o) + ew > r.w)
+                    keep = wrap_fit(f, px, &o, s, keep, r.w - ew);
+                while (keep > 0 && s[keep - 1] == ' ') keep--;
+                nxc_draw_text(c, f, px, r.x, baseline, s, keep, color, &o);
+                float w = keep > 0 ? nxc_text_width(f, px, s, keep, &o) : 0.0f;
+                nxc_draw_text(c, f, px, r.x + w, baseline, "\xE2\x80\xA6", -1, color, &o);
+            } else if (take > 0) {
+                nxc_draw_text(c, f, px, r.x, baseline, s, take, color, &o);
+            }
+        }
+        y += lh;
+        if (last_line) break;
+        s = rest;
+    }
+    return y - r.y;
+}
+
+float nxui_text_wrapped(nxc_canvas_t *c, nxui_text_style_t style, nxc_rect_t r,
+                        const char *utf8, nxc_color_t color, float line_height) {
+    if (style < 0 || style >= NXUI_TEXT_COUNT) style = NXUI_TEXT_BODY;
+    nxui_type_t t = nxui_type(style);
+    float cap = g_ui.metrics[style].cap_height;
+    if (!(cap > 0.0f)) cap = t.size * 0.66f;
+    float lh = line_height > 0.0f ? line_height : nxui_text_line_height(style);
+    return wrap_draw(c, nxui_font(t.font), t.size, t.tracking, cap, r, utf8, color, lh);
+}
+
+float nxui_text_wrapped_font(nxc_canvas_t *c, const nxc_font_t *font, float px, nxc_rect_t r,
+                             const char *utf8, nxc_color_t color, float line_height) {
+    nxc_font_metrics_t m;
+    if (!font || !(px > 0.0f) || nxc_font_metrics(font, px, &m) != NXC_OK) return 0.0f;
+    float lh = line_height > 0.0f ? line_height
+                                  : (float)(int32_t)(m.ascent + m.descent + m.line_gap + 0.5f);
+    return wrap_draw(c, font, px, 0.0f, m.cap_height, r, utf8, color, lh);
 }
 
 /* ============ Materials & elevation ============ */
@@ -314,7 +432,7 @@ nxc_status_t nxui_elevation(nxc_canvas_t *c, nxc_rect_t r, float radius, int32_t
  * offset + spread, rounded up), matching nxui_elevation. */
 static int32_t panel_margin(int32_t level) {
     switch (level) {
-        case 0: return 0;
+        case 0: return 2;              /* room for the 1px outer edge of glass */
         case 1: return 8;
         case 2: return 66;
         case 3: return 58;
@@ -330,6 +448,10 @@ typedef struct {
     nxc_material_t mat;
     int32_t        elevation;
     nxui_appearance_t appearance;
+    nxui_panel_decor_fn decor;        /* optional overlay baked into the slot */
+    uint32_t       decor_key;
+    nxc_irect_t    solid;             /* opaque interior in slot coords (w 0 = none) */
+    nxc_irect_t    vis;               /* bounds of visible pixels (alpha > 1) in slot coords */
     nxc_surface_t  surf;              /* transparent, at least sw x sh */
     int32_t        cap_w, cap_h;      /* allocated size */
     uint32_t       last_use;
@@ -337,6 +459,7 @@ typedef struct {
 
 static nxui_panel_slot_t g_panels[NXUI_PANEL_CACHE_SLOTS];
 static uint32_t g_panel_tick;
+static uint32_t g_panel_hits, g_panel_misses;
 
 static int material_eq(const nxc_material_t *a, const nxc_material_t *b) {
     return a->blur_sigma == b->blur_sigma && a->saturation == b->saturation &&
@@ -363,12 +486,126 @@ static nxc_status_t panel_render(nxui_panel_slot_t *sl) {
     st = nxc_surface_wrap(&src, wb->pixels + (int64_t)sl->oy * wb->stride + sl->ox, sl->sw, sl->sh,
                           wb->stride, NXC_SURFACE_OPAQUE);
     if (st != NXC_OK) return st;
-    return nxc_draw_backdrop(&c, r, sl->radius, &src, &sl->mat);
+    st = nxc_draw_backdrop(&c, r, sl->radius, &src, &sl->mat);
+    if (st != NXC_OK || !sl->decor) return st;
+    /* Decoration (rim light, sheen, inner glow) is drawn with the slot
+     * view's origin, so it lands exactly where the uncached path puts it. */
+    return sl->decor(&c, r, sl->radius, sl->decor_key);
+}
+
+/* Analyze a freshly rendered slot once:
+ *  - vis: bounds of pixels with alpha > 1 (the far shadow tail below
+ *    1/255 contributes nothing visible), so blits skip empty margin;
+ *  - solid: the interior inset past the corner radius, verified fully
+ *    opaque pixel by pixel, which the blit copies instead of blending. */
+static void panel_find_solid(nxui_panel_slot_t *sl) {
+    int32_t vx0 = sl->sw, vy0 = sl->sh, vx1 = 0, vy1 = 0;
+    for (int32_t y = 0; y < sl->sh; y++) {
+        const uint32_t *row = sl->surf.pixels + (int64_t)y * sl->surf.stride;
+        int32_t a = -1, b = -1;
+        for (int32_t x = 0; x < sl->sw; x++) {
+            if ((row[x] >> 24) > 1u) { if (a < 0) a = x; b = x; }
+        }
+        if (a < 0) continue;
+        if (a < vx0) vx0 = a;
+        if (b + 1 > vx1) vx1 = b + 1;
+        if (y < vy0) vy0 = y;
+        vy1 = y + 1;
+    }
+    sl->vis = (vx1 > vx0 && vy1 > vy0) ? nxc_irect(vx0, vy0, vx1 - vx0, vy1 - vy0) : nxc_irect(0, 0, 0, 0);
+
+    sl->solid = nxc_irect(0, 0, 0, 0);
+    int32_t inset = (int32_t)(sl->radius + 0.999f) + 1;
+    int32_t x0 = sl->x - sl->ox + 1, x1 = sl->x - sl->ox + sl->w - 1;
+    int32_t y0 = sl->y - sl->oy + inset, y1 = sl->y - sl->oy + sl->h - inset;
+    if (x1 - x0 < 16 || y1 - y0 < 4) return;
+    for (int32_t y = y0; y < y1; y++) {
+        const uint32_t *row = sl->surf.pixels + (int64_t)y * sl->surf.stride;
+        for (int32_t x = x0; x < x1; x++) {
+            if ((row[x] >> 24) != 0xFFu) return;      /* not opaque: blend everything */
+        }
+    }
+    sl->solid = nxc_irect(x0, y0, x1 - x0, y1 - y0);
+}
+
+static void panel_blit_part(nxc_canvas_t *c, const nxui_panel_slot_t *sl, int32_t sx, int32_t sy,
+                            int32_t w, int32_t h) {
+    /* Restrict to the visible bounds. */
+    int32_t x0 = sx > sl->vis.x ? sx : sl->vis.x;
+    int32_t y0 = sy > sl->vis.y ? sy : sl->vis.y;
+    int32_t x1 = sx + w < sl->vis.x + sl->vis.w ? sx + w : sl->vis.x + sl->vis.w;
+    int32_t y1 = sy + h < sl->vis.y + sl->vis.h ? sy + h : sl->vis.y + sl->vis.h;
+    if (x1 <= x0 || y1 <= y0) return;
+    nxc_draw_surface(c, &sl->surf, nxc_irect(x0, y0, x1 - x0, y1 - y0),
+                     nxc_rect((float)(sl->ox + x0), (float)(sl->oy + y0), (float)(x1 - x0), (float)(y1 - y0)),
+                     255, NXC_FILTER_NEAREST);
+}
+
+/* Blit a cached panel. With full opacity, an integer translation and no
+ * rounded clip, the opaque interior is copied row by row (respecting the
+ * rect clip) and only the rim, corners and shadow are blended. */
+static nxc_status_t panel_blit(nxc_canvas_t *c, const nxui_panel_slot_t *sl) {
+    const nxc_irect_t in = sl->solid;
+    float tx = c->st.tx, ty = c->st.ty;
+    int fast = in.w > 0 && c->st.alpha == 255 && c->st.rclip_radius == 0.0f && c->target &&
+               c->target->pixels && tx == (float)(int32_t)tx && ty == (float)(int32_t)ty &&
+               tx > -16384.0f && tx < 16384.0f && ty > -16384.0f && ty < 16384.0f;
+    if (!fast) {
+        if (sl->vis.w <= 0) return NXC_OK;
+        return nxc_draw_surface(c, &sl->surf, sl->vis,
+                                nxc_rect((float)(sl->ox + sl->vis.x), (float)(sl->oy + sl->vis.y),
+                                         (float)sl->vis.w, (float)sl->vis.h),
+                                255, NXC_FILTER_NEAREST);
+    }
+    /* Blended parts: above, below, left of and right of the interior. */
+    panel_blit_part(c, sl, 0, 0, sl->sw, in.y);
+    panel_blit_part(c, sl, 0, in.y + in.h, sl->sw, sl->sh - (in.y + in.h));
+    panel_blit_part(c, sl, 0, in.y, in.x, in.h);
+    panel_blit_part(c, sl, in.x + in.w, in.y, sl->sw - (in.x + in.w), in.h);
+    /* Copied part, clipped to the canvas clip in device space. */
+    int32_t dx0 = sl->ox + in.x + (int32_t)tx, dy0 = sl->oy + in.y + (int32_t)ty;
+    nxc_irect_t cl = c->st.clip;
+    int32_t ax0 = dx0 > cl.x ? dx0 : cl.x;
+    int32_t ay0 = dy0 > cl.y ? dy0 : cl.y;
+    int32_t ax1 = dx0 + in.w < cl.x + cl.w ? dx0 + in.w : cl.x + cl.w;
+    int32_t ay1 = dy0 + in.h < cl.y + cl.h ? dy0 + in.h : cl.y + cl.h;
+    if (ax0 < 0) ax0 = 0;
+    if (ay0 < 0) ay0 = 0;
+    if (ax1 > c->target->width) ax1 = c->target->width;
+    if (ay1 > c->target->height) ay1 = c->target->height;
+    for (int32_t y = ay0; y < ay1; y++) {
+        const uint32_t *src = sl->surf.pixels + (int64_t)(y - dy0 + in.y) * sl->surf.stride + (ax0 - dx0 + in.x);
+        uint32_t *dst = c->target->pixels + (int64_t)y * c->target->stride + ax0;
+        for (int32_t x = 0; x < ax1 - ax0; x++) dst[x] = src[x];
+    }
+    return NXC_OK;
+}
+
+/* Uncached fallback: shadow, material, then the decoration in place. */
+static nxc_status_t panel_draw_direct(nxc_canvas_t *c, nxc_rect_t r, float radius,
+                                      const nxc_material_t *m, int32_t elevation,
+                                      nxui_panel_decor_fn decor, uint32_t decor_key) {
+    nxc_status_t st = nxui_elevation(c, r, radius, elevation);
+    if (st != NXC_OK) return st;
+    st = nxui_material(c, r, radius, m);
+    if (st != NXC_OK || !decor) return st;
+    return decor(c, r, radius, decor_key);
 }
 
 nxc_status_t nxui_panel(nxc_canvas_t *c, nxc_rect_t r, float radius, const nxc_material_t *m,
                         int32_t elevation) {
+    return nxui_panel_ex(c, r, radius, m, elevation, 0, 0);
+}
+
+void nxui_panel_stats(uint32_t *hits, uint32_t *misses) {
+    if (hits) *hits = g_panel_hits;
+    if (misses) *misses = g_panel_misses;
+}
+
+nxc_status_t nxui_panel_ex(nxc_canvas_t *c, nxc_rect_t r, float radius, const nxc_material_t *m,
+                           int32_t elevation, nxui_panel_decor_fn decor, uint32_t decor_key) {
     if (!c || !m || !g_ui.ready) return NXC_ERR_INVALID_ARG;
+    if (!(radius >= 0.0f) || radius > 4096.0f) return NXC_ERR_INVALID_ARG;
     if (!(r.w > 0.0f) || !(r.h > 0.0f) || r.w > 8192.0f || r.h > 8192.0f) return NXC_ERR_INVALID_ARG;
     int32_t x = (int32_t)(r.x + 0.5f), y = (int32_t)(r.y + 0.5f);
     int32_t w = (int32_t)(r.w + 0.5f), h = (int32_t)(r.h + 0.5f);
@@ -378,8 +615,8 @@ nxc_status_t nxui_panel(nxc_canvas_t *c, nxc_rect_t r, float radius, const nxc_m
     const nxc_surface_t *wb = nxui_wallpaper_blurred();
     nxc_rect_t ir = nxc_rect((float)x, (float)y, (float)w, (float)h);
     if (!wb || x < 0 || y < 0 || x + w > wb->width || y + h > wb->height) {
-        nxui_elevation(c, ir, radius, elevation);          /* partly off screen: uncached */
-        return nxui_material(c, ir, radius, m);
+        /* partly off screen: uncached */
+        return panel_draw_direct(c, ir, radius, m, elevation, decor, decor_key);
     }
     int32_t margin = panel_margin(elevation);
     int32_t ox = x - margin < 0 ? 0 : x - margin;
@@ -393,7 +630,8 @@ nxc_status_t nxui_panel(nxc_canvas_t *c, nxc_rect_t r, float radius, const nxc_m
     for (int32_t i = 0; i < NXUI_PANEL_CACHE_SLOTS; i++) {
         nxui_panel_slot_t *sl = &g_panels[i];
         if (sl->used && sl->x == x && sl->y == y && sl->w == w && sl->h == h && sl->radius == radius &&
-            sl->elevation == elevation && sl->appearance == g_ui.appearance && material_eq(&sl->mat, m)) {
+            sl->elevation == elevation && sl->appearance == g_ui.appearance && material_eq(&sl->mat, m) &&
+            sl->decor == decor && sl->decor_key == decor_key) {
             hit = sl;
             break;
         }
@@ -409,8 +647,8 @@ nxc_status_t nxui_panel(nxc_canvas_t *c, nxc_rect_t r, float radius, const nxc_m
             if (ch < sl->cap_h) ch = sl->cap_h;
             nxc_surface_t ns;
             if (nxc_surface_create(&ns, cw, ch, 0) != NXC_OK) {
-                nxui_elevation(c, ir, radius, elevation);
-                return nxui_material(c, ir, radius, m);
+                ui_log("[NXUI] panel cache: slot allocation failed, drawing uncached\n");
+                return panel_draw_direct(c, ir, radius, m, elevation, decor, decor_key);
             }
             sl->surf = ns;
             sl->cap_w = cw; sl->cap_h = ch;
@@ -420,14 +658,17 @@ nxc_status_t nxui_panel(nxc_canvas_t *c, nxc_rect_t r, float radius, const nxc_m
         sl->ox = ox; sl->oy = oy; sl->sw = sw; sl->sh = sh;
         sl->radius = radius; sl->mat = *m;
         sl->elevation = elevation; sl->appearance = g_ui.appearance;
+        sl->decor = decor; sl->decor_key = decor_key;
+        g_panel_misses++;
         nxc_status_t st = panel_render(sl);
         if (st != NXC_OK) { sl->used = 0; return st; }
+        panel_find_solid(sl);
         hit = sl;
+    } else {
+        g_panel_hits++;
     }
     hit->last_use = g_panel_tick;
-    return nxc_draw_surface(c, &hit->surf, nxc_irect(0, 0, hit->sw, hit->sh),
-                            nxc_rect((float)hit->ox, (float)hit->oy, (float)hit->sw, (float)hit->sh),
-                            255, NXC_FILTER_NEAREST);
+    return panel_blit(c, hit);
 }
 
 const nxc_surface_t *nxui_wallpaper(void) { return g_ui.wallpaper.pixels ? &g_ui.wallpaper : 0; }
@@ -671,6 +912,55 @@ static nxc_status_t load_font(nxui_font_id_t id, const uint8_t *start, const uin
     return NXC_OK;
 }
 
+/*
+ * Fallback chains and registry entries for the loaded system faces.
+ * Sans faces fall back to Mono (box drawing, technical symbols), Mono to
+ * Regular. Failures are logged; text still renders without them.
+ */
+static void fonts_register(void) {
+    static const struct {
+        nxui_font_id_t id;
+        const char *family, *style, *role;
+    } k_faces[] = {
+        { NXUI_FONT_REGULAR, "NX Sans",      "Regular",  "text"     },
+        { NXUI_FONT_MEDIUM,  "NX Sans",      "Medium",   "ui"       },
+        { NXUI_FONT_DISPLAY, "NX Sans",      "Semibold", "display"  },
+        { NXUI_FONT_BOLD,    "NX Sans",      "Bold",     "emphasis" },
+        { NXUI_FONT_ITALIC,  "NX Sans",      "Italic",   "emphasis" },
+        { NXUI_FONT_MONO,    "NX Sans Mono", "Regular",  "mono"     },
+    };
+    nxc_font_t *mono = g_ui.fonts[NXUI_FONT_MONO];
+    nxc_font_t *regular = g_ui.fonts[NXUI_FONT_REGULAR];
+    for (int32_t i = 0; i < NXUI_FONT_COUNT; i++) {
+        nxc_font_t *f = g_ui.fonts[i];
+        if (!f || i == NXUI_FONT_SEMIBOLD) continue;      /* alias of DISPLAY */
+        const nxc_font_t *fb = (f == mono) ? regular : mono;
+        if (fb && fb != f && nxc_font_set_fallbacks(f, &fb, 1) != NXC_OK) {
+            ui_log("[NXUI] font fallback chain not set\n");
+        }
+    }
+    if (nxfont_registry_init() != NXC_OK) {
+        ui_log("[NXUI] font registry init failed\n");
+        return;
+    }
+    for (uint32_t k = 0; k < sizeof(k_faces) / sizeof(k_faces[0]); k++) {
+        const nxc_font_t *f = g_ui.fonts[k_faces[k].id];
+        if (!f) continue;
+        uint32_t rid = 0;
+        if (nxfont_registry_add_system(f, k_faces[k].family, k_faces[k].style, k_faces[k].role,
+                                       &rid) != NXC_OK) {
+            ui_log("[NXUI] font registry: system face not registered\n");
+            continue;
+        }
+        g_ui.font_reg_ids[k_faces[k].id] = rid;
+    }
+    g_ui.font_reg_ids[NXUI_FONT_SEMIBOLD] = g_ui.font_reg_ids[NXUI_FONT_DISPLAY];
+    uint32_t loaded = 0;
+    if (nxfont_registry_load_user(0, &loaded) == NXC_OK && loaded > 0) {
+        ui_log("[NXUI] user fonts loaded\n");
+    }
+}
+
 nxc_status_t nxui_init(void) {
     if (g_ui.ready) return NXC_OK;
     ui_log("[NXUI] init\n");
@@ -711,6 +1001,9 @@ nxc_status_t nxui_init(void) {
     load_font(NXUI_FONT_BOLD,    nxui_font_bold,    nxui_font_bold_end,    "NXSans Bold");
     load_font(NXUI_FONT_DISPLAY, nxui_font_display, nxui_font_display_end, "NXSans Display");
     load_font(NXUI_FONT_MONO,    nxui_font_mono,    nxui_font_mono_end,    "NXSans Mono");
+    load_font(NXUI_FONT_ITALIC,  nxui_font_italic,  nxui_font_italic_end,  "NXSans Italic");
+    g_ui.fonts[NXUI_FONT_SEMIBOLD] = g_ui.fonts[NXUI_FONT_DISPLAY];   /* same 600 face */
+    fonts_register();
     for (int32_t i = 0; i < NXUI_TEXT_COUNT; i++) {
         nxui_type_t t = g_type_scale[i];
         if (nxc_font_metrics(nxui_font(t.font), t.size, &g_ui.metrics[i]) != NXC_OK) {
