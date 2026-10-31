@@ -31,6 +31,11 @@ SECTIONS
     }
     
     _kernel_end = .;
+
+    /* 0x1000000 (16 MB) is USER_WINDOW_BASE in include/mm/addrspace.h:
+     * every process maps its own memory there, so the kernel image must end
+     * below it. Fail the link instead of booting a kernel that overlaps it. */
+    ASSERT(_kernel_end <= 0x1000000, "kernel image reaches the 16 MB user window (USER_WINDOW_BASE)")
     
     /DISCARD/ : {
         *(.comment)

@@ -27,6 +27,8 @@
 #define MAX_APPS                64      /* Maximum apps in drawer */
 #define APP_NAME_MAX            32      /* Max app name length */
 #define APP_PATH_MAX            128     /* Max app path length */
+#define APP_DISK_DIR            "/apps" /* Programs here appear in the drawer */
+#define APP_DISK_SCAN_MAX       16      /* Max programs listed from disk */
 
 /* ============ App Entry Structure ============ */
 
@@ -34,6 +36,7 @@ typedef struct {
     char name[APP_NAME_MAX];        /* Display name */
     char path[APP_PATH_MAX];        /* Path to .app bundle */
     char icon_path[APP_PATH_MAX];   /* Path to icon (NXI format) */
+    char exec_path[APP_PATH_MAX];   /* Program on disk to spawn ("" = none) */
     uint32_t category;              /* App category */
     uint8_t pinned;                 /* Pinned to dock */
     uint8_t recent;                 /* Recently used */

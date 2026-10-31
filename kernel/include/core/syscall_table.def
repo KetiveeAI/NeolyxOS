@@ -26,6 +26,9 @@ NX_SYSCALL(9,  "wait",    sys_wait_impl,    2, PRIV_USER, 0)
 /* Memory Management (10-12) */
 NX_SYSCALL(10, "brk",     sys_brk_impl,     1, PRIV_USER, 0)
 
+/* Process creation (13) - program from disk in a new address space */
+NX_SYSCALL(13, "spawn",   sys_spawn_impl,   3, PRIV_USER, NX_FLAG_AUDIT)
+
 /* File I/O (20-26) */
 NX_SYSCALL(20, "open",    sys_open_impl,    3, PRIV_USER, 0)
 NX_SYSCALL(21, "close",   sys_close_impl,   1, PRIV_USER, 0)

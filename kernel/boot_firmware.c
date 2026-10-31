@@ -1291,18 +1291,18 @@ void kernel_main(NeolyxBootInfo *boot_info) {
         /* Initialize kernel heap for dynamic memory allocation */
         {
             extern void heap_init(uint64_t start_addr, uint64_t size);
-            /* Use memory at 32MB mark for heap (16MB of heap space) 
-             * IMPORTANT: Desktop ELF is loaded at 0x1000000-0x1280000, so heap must be AFTER that!
-             * Using 0x2000000 (32MB) as heap start to leave room for userspace
-             */
-            /* The userspace program region is 0x1000000 - 0x6000000 (desktop
-             * ELF, its 64 MB heap reserve and stack, reserved in pmm_init), so
-             * the kernel heap lives right above it. The desktop's heap used to
-             * grow over a kernel heap placed at 0x2000000. */
-            extern void pmm_reserve_region(uint64_t start, uint64_t size);
-            pmm_reserve_region(0x6000000, 0x1000000);
-            heap_init(0x6000000, 0x1000000);
-            serial_puts("[OK] Heap initialized at 0x6000000 (16 MB, above userspace region)\n");
+            /* 16MB kernel heap from the PMM. It must not sit at a fixed
+             * address in 16MB-256MB: that range is the per-process user
+             * window (see include/mm/addrspace.h) and is reserved. */
+            extern uint64_t pmm_alloc_pages(uint64_t count);
+            const uint64_t heap_size = 0x1000000;
+            uint64_t heap_base = pmm_alloc_pages(heap_size / 4096);
+            if (heap_base == 0 || heap_base + heap_size > 0x100000000ULL) {
+                serial_puts("[FATAL] Cannot allocate kernel heap below 4GB - halting\n");
+                for (;;) { __asm__ volatile("cli; hlt"); }
+            }
+            heap_init(heap_base, heap_size);
+            serial_puts("[OK] Heap initialized from PMM\n");
         }
         
         /* Initialize Filesystem Layer */

@@ -18,6 +18,13 @@
 .global sti
 .global hlt
 .global syscall_msr_init
+
+.section .bss
+.align 8
+.global g_syscall_user_rsp
+g_syscall_user_rsp:
+    .quad 0
+.section .text
 .global syscall_enable
 
 # Load GDT
@@ -45,7 +52,15 @@ idt_load:
 
 # System call entry point
 # SYSCALL: RCX = user RIP, R11 = user RFLAGS, RAX = syscall number
-# Args: RDI=arg1, RSI=arg2, RDX=arg3, R10=arg4, R8=arg5, R9=arg6
+# Args: RDI=arg1, RSI=arg2, RDX=arg3, R10=arg4, R8=arg5
+#
+# ABI guarantee to userspace: every register except RAX (return value),
+# RCX and R11 (clobbered by SYSCALL/SYSRET) is preserved.
+#
+# FMASK clears IF on entry, so the global scratch slot below cannot be
+# overwritten by an interrupt before it is consumed (single CPU).
+# g_kernel_rsp0 always holds the top of the *current* process's kernel
+# stack; the scheduler updates it on every switch.
 syscall_entry:
     # CRITICAL: Disable interrupts immediately!
     # FMASK should already clear IF, but this is defense-in-depth
@@ -164,12 +179,6 @@ syscall_entry:
     
     sysretq
 
-# Scratch slot for user RSP during syscall entry
-.data
-.align 8
-g_syscall_user_rsp:
-    .quad 0
-
 # Default FPU/SSE image for FXRSTOR64 (512 bytes, 16-byte aligned):
 # FCW=0x037F (x87 exceptions masked, 64-bit precision, round to nearest),
 # FSW=0, all x87 tags empty, MXCSR=0x1F80 (SIMD exceptions masked, round to
@@ -197,6 +206,87 @@ nx_fpu_default_state_end:
 .endif
 .text
 
+
+# void sched_switch(uint64_t *save_rsp, uint64_t new_rsp)
+#
+# Kernel-stack switch used by the scheduler. Saves callee-saved registers on
+# the current stack, stores RSP into *save_rsp, loads new_rsp and pops the
+# same frame. A new process's stack is pre-built so the final RET lands in
+# user_first_entry.
+.global sched_switch
+sched_switch:
+    pushq %rbp
+    pushq %rbx
+    pushq %r12
+    pushq %r13
+    pushq %r14
+    pushq %r15
+    movq %rsp, (%rdi)
+    movq %rsi, %rsp
+    popq %r15
+    popq %r14
+    popq %r13
+    popq %r12
+    popq %rbx
+    popq %rbp
+    ret
+
+# First instruction a newly created process runs (in kernel mode, on its
+# own kernel stack, interrupts disabled). Never returns.
+.global user_first_entry
+user_first_entry:
+    andq $-16, %rsp
+    call process_first_run
+1:  cli
+    hlt
+    jmp 1b
+
+# First instruction a new kernel thread runs. R12 = entry, R13 = argument.
+.global kthread_first_entry
+kthread_first_entry:
+    andq $-16, %rsp
+    movq %r12, %rdi
+    movq %r13, %rsi
+    call kthread_start
+1:  cli
+    hlt
+    jmp 1b
+
+# void enter_user_mode_args(uint64_t stack, uint64_t entry,
+#                           uint64_t arg0, uint64_t arg1)
+# Like enter_user_mode, but starts the program with RDI = arg0 (argc) and
+# RSI = arg1 (argv). All other registers are cleared.
+.global enter_user_mode_args
+enter_user_mode_args:
+    cli
+    mov $0x23, %ax
+    mov %ax, %ds
+    mov %ax, %es
+    mov %ax, %fs
+    mov %ax, %gs
+
+    pushq $0x23             # SS
+    pushq %rdi              # RSP
+    pushq $0x202            # RFLAGS (IF=1)
+    pushq $0x2B             # CS (64-bit user code)
+    pushq %rsi              # RIP
+
+    movq %rdx, %rdi         # argc
+    movq %rcx, %rsi         # argv
+    xor %rax, %rax
+    xor %rbx, %rbx
+    xor %rcx, %rcx
+    xor %rdx, %rdx
+    xor %rbp, %rbp
+    xor %r8, %r8
+    xor %r9, %r9
+    xor %r10, %r10
+    xor %r11, %r11
+    xor %r12, %r12
+    xor %r13, %r13
+    xor %r14, %r14
+    xor %r15, %r15
+    iretq
 
 # Context switch between processes
 context_switch:

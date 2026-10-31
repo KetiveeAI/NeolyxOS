@@ -26,6 +26,8 @@
 #define PROCESS_NAME_MAX    64
 #define KERNEL_STACK_SIZE   (16 * 1024)  /* 16 KB */
 #define USER_STACK_SIZE     (64 * 1024)  /* 64 KB */
+#define PROCESS_ARGV_MAX    16           /* Max argv entries for spawn/exec */
+#define PROCESS_ARG_LEN     256          /* Max length of one argument */
 
 /* Process states */
 typedef enum {
@@ -110,6 +112,20 @@ typedef struct process {
     
     /* Syscall dispatch control (for sandboxing) */
     nx_syscall_dispatch_t syscall_dispatch;
+    
+    /* ---- Multi-process support (appended: keeps earlier offsets stable) ---- */
+    struct addrspace *as;               /* Private user address space (NULL = kernel) */
+    uint64_t ksp;                       /* Saved kernel RSP while switched out */
+    uint64_t wake_tick;                 /* PIT tick at which a SLEEPING process wakes */
+    uint64_t heap_max;                  /* Highest address brk may reach */
+    uint64_t heap_mapped;               /* Heap is mapped up to here */
+    uint8_t *fpu_state;                 /* 16-byte aligned FXSAVE area (512 bytes) */
+    void *fpu_alloc;                    /* Allocation backing fpu_state */
+    uint64_t user_entry;                /* First-run: user RIP */
+    uint64_t user_rsp;                  /* First-run: user RSP */
+    uint64_t user_argc;                 /* First-run: RDI */
+    uint64_t user_argv;                 /* First-run: RSI */
+    int stack_released;                 /* Kernel stack + FPU area already freed */
 } process_t;
 
 /* ============ Process API ============ */
@@ -153,6 +169,51 @@ int process_exec(const char *path, char *const argv[], char *const envp[]);
  * @param exit_code Exit status
  */
 void process_exit(int exit_code) __attribute__((noreturn));
+
+/**
+ * Create a user process from an ELF image held in kernel memory.
+ * The process gets its own address space and starts on the next schedule.
+ *
+ * @param name   Process name (copied)
+ * @param image  ELF file contents
+ * @param size   Size of image in bytes
+ * @param argc   Number of arguments (0-PROCESS_ARGV_MAX)
+ * @param argv   Argument strings (may be NULL when argc == 0)
+ * @param flags  PROC_FLAG_SYSTEM and/or PROC_FLAG_DETACHED
+ * @return PID (> 0) or negative errno
+ */
+int32_t process_spawn_image(const char *name, const void *image, uint64_t size,
+                            int argc, const char *const *argv, uint32_t flags);
+
+/**
+ * Create a user process from an ELF file on a mounted filesystem.
+ * Same as process_spawn_image() but loads the file through the VFS.
+ */
+int32_t process_spawn_file(const char *path, int argc, const char *const *argv,
+                           uint32_t flags);
+
+/**
+ * Prepare FXSAVE support and the clean FPU image new processes start from.
+ * Sets CR0.MP, clears CR0.EM/TS, sets CR4.OSFXSR/OSXMMEXCPT.
+ */
+void process_fpu_init(void);
+
+/**
+ * Turn the calling (boot) context into the idle thread and start running
+ * ready processes. Never returns.
+ */
+void scheduler_run(void) __attribute__((noreturn));
+
+/**
+ * Timer hook, called from IRQ0 after EOI.
+ * @param from_user  non-zero when the interrupt arrived in ring 3
+ */
+void scheduler_tick_irq(int from_user);
+
+/**
+ * Terminate the current user process after a CPU exception. Never returns.
+ */
+void process_exit_on_fault(uint64_t vector) __attribute__((noreturn));
 
 /**
  * Wait for child process.

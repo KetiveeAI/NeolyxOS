@@ -11,6 +11,12 @@
 #include "mm/pmm.h"
 #include "mm/kheap.h"
 #include "fs/vfs.h"
+#include "mm/addrspace.h"
+
+/* Non-zero once per-process address spaces are active */
+static int paging_user_window_private(void) {
+    return addrspace_kernel_pml4() != 0;
+}
 
 /* ============ External Dependencies ============ */
 
@@ -154,6 +160,17 @@ int elf_get_info(const void *data, elf_info_t *info) {
 int elf_load(const void *data, elf_info_t *info) {
     if (!data || !info) return -1;
     
+    /*
+     * This loader copies segments to their virtual address through the
+     * kernel identity map. The user window is now private to each process
+     * and unmapped from kernel tables, so that would fault (or, before
+     * addrspace_init, write into reserved memory). Use elf_load_user().
+     */
+    if (paging_user_window_private()) {
+        serial_puts("[ELF] elf_load: identity loading is disabled; use elf_load_user\n");
+        return -1;
+    }
+    
     /* Get info first */
     if (elf_get_info(data, info) != 0) {
         serial_puts("[ELF] elf_get_info FAILED!\n");
@@ -263,6 +280,94 @@ int elf_load(const void *data, elf_info_t *info) {
     serial_hex64(info->entry_point);
     serial_puts("\n");
     
+    return 0;
+}
+
+/* ============ Loading into a user address space ============ */
+
+int elf_load_user(struct addrspace *as, const void *data, uint64_t size, elf_info_t *info) {
+    if (!as || !data || !info) return -1;
+    memset(info, 0, sizeof(elf_info_t));
+
+    /* Reject a header offset that would overflow elf_validate's bounds sum */
+    if (size < sizeof(elf64_ehdr_t) || ((const elf64_ehdr_t *)data)->e_phoff > size) {
+        serial_puts("[ELF] Rejected: truncated header\n");
+        return -1;
+    }
+    if (elf_validate(data, size) != 0) return -1;
+
+    const elf64_ehdr_t *ehdr = (const elf64_ehdr_t *)data;
+    if (ehdr->e_type != ET_EXEC) {
+        serial_puts("[ELF] Rejected: only static ET_EXEC programs are supported\n");
+        return -1;
+    }
+    if (ehdr->e_phentsize != sizeof(elf64_phdr_t)) {
+        serial_puts("[ELF] Rejected: unexpected program header size\n");
+        return -1;
+    }
+
+    /* Segments must stay clear of the stack region and its guard page */
+    const uint64_t load_limit = USER_STACK_TOP - USER_STACK_SIZE_MAX - PAGE_SIZE;
+    const elf64_phdr_t *phdr = (const elf64_phdr_t *)((const uint8_t *)data + ehdr->e_phoff);
+    uint64_t lowest = UINT64_MAX;
+    uint64_t highest = 0;
+    int loaded = 0;
+
+    for (int i = 0; i < ehdr->e_phnum; i++) {
+        if (phdr[i].p_type == PT_INTERP) {
+            serial_puts("[ELF] Rejected: dynamic linking is not supported\n");
+            return -1;
+        }
+        if (phdr[i].p_type != PT_LOAD || phdr[i].p_memsz == 0) continue;
+
+        uint64_t vaddr = phdr[i].p_vaddr;
+        uint64_t memsz = phdr[i].p_memsz;
+        uint64_t filesz = phdr[i].p_filesz;
+        uint64_t offset = phdr[i].p_offset;
+
+        if (filesz > memsz ||
+            offset > size || filesz > size - offset ||
+            vaddr + memsz < vaddr ||
+            vaddr < USER_WINDOW_BASE || vaddr + memsz > load_limit) {
+            serial_puts("[ELF] Rejected: segment ");
+            serial_hex64(i);
+            serial_puts(" out of bounds (vaddr ");
+            serial_hex64(vaddr);
+            serial_puts(")\n");
+            return -1;
+        }
+
+        uint32_t map_flags = (phdr[i].p_flags & PF_W) ? AS_MAP_WRITE : 0;
+        if (addrspace_map_alloc(as, vaddr, memsz, map_flags) != 0) {
+            serial_puts("[ELF] Failed to map segment\n");
+            return -1;
+        }
+        /* Fresh frames are zero-filled, so BSS needs no extra work */
+        if (filesz && addrspace_copy_in(as, vaddr, (const uint8_t *)data + offset, filesz) != 0) {
+            serial_puts("[ELF] Failed to copy segment\n");
+            return -1;
+        }
+
+        if (vaddr < lowest) lowest = vaddr;
+        if (vaddr + memsz > highest) highest = vaddr + memsz;
+        loaded++;
+    }
+
+    if (loaded == 0) {
+        serial_puts("[ELF] Rejected: no loadable segments\n");
+        return -1;
+    }
+    if (ehdr->e_entry < lowest || ehdr->e_entry >= highest) {
+        serial_puts("[ELF] Rejected: entry point outside loaded image\n");
+        return -1;
+    }
+
+    info->entry_point = ehdr->e_entry;
+    info->base_addr = lowest;
+    info->top_addr = highest;
+    info->brk = (highest + PAGE_SIZE - 1) & ~((uint64_t)PAGE_SIZE - 1);
+    info->is_valid = 1;
+    info->is_dynamic = 0;
     return 0;
 }
 

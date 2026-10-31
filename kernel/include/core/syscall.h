@@ -46,6 +46,10 @@
 #define SYS_BRK         10  /* void* sys_brk(void* addr) */
 #define SYS_MMAP        11  /* void* sys_mmap(void* addr, size_t len, int prot, int flags) */
 #define SYS_MUNMAP      12  /* int sys_munmap(void* addr, size_t len) */
+#define SYS_SPAWN       13  /* int32_t sys_spawn(const char* path, char** argv, uint32_t flags) */
+
+/* sys_spawn flags */
+#define SPAWN_WAITABLE  0x1 /* Keep the child for sys_wait(); default is detached */
 
 /* File I/O (VFS-backed) */
 #define SYS_OPEN        20  /* int sys_open(const char* path, int flags, int mode) */
@@ -160,6 +164,7 @@
 #define ESPIPE          29  /* Illegal seek */
 #define EROFS           30  /* Read-only filesystem */
 #define EPIPE           32  /* Broken pipe */
+#define ENAMETOOLONG    36  /* Name too long */
 #define ENOSYS          38  /* Function not implemented */
 #define ENOTEMPTY       39  /* Directory not empty */
 #define ERANGE          40  /* Math result not representable */

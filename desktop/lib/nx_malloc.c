@@ -39,19 +39,24 @@ static heap_header_t* get_heap_header(void) {
     }
     g_heap_initializing = 1;
     
-    /* Query kernel for heap start - the heap is ALREADY mapped by kernel at boot (64MB).
-     * We don't need to grow via brk - just use the memory directly.
-     * This is the dynamic approach used by production OSes. */
+    /* Query the kernel for the start of this process's heap. Pages are
+     * mapped on demand: every byte handed out must first be covered by
+     * a successful brk() call (each process has a private address space). */
     int64_t base = nx_brk(0);
     if (base <= 0) {
         g_heap_initializing = 0;
         return 0;
     }
     
-    /* Calculate header end - heap is pre-mapped so we can use it directly */
     uint64_t hdr_end = ((uint64_t)base + sizeof(heap_header_t) + 15) & ~15ULL;
     
-    /* Initialize header (memory is already mapped, no brk grow needed) */
+    /* Map the page holding the header */
+    int64_t mapped = nx_brk(hdr_end);
+    if (mapped < 0 || (uint64_t)mapped < hdr_end) {
+        g_heap_initializing = 0;
+        return 0;
+    }
+    
     heap_header_t* hdr = (heap_header_t*)base;
     hdr->magic = HEAP_MAGIC;
     hdr->heap_start = hdr_end;
@@ -60,8 +65,6 @@ static heap_header_t* get_heap_header(void) {
     g_heap_base = (uint64_t)base;
     g_heap_initializing = 0;
     
-    /* NOTE: Do NOT call nx_debug_print here - the syscall clobbers RDX
-     * which the compiler uses to hold 'hdr' after inlining. */
     return hdr;
 }
 
@@ -79,7 +82,15 @@ void* nx_malloc(uint64_t size) {
     uint64_t new_end = heap_end + size;
     uint64_t heap_max = hdr->heap_start + (64 * 1024 * 1024);
     
-    if (new_end > heap_max) return 0;
+    if (new_end < heap_end || new_end > heap_max) return 0;
+    
+    /* Grow the mapped heap if this allocation runs past the break */
+    int64_t brk_now = nx_brk(0);
+    if (brk_now < 0) return 0;
+    if (new_end > (uint64_t)brk_now) {
+        int64_t grown = nx_brk(new_end);
+        if (grown < 0 || (uint64_t)grown < new_end) return 0;
+    }
     
     /* Update heap end */
     hdr->heap_end = new_end;

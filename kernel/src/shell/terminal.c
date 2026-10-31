@@ -1267,8 +1267,13 @@ term_status_t cmd_exec(terminal_state_t *term, int argc, char **argv) {
     serial_puts(path);
     serial_puts("\n");
     
-    /* Execute the program */
-    int result = process_exec(path, child_argv, 0);
+    /* Start the program as a new process with its own address space */
+    extern int32_t process_spawn_file(const char *path, int argc,
+                                      const char *const *argv, uint32_t flags);
+    int32_t pid = process_spawn_file(path, child_argc,
+                                     child_argc ? (const char *const *)child_argv : 0,
+                                     0x0008 /* PROC_FLAG_DETACHED */);
+    int result = (pid > 0) ? 0 : pid;
     
     if (result != 0) {
         terminal_println(term, "");
@@ -1289,7 +1294,7 @@ term_status_t cmd_exec(terminal_state_t *term, int argc, char **argv) {
     }
     
     terminal_println(term, "");
-    terminal_println(term, "Program completed.");
+    terminal_println(term, "Program started.");
     return TERM_OK;
 }
 
