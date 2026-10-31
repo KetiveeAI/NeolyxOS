@@ -267,6 +267,19 @@ int vfs_create(const char *path, vfs_type_t type, uint32_t perms);
 int vfs_unlink(const char *path);
 
 /**
+ * Rename or move a file or directory within one volume.
+ * Fails with VFS_ERR_EXIST if @new_path exists, VFS_ERR_INVALID across
+ * volumes or when moving a directory into itself, VFS_ERR_BUSY if the
+ * file is open, and VFS_ERR_PERM when System Integrity Protection refuses
+ * either path.
+ *
+ * @param old_path Existing path
+ * @param new_path New path (its parent directory must exist)
+ * @return VFS_OK on success
+ */
+int vfs_rename(const char *old_path, const char *new_path);
+
+/**
  * Create a directory and all parent directories.
  * Like 'mkdir -p' - creates intermediate directories as needed.
  * 

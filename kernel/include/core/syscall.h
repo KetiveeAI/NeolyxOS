@@ -66,6 +66,7 @@
 #define SYS_RMDIR       32  /* int sys_rmdir(const char* path) */
 #define SYS_CHDIR       33  /* int sys_chdir(const char* path) */
 #define SYS_GETCWD      34  /* int sys_getcwd(char* buf, size_t size) */
+#define SYS_RENAME      35  /* int sys_rename(const char* old_path, const char* new_path) */
 
 /* Networking / Sockets */
 #define SYS_SOCKET      40  /* int sys_socket(int type, int protocol) */

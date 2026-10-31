@@ -732,6 +732,8 @@ static void dry_note(sh_tab_t *t, const char *what, const char *path) {
     outln(t, C_TEXT, path);
 }
 
+static const char *fs_err_text(int rc);
+
 /* make file <name> | make dir <name> */
 static void cmd_make(sh_tab_t *t, int argc, char **argv) {
     if (argc != 3 || (!s_eq(argv[1], "file") && !s_eq(argv[1], "dir"))) {
@@ -744,10 +746,11 @@ static void cmd_make(sh_tab_t *t, int argc, char **argv) {
     if (file_exists(path) || dir_exists(path)) { err(t, "make", "something with that name already exists"); return; }
     if (g_dry) { dry_note(t, dir ? "create folder" : "create file", path); return; }
     if (dir) {
-        if (nx_mkdir(path) < 0) { err(t, "make", "could not create folder"); return; }
+        int rc = nx_mkdir(path);
+        if (rc < 0) { err(t, "make", fs_err_text(rc)); return; }
     } else {
         int fd = nx_open(path, O_WRONLY | O_CREAT);
-        if (fd < 0) { err(t, "make", "could not create file"); return; }
+        if (fd < 0) { err(t, "make", "could not create file (protected place, or the folder does not exist)"); return; }
         if (nx_close(fd) < 0) { err(t, "make", "file created but close failed"); return; }
     }
     sh_log2(dir ? "folder created: " : "file created: ", path);
@@ -755,9 +758,21 @@ static void cmd_make(sh_tab_t *t, int argc, char **argv) {
     outln(t, C_TEXT, path);
 }
 
-/* Kernel syscall 32 is registered as "rmdir" but removes any VFS node
- * (sys_unlink_impl). */
-static int nx_remove_node(const char *path) { return (int)syscall1(32, (int64_t)path); }
+/* Plain-language reason for a filesystem result from nx_remove/nx_rename. */
+static const char *fs_err_text(int rc) {
+    switch (rc) {
+        case NX_FS_NOT_FOUND: return "no such file or folder";
+        case NX_FS_PROTECTED: return "protected by the system (System Integrity Protection)";
+        case NX_FS_EXISTS:    return "destination already exists";
+        case NX_FS_NOT_DIR:   return "a part of the path is not a folder";
+        case NX_FS_NOT_EMPTY: return "folder is not empty";
+        case NX_FS_BUSY:      return "it is open or in use";
+        case NX_FS_INVALID:   return "not allowed for this name or place";
+        case NX_FS_READ_ONLY: return "the file or disk is read-only";
+        case NX_FS_IO:        return "the disk does not support this, or an I/O error happened";
+        default:              return "the file system refused";
+    }
+}
 
 /* Ask for typed intent before a destructive action. */
 static void ask_confirm(sh_tab_t *t, const char *phrase, const char *line) {
@@ -796,8 +811,9 @@ static void cmd_remove(sh_tab_t *t, int argc, char **argv) {
         ask_confirm(t, phrase, line);
         return;
     }
-    if (nx_remove_node(path) < 0) {
-        err(t, "remove", "the file system refused (deleting may not be supported on this disk yet)");
+    int rc = nx_remove(path);
+    if (rc < 0) {
+        err(t, "remove", fs_err_text(rc));
         return;
     }
     sh_log2("removed: ", path);
@@ -825,17 +841,19 @@ static int copy_file(sh_tab_t *t, const char *cmd, const char *src, const char *
     }
     if (nx_close(in) < 0) sh_log("warning: close failed on copy source");
     if (nx_close(outfd) < 0) { if (rc == 0) err(t, cmd, "close failed on destination"); rc = -1; }
-    if (rc != 0 && nx_remove_node(dst) < 0) sh_log2("warning: partial copy left at ", dst);
+    if (rc != 0 && nx_remove(dst) < 0) sh_log2("warning: partial copy left at ", dst);
     return rc;
 }
 
 /* Resolve source/destination for copy and move; a folder destination
  * receives the source's name. Returns 0 when both are usable. */
-static int two_paths(sh_tab_t *t, const char *cmd, int argc, char **argv, char *src, char *dst) {
+static int two_paths(sh_tab_t *t, const char *cmd, int argc, char **argv, char *src, char *dst,
+                     int allow_dir) {
     if (argc != 3) { err(t, cmd, "usage: <source> <destination> [--dry]"); return -1; }
     if (arg_path(t, cmd, argv[1], src) || arg_path(t, cmd, argv[2], dst)) return -1;
-    if (dir_exists(src)) { err(t, cmd, "folders are not supported yet; files only"); return -1; }
-    if (!file_exists(src)) { err(t, cmd, "no such file"); return -1; }
+    int src_dir = dir_exists(src);
+    if (src_dir && !allow_dir) { err(t, cmd, "folders are not supported yet; files only"); return -1; }
+    if (!src_dir && !file_exists(src)) { err(t, cmd, "no such file or folder"); return -1; }
     if (dir_exists(dst)) {
         const char *base = src;
         for (const char *p = src; *p; p++) if (*p == '/' && p[1]) base = p + 1;
@@ -852,7 +870,7 @@ static int two_paths(sh_tab_t *t, const char *cmd, int argc, char **argv, char *
 
 static void cmd_copy(sh_tab_t *t, int argc, char **argv) {
     char src[SH_PATH_MAX], dst[SH_PATH_MAX];
-    if (two_paths(t, "copy", argc, argv, src, dst)) return;
+    if (two_paths(t, "copy", argc, argv, src, dst, 0)) return;
     if (g_dry) { out(t, C_WARN, "dry run: "); out(t, C_TEXT, "would copy "); out(t, C_TEXT, src); out(t, C_TEXT, " to "); outln(t, C_TEXT, dst); return; }
     if (copy_file(t, "copy", src, dst)) return;
     sh_log2("copied to ", dst);
@@ -860,23 +878,42 @@ static void cmd_copy(sh_tab_t *t, int argc, char **argv) {
     outln(t, C_TEXT, dst);
 }
 
-/* move = copy, then remove the source (the kernel has no rename yet). */
+/* move: a rename on the same disk; across disks, copy then remove the
+ * source, undoing the copy if the source cannot be removed. */
 static void cmd_move(sh_tab_t *t, int argc, char **argv) {
     char src[SH_PATH_MAX], dst[SH_PATH_MAX];
-    if (two_paths(t, "move", argc, argv, src, dst)) return;
+    if (two_paths(t, "move", argc, argv, src, dst, 1)) return;
     if (refuse_system(t, "move", src)) return;
-    if (g_dry) { out(t, C_WARN, "dry run: "); out(t, C_TEXT, "would move "); out(t, C_TEXT, src); out(t, C_TEXT, " to "); outln(t, C_TEXT, dst); return; }
-    if (copy_file(t, "move", src, dst)) return;
-    if (nx_remove_node(src) < 0) {
-        /* Undo the copy so a failed move changes nothing */
-        if (nx_remove_node(dst) == 0) {
-            err(t, "move", "the file system cannot delete the original, so nothing was moved");
-        } else {
-            err(t, "move", "the file system cannot delete files here; a copy was left at:");
-            outln(t, C_TEXT, dst);
-            sh_log2("move left a copy at ", dst);
-        }
+    int src_dir = dir_exists(src);
+    if (src_dir && (s_eq(t->cwd, src) || path_has_prefix_ci(t->cwd, src))) {
+        err(t, "move", "cannot move the folder you are in (cd out of it first)");
         return;
+    }
+    if (g_dry) { out(t, C_WARN, "dry run: "); out(t, C_TEXT, "would move "); out(t, C_TEXT, src); out(t, C_TEXT, " to "); outln(t, C_TEXT, dst); return; }
+    int rc = nx_rename(src, dst);
+    if (rc != NX_FS_OK && rc != NX_FS_INVALID) {
+        err(t, "move", fs_err_text(rc));
+        return;
+    }
+    if (rc == NX_FS_INVALID && src_dir) {
+        err(t, "move", "folders can only be moved within one disk, and not into themselves");
+        return;
+    }
+    if (rc == NX_FS_INVALID) {
+        /* Different volumes: copy, then delete the original */
+        if (copy_file(t, "move", src, dst)) return;
+        int rm = nx_remove(src);
+        if (rm < 0) {
+            if (nx_remove(dst) == 0) {
+                err(t, "move", fs_err_text(rm));
+                outln(t, C_DIM, "the copy was removed again, so nothing was moved");
+            } else {
+                err(t, "move", "the original could not be deleted; a copy was left at:");
+                outln(t, C_TEXT, dst);
+                sh_log2("move left a copy at ", dst);
+            }
+            return;
+        }
     }
     sh_log2("moved to ", dst);
     out(t, C_OK, "moved ");
@@ -1351,7 +1388,7 @@ static const sh_cmd_t g_cmds[] = {
     { "make",     "file|dir <name>",           "Create a file or folder",                 cmd_make,    SHF_DRY },
     { "remove",   "<path> [--dry]",            "Delete a file or empty folder",           cmd_remove,  SHF_DRY },
     { "copy",     "<source> <dest> [--dry]",   "Copy a file",                             cmd_copy,    SHF_DRY },
-    { "move",     "<source> <dest> [--dry]",   "Move or rename a file",                   cmd_move,    SHF_DRY },
+    { "move",     "<source> <dest> [--dry]",   "Move or rename a file or folder",         cmd_move,    SHF_DRY },
     { "tasks",    "[all]",                     "Running processes",                       cmd_tasks,   0 },
     { "kill",     "<pid>",                     "Ask a process to quit",                   cmd_kill,    SHF_DRY },
     { "info",     "system|memory|cpu|disk",    "System information",                      cmd_info,    0 },
