@@ -74,4 +74,10 @@ void taskmgr_view_render(desktop_window_t *win, void *ctx);
 void taskmgr_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ctx);
 void taskmgr_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t b, uint8_t pb, void *ctx);
 
+/* shell/views/shell_view.c  (Shell: the command shell, formerly Terminal) */
+int  shell_view_open(uint32_t win_id);
+void shell_view_render(desktop_window_t *win, void *ctx);
+void shell_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ctx);
+void shell_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t b, uint8_t pb, void *ctx);
+
 #endif /* APP_VIEW_H */

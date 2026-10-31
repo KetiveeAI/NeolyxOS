@@ -50,6 +50,24 @@ int  menubar_handle_key(uint8_t scancode, uint8_t pressed);
 int  menubar_is_open(void);
 void menubar_close(void);
 
+/* ============ App-specific menus ============
+ *
+ * While a window titled app_name has focus, the bar shows `menus` (at
+ * most MENUBAR_MENU_MAX) instead of File/Edit/View/Window/Help. Items
+ * whose action is >= MENUBAR_APP_ACTION_BASE are sent to `handler`; any
+ * other action is a standard shell action and goes to the handler set
+ * with menubar_set_handler, so a set may reuse menubar_standard_menu()
+ * entries (e.g. "Window", "Help") unchanged. The menus array must stay
+ * valid for the life of the shell (static storage). Registering the same
+ * app again replaces its set. Returns 0, or -1 on invalid arguments or
+ * when the table is full (nothing changes). */
+#define MENUBAR_APP_ACTION_BASE 0x1000
+
+int menubar_register_app_menus(const char *app_name, const menubar_menu_t *menus, int count,
+                               menubar_action_fn handler);
+/* A standard menu by title ("File", "Edit", "View", "Window", "Help"), or NULL. */
+const menubar_menu_t *menubar_standard_menu(const char *title);
+
 /* ============ The whole bar ============
  *
  * menubar_render_bar draws the bar background, the focused app's name in

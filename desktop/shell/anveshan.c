@@ -342,7 +342,7 @@ void anveshan_index_apps(void) {
         const char *keywords;
     } builtin_apps[] = {
         { "Path",         "com.neolyx.path",       0xFFF5C518, "files finder folder browser" },
-        { "Terminal",     "com.neolyx.terminal",   0xFF42C5F5, "shell command bash console" },
+        { "Shell",        "com.neolyx.shell",      0xFF42C5F5, "terminal command console prompt" },
         { "Settings",     "com.neolyx.settings",   0xFF888888, "preferences system config" },
         { "Calculator",   "com.neolyx.calc",       0xFFFF9500, "math calculate" },
         { "Calendar",     "com.neolyx.calendar",   0xFFFF4080, "date schedule event" },

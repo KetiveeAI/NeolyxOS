@@ -86,7 +86,7 @@ static const struct {
 } builtin_apps[] = {
     { "Settings",       "/Applications/Settings.app",       APP_CAT_SYSTEM },
     { "Path",           "/Applications/Path.app",           APP_CAT_SYSTEM },
-    { "Terminal",       "/Applications/Terminal.app",       APP_CAT_SYSTEM },
+    { "Shell",          "/Applications/Shell.app",          APP_CAT_SYSTEM },
     { "FontManager",    "/Applications/FontManager.app",    APP_CAT_SYSTEM },
     { "Calculator",     "/Applications/Calculator.app",     APP_CAT_UTILITIES },
     { "Calendar",       "/Applications/Calendar.app",       APP_CAT_UTILITIES },

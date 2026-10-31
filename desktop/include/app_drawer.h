@@ -46,7 +46,7 @@ typedef struct {
 /* App categories */
 typedef enum {
     APP_CAT_ALL = 0,
-    APP_CAT_SYSTEM,         /* Settings, Path, Terminal */
+    APP_CAT_SYSTEM,         /* Settings, Path, Shell */
     APP_CAT_PRODUCTIVITY,   /* Office, Notes */
     APP_CAT_MEDIA,          /* RoleCut, Rivee, Music */
     APP_CAT_UTILITIES,      /* Calculator, Clock, Calendar */
