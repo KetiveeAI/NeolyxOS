@@ -75,6 +75,7 @@ obj-y += addrspace.o
 obj-y += syscall.o
 obj-y += nx_syscall.o
 obj-y += process.o
+obj-y += boot_image.o
 obj-y += elf.o
 obj-y += runtime.o
 obj-y += recovery.o
@@ -223,11 +224,11 @@ kernel.bin: kernel.elf
 	objcopy -O binary kernel.elf kernel.bin
 
 # Boot Firmware (provides kernel_main entry point with boot menu UI)
-boot_firmware.o: boot_firmware.c include/ui/disk_icons.h include/video/splash.h
+boot_firmware.o: boot_firmware.c include/core/boot_image.h include/ui/disk_icons.h include/video/splash.h
 	$(CC) $(CFLAGS) -c boot_firmware.c -o boot_firmware.o
 
 # Core kernel rules
-main.o: src/core/main.c include/core/kernel.h include/video/video.h include/drivers/drivers.h include/network/network.h include/storage/storage.h include/utils/log.h include/io/keyboard.h include/core/syscall.h include/core/process.h include/core/runtime.h
+main.o: src/core/main.c include/core/kernel.h include/video/video.h include/drivers/drivers.h include/network/network.h include/storage/storage.h include/utils/log.h include/io/keyboard.h include/core/syscall.h include/core/process.h include/core/runtime.h include/core/boot_image.h
 	$(CC) $(CFLAGS) -c src/core/main.c -o main.o
 
 kernel.o: src/core/kernel.c include/core/kernel.h
@@ -275,6 +276,9 @@ syscall.o: src/core/syscall.c include/core/syscall.h include/core/kernel.h inclu
 
 nx_syscall.o: src/core/nx_syscall.c include/core/nx_abi.h include/core/syscall.h include/core/process.h include/core/syscall_table.def
 	$(CC) $(CFLAGS) -c src/core/nx_syscall.c -o nx_syscall.o
+
+boot_image.o: src/core/boot_image.c include/core/boot_image.h include/mm/addrspace.h
+	$(CC) $(CFLAGS) -c src/core/boot_image.c -o boot_image.o
 
 process.o: src/core/process.c include/core/process.h include/core/kernel.h include/utils/log.h
 	$(CC) $(CFLAGS) -c src/core/process.c -o process.o
@@ -439,7 +443,7 @@ boot.o: src/core/boot.c
 power.o: src/core/power.c
 	$(CC) $(CFLAGS) -c src/core/power.c -o power.o
 
-installer.o: src/core/installer.c
+installer.o: src/core/installer.c include/core/boot_image.h
 	$(CC) $(CFLAGS) -c src/core/installer.c -o installer.o
 
 sysconfig.o: src/core/sysconfig.c
@@ -515,7 +519,7 @@ fs_init.o: src/fs/fs_init.c include/fs/fs_init.h include/fs/vfs.h
 	$(CC) $(CFLAGS) -c src/fs/fs_init.c -o fs_init.o
 
 # Filesystem - RAM Filesystem
-ramfs.o: src/fs/ramfs.c include/fs/ramfs.h src/fs/ramfs_binaries.h src/fs/desktop_elf_data.h
+ramfs.o: src/fs/ramfs.c include/fs/ramfs.h src/fs/ramfs_binaries.h include/core/boot_image.h
 	$(CC) $(CFLAGS) -c src/fs/ramfs.c -o ramfs.o
 
 # Filesystem - NPA Archive

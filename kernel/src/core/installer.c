@@ -7,6 +7,7 @@
  */
 
 #include "core/installer.h"
+#include <core/boot_image.h>
 #include "core/boot_mode.h"
 #include "drivers/ahci.h"
 #include "mm/kheap.h"
@@ -2005,6 +2006,31 @@ int installer_copy_files(disk_info_t *disk, profile_type_t profile) {
             vfs_write(kernel_file, (void *)kernel_physical_base, kernel_size);
         }
         vfs_close(kernel_file);
+    }
+    
+    /* Copy desktop.elf: the UEFI loader reads it next to kernel.bin and
+     * hands it to the kernel (core/boot_image.h). Without it the installed
+     * system would boot to safe mode. */
+    {
+        const void *desktop_image = NULL;
+        uint64_t desktop_size = 0;
+        if (boot_desktop_image_get(&desktop_image, &desktop_size) != 0) {
+            serial_puts("[INSTALL] ERROR: no desktop image to install\n");
+            return -1;
+        }
+        serial_puts("[INSTALL] Copying desktop.elf...\n");
+        vfs_file_t *desktop_file = vfs_open("/EFI/BOOT/desktop.elf",
+                                            VFS_O_WRONLY | VFS_O_CREATE | VFS_O_TRUNC);
+        if (!desktop_file) {
+            serial_puts("[INSTALL] ERROR: cannot create /EFI/BOOT/desktop.elf\n");
+            return -1;
+        }
+        int64_t written = vfs_write(desktop_file, desktop_image, desktop_size);
+        vfs_close(desktop_file);
+        if (written != (int64_t)desktop_size) {
+            serial_puts("[INSTALL] ERROR: short write of desktop.elf\n");
+            return -1;
+        }
     }
     
     /* Create installation marker */

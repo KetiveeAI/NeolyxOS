@@ -39,13 +39,25 @@ if [ "$ENTRY" != "0x1000000" ]; then
     echo "WARNING: Entry point is not 0x1000000! Check user.ld"
 fi
 
-# Step 3: Generate header
-echo "[3/5] Generating desktop_elf_data.h..."
-xxd -i bin/neolyx-desktop > desktop_elf_data.h
-# Rename xxd variable to match kernel expected name
-sed -i 's/bin_neolyx_desktop/desktop_elf_data/g' desktop_elf_data.h
-cp desktop_elf_data.h ../kernel/src/fs/desktop_elf_data.h
-echo "      Header copied to kernel/src/fs/"
+# Step 3: Bootloader. The desktop is no longer compiled into the kernel:
+# the UEFI loader reads \EFI\BOOT\desktop.elf from the boot image.
+echo "[3/5] Building bootloader..."
+cd ../boot
+if [ -f /usr/include/efi/efi.h ]; then
+    make clean >/dev/null 2>&1 || true
+    if ! make >/dev/null 2>&1 || [ ! -f BOOTX64.EFI ]; then
+        echo "ERROR: Bootloader build failed (run 'make' in boot/ for details)"
+        exit 1
+    fi
+    echo "      Bootloader built: boot/BOOTX64.EFI"
+else
+    echo "      gnu-efi not installed; using the committed boot/BOOTX64.EFI"
+fi
+if [ ! -f BOOTX64.EFI ]; then
+    echo "ERROR: boot/BOOTX64.EFI missing"
+    exit 1
+fi
+cd ../desktop
 
 # Step 4: Build kernel
 echo "[4/5] Building kernel..."
@@ -56,6 +68,13 @@ rm -f main.o kernel.bin 2>/dev/null || true
 make -B 2>&1 | grep -E "(error|kernel.bin|warning:.*error)" | head -10 || true
 if [ ! -f kernel.bin ]; then
     echo "ERROR: Kernel build failed!"
+    exit 1
+fi
+# The loader places the raw kernel at 1 MB; firmware memory can start at
+# 8 MB (OVMF puts ACPI NVS there), so the image must stay below 7 MB.
+KSIZE=$(stat -c%s kernel.bin)
+if [ "$KSIZE" -gt $((7 * 1024 * 1024)) ]; then
+    echo "ERROR: kernel.bin is $KSIZE bytes; it must stay below 7 MB to load at 1 MB"
     exit 1
 fi
 echo "      Kernel built: kernel.bin"
@@ -75,7 +94,9 @@ echo "      Built tests/userland/ticker/ticker"
 echo "[5/5] Updating boot image..."
 # NOTE: If mcopy fails ("Bad media types"), run ./rebuild_image.sh first
 if mcopy -i neolyx.img -o kernel/kernel.bin ::/EFI/BOOT/kernel.bin 2>/dev/null; then
-    echo "      Boot image updated!"
+    mcopy -i neolyx.img -o desktop/bin/neolyx-desktop ::/EFI/BOOT/desktop.elf
+    mcopy -i neolyx.img -o boot/BOOTX64.EFI ::/EFI/BOOT/BOOTX64.EFI
+    echo "      Boot image updated (kernel.bin, desktop.elf, BOOTX64.EFI)"
     mmd -i neolyx.img ::/apps 2>/dev/null || true
     mcopy -i neolyx.img -o tests/userland/ticker/ticker ::/apps/ticker && echo "      Installed /apps/ticker"
 else

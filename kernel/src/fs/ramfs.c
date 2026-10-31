@@ -12,6 +12,7 @@
 #include "fs/vfs.h"
 #include "mm/kheap.h"
 #include "ramfs_binaries.h"
+#include "core/boot_image.h"
 
 /* ============ External Dependencies ============ */
 
@@ -144,7 +145,8 @@ static ramfs_file_t bin_files[] = {
     { "hello", hello_elf, sizeof(hello_elf), VFS_FILE },
     { "init", init_elf_data, INIT_ELF_SIZE, VFS_FILE },
     { "nxsh", nxsh_elf_data, NXSH_ELF_SIZE, VFS_FILE },
-    { "desktop", desktop_elf_data, DESKTOP_ELF_SIZE, VFS_FILE },
+    /* Filled at mount from the bootloader-provided image (core/boot_image.h) */
+    { "desktop", NULL, 0, VFS_FILE },
 };
 
 /* Directory: /bin */
@@ -411,10 +413,25 @@ int ramfs_mount(vfs_mount_t *mount) {
     ramfs_nxsh_node.private_data = &bin_files[2];
     ramfs_nxsh_node.parent = &ramfs_bin_node;
     
-    /* Initialize /bin/desktop node */
+    /* Initialize /bin/desktop node from the image the bootloader loaded
+     * (\EFI\BOOT\desktop.elf). Without one, /bin/desktop is not listed. */
+    {
+        const void *img = NULL;
+        uint64_t img_size = 0;
+        if (boot_desktop_image_get(&img, &img_size) == 0) {
+            bin_files[3].data = (const uint8_t *)img;
+            bin_files[3].size = img_size;
+            bin_dir.file_count = 4;
+        } else {
+            bin_files[3].data = NULL;
+            bin_files[3].size = 0;
+            bin_dir.file_count = 3;
+            serial_puts("[RAMFS] No desktop image from the bootloader; /bin/desktop unavailable\n");
+        }
+    }
     ramfs_strcpy(ramfs_desktop_node.name, "desktop", VFS_NAME_MAX);
     ramfs_desktop_node.type = VFS_FILE;
-    ramfs_desktop_node.size = DESKTOP_ELF_SIZE;
+    ramfs_desktop_node.size = bin_files[3].size;
     ramfs_desktop_node.inode = 6;
     ramfs_desktop_node.permissions = 0755;
     ramfs_desktop_node.mount = mount;
@@ -426,7 +443,9 @@ int ramfs_mount(vfs_mount_t *mount) {
     mount->private_data = &root_dir;
     
     serial_puts("[RAMFS] Mounted at /\n");
-    serial_puts("[RAMFS] Available: /bin/hello, /bin/init, /bin/nxsh, /bin/desktop\n");
+    serial_puts(bin_dir.file_count == 4
+                ? "[RAMFS] Available: /bin/hello, /bin/init, /bin/nxsh, /bin/desktop\n"
+                : "[RAMFS] Available: /bin/hello, /bin/init, /bin/nxsh\n");
     
     return VFS_OK;
 }

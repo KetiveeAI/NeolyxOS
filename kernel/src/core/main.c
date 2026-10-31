@@ -26,6 +26,7 @@
 #include <core/runtime.h>
 #include <utils/string.h>
 #include <video/splash.h>
+#include <core/boot_image.h>
 
 /* ============ Framebuffer Globals for Syscalls ============ */
 /* 
@@ -129,7 +130,7 @@ void init_storage_subsystem(void) {
     extern int ramfs_mount_root(void);
     ramfs_init();
     if (ramfs_mount_root() == 0) {
-        klog("RAMFS mounted at /ramfs (provides /ramfs/bin/desktop)");
+        klog("RAMFS mounted at /ramfs (/ramfs/bin/desktop when the bootloader loaded it)");
     } else {
         klog("Warning: RAMFS mount failed");
     }
@@ -387,21 +388,26 @@ void nx_kernel_start(void) {
             syscall_enable();
             
             /*
-             * The desktop shell is embedded in the kernel image and starts as
-             * a system process in its own address space. Programs it launches
-             * are loaded from disk with sys_spawn and run alongside it.
-             * The image is the file-scope copy defined in fs/ramfs.c; including
-             * desktop_elf_data.h here would make it a multi-MB stack local.
+             * The desktop shell is a userspace ELF on the boot volume
+             * (\EFI\BOOT\desktop.elf), loaded into memory by the UEFI loader
+             * and validated by boot_desktop_image_init(). It starts as a system
+             * process in its own address space; programs it launches are
+             * loaded from disk with sys_spawn and run alongside it.
              */
-            extern unsigned char desktop_elf_data[];
-            extern unsigned int desktop_elf_data_len;
+            const void *desktop_image = NULL;
+            uint64_t desktop_image_size = 0;
             static const char *const desktop_argv[1] = { "desktop" };
+            int32_t desktop_pid = -1;
             
-            serial_puts("[KERNEL] Starting desktop process from embedded ELF...\n");
-            int32_t desktop_pid = process_spawn_image("desktop", desktop_elf_data,
-                                                      desktop_elf_data_len,
-                                                      1, desktop_argv,
-                                                      PROC_FLAG_SYSTEM | PROC_FLAG_DETACHED);
+            if (boot_desktop_image_get(&desktop_image, &desktop_image_size) != 0) {
+                serial_puts("[KERNEL] ERROR: no desktop image (\\EFI\\BOOT\\desktop.elf missing or invalid)\n");
+            } else {
+                serial_puts("[KERNEL] Starting desktop process from boot image...\n");
+                desktop_pid = process_spawn_image("desktop", desktop_image,
+                                                  desktop_image_size,
+                                                  1, desktop_argv,
+                                                  PROC_FLAG_SYSTEM | PROC_FLAG_DETACHED);
+            }
             if (desktop_pid > 0) {
                 svc_set_state(desktop_svc_id, SVC_STATE_RUNNING);
                 serial_puts("[KERNEL] Desktop service state: RUNNING\n");

@@ -1280,6 +1280,12 @@ void kernel_main(NeolyxBootInfo *boot_info) {
             extern void pmm_reserve_region(uint64_t start, uint64_t size);
             pmm_reserve_region(k_start, k_size);
             
+            /* Desktop shell image loaded by the UEFI loader (boot volume) */
+            extern int boot_desktop_image_init(uint64_t phys, uint64_t size, uint64_t magic);
+            (void)boot_desktop_image_init(boot_info->reserved[1],
+                                          boot_info->reserved[2],
+                                          boot_info->reserved[3]);
+            
             serial_puts("[OK] PMM initialized for AHCI\n");
         }
         

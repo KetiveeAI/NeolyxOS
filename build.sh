@@ -239,6 +239,16 @@ update_image() {
         print_warning "Failed to update root kernel.bin (non-critical)"
     fi
     
+    if [ -f "desktop/bin/neolyx-desktop" ]; then
+        if mcopy -o -i neolyx.img desktop/bin/neolyx-desktop ::/EFI/BOOT/desktop.elf 2>/dev/null; then
+            print_success "Updated ::/EFI/BOOT/desktop.elf"
+        else
+            print_error "Failed to update ::/EFI/BOOT/desktop.elf (desktop will not start)"
+        fi
+    else
+        print_warning "desktop/bin/neolyx-desktop not built - run 'make' in desktop/"
+    fi
+    
     if [ -f "$BOOT_DIR/BOOTX64.EFI" ]; then
         print_info "Copying bootloader to boot image..."
         if mcopy -o -i neolyx.img $BOOT_DIR/BOOTX64.EFI ::/EFI/BOOT/BOOTX64.EFI 2>/dev/null; then

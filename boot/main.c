@@ -513,6 +513,98 @@ static EFI_STATUS load_kernel(UINT64 *entry_point, UINTN *kernel_size_out) {
     return EFI_SUCCESS;
 }
 
+/* ============ Desktop Image Loading ============ */
+
+/*
+ * The desktop shell is a separate userspace ELF on the boot volume, not part
+ * of kernel.bin. The raw kernel must fit in the free memory at 1 MB, which
+ * on OVMF ends at 8 MB (ACPI NVS follows), so the desktop is loaded here
+ * into pages below 4 GB and outside the kernel's user window, and handed to
+ * the kernel through boot info:
+ *   reserved[1] = physical address, reserved[2] = size,
+ *   reserved[3] = NEOLYX_DESKTOP_MAGIC (fields valid only when set).
+ * A missing desktop is not fatal: the kernel reports it and enters safe mode.
+ */
+#define NEOLYX_DESKTOP_MAGIC     0x4B534544ULL   /* "DESK" */
+#define NEOLYX_DESKTOP_MAX_SIZE  (64ULL * 1024 * 1024)
+#define NEOLYX_USER_WINDOW_BASE  0x1000000ULL    /* Must match kernel addrspace.h */
+#define NEOLYX_USER_WINDOW_END   0x10000000ULL
+
+static EFI_STATUS load_desktop(void) {
+    EFI_STATUS status;
+    EFI_LOADED_IMAGE *loaded_image;
+    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *fs;
+    EFI_FILE *root, *file = NULL;
+    
+    gBootInfo.reserved[1] = 0;
+    gBootInfo.reserved[2] = 0;
+    gBootInfo.reserved[3] = 0;
+    
+    status = uefi_call_wrapper(gNeoBS->HandleProtocol, 3,
+        gNeoImageHandle, &gEfiLoadedImageProtocolGuid, (VOID**)&loaded_image);
+    if (EFI_ERROR(status)) return status;
+    status = uefi_call_wrapper(gNeoBS->HandleProtocol, 3,
+        loaded_image->DeviceHandle, &gEfiSimpleFileSystemProtocolGuid, (VOID**)&fs);
+    if (EFI_ERROR(status)) return status;
+    status = uefi_call_wrapper(fs->OpenVolume, 2, fs, &root);
+    if (EFI_ERROR(status)) return status;
+    
+    status = uefi_call_wrapper(root->Open, 5, root, &file,
+        L"\\EFI\\BOOT\\desktop.elf", EFI_FILE_MODE_READ, 0);
+    if (EFI_ERROR(status)) {
+        Print(L"    WARNING: \\EFI\\BOOT\\desktop.elf not found\n");
+        uefi_call_wrapper(root->Close, 1, root);
+        return EFI_NOT_FOUND;
+    }
+    
+    UINT8 info_buffer[512];
+    UINTN info_size = sizeof(info_buffer);
+    status = uefi_call_wrapper(file->GetInfo, 4,
+        file, &gEfiFileInfoGuid, &info_size, info_buffer);
+    UINT64 size = EFI_ERROR(status) ? 0 : ((EFI_FILE_INFO*)info_buffer)->FileSize;
+    if (size < 64 || size > NEOLYX_DESKTOP_MAX_SIZE) {
+        Print(L"    WARNING: desktop.elf has invalid size %lu\n", size);
+        uefi_call_wrapper(file->Close, 1, file);
+        uefi_call_wrapper(root->Close, 1, root);
+        return EFI_COMPROMISED_DATA;
+    }
+    
+    /* Below 4 GB: the kernel reads it through its 0-4 GB identity map */
+    UINTN pages = (size + 4095) / 4096;
+    EFI_PHYSICAL_ADDRESS addr = 0xFFFFFFFFULL;
+    status = uefi_call_wrapper(gNeoBS->AllocatePages, 4,
+        AllocateMaxAddress, EfiLoaderData, pages, &addr);
+    if (EFI_ERROR(status)) {
+        Print(L"    WARNING: no memory for desktop.elf\n");
+        uefi_call_wrapper(file->Close, 1, file);
+        uefi_call_wrapper(root->Close, 1, root);
+        return status;
+    }
+    if (addr < NEOLYX_USER_WINDOW_END && addr + pages * 4096 > NEOLYX_USER_WINDOW_BASE) {
+        Print(L"    WARNING: desktop.elf landed in the user window (0x%lx)\n", addr);
+        uefi_call_wrapper(gNeoBS->FreePages, 2, addr, pages);
+        uefi_call_wrapper(file->Close, 1, file);
+        uefi_call_wrapper(root->Close, 1, root);
+        return EFI_OUT_OF_RESOURCES;
+    }
+    
+    UINTN read_size = size;
+    status = uefi_call_wrapper(file->Read, 3, file, &read_size, (VOID*)addr);
+    uefi_call_wrapper(file->Close, 1, file);
+    uefi_call_wrapper(root->Close, 1, root);
+    if (EFI_ERROR(status) || read_size != size || *(UINT32*)addr != ELF_MAGIC) {
+        Print(L"    WARNING: desktop.elf could not be read or is not an ELF\n");
+        uefi_call_wrapper(gNeoBS->FreePages, 2, addr, pages);
+        return EFI_ERROR(status) ? status : EFI_COMPROMISED_DATA;
+    }
+    
+    gBootInfo.reserved[1] = addr;
+    gBootInfo.reserved[2] = size;
+    gBootInfo.reserved[3] = NEOLYX_DESKTOP_MAGIC;
+    Print(L"    Desktop: %lu bytes at 0x%lx\n", size, addr);
+    return EFI_SUCCESS;
+}
+
 /* ============ Exit Boot Services & Jump ============ */
 
 static void jump_to_kernel(UINT64 entry_point) {
@@ -749,6 +841,9 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
         
         while (1) { __asm__ volatile("hlt"); }
     }
+    
+    /* Desktop shell image (not fatal if missing; the kernel reports it) */
+    (void)load_desktop();
     
     update_progress(L"Kernel ready...", 80);
     
