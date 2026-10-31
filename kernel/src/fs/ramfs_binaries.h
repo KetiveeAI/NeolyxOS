@@ -1175,9 +1175,8 @@ unsigned int nxsh_elf_data_len = 8024;
 #define INIT_ELF_SIZE sizeof(init_elf_data)
 #define NXSH_ELF_SIZE sizeof(nxsh_elf_data)
 
-/* Include desktop ELF binary (userspace desktop shell) */
-#include "desktop_elf_data.h"
-#define DESKTOP_ELF_SIZE sizeof(desktop_elf_data)
+/* The desktop shell is no longer embedded here: the UEFI loader reads
+ * \EFI\BOOT\desktop.elf and the kernel gets it via core/boot_image.h. */
 
 #endif /* RAMFS_BINARIES_H */
 

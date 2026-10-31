@@ -12,6 +12,11 @@ if [ ! -f "boot/BOOTX64.EFI" ]; then
     exit 1
 fi
 
+if [ ! -f "desktop/bin/neolyx-desktop" ]; then
+    echo "[ERROR] desktop/bin/neolyx-desktop not found! Run build_all.sh first."
+    exit 1
+fi
+
 echo "[IMG] Creating new neolyx.img (64MB)..."
 dd if=/dev/zero of=neolyx_new.img bs=1M count=64 status=none
 mkfs.fat -F 32 neolyx_new.img >/dev/null 2>&1
@@ -26,6 +31,9 @@ mcopy -i neolyx_new.img boot/BOOTX64.EFI ::/EFI/BOOT/BOOTX64.EFI
 echo "[IMG] Copying kernel..."
 mcopy -i neolyx_new.img kernel/kernel.bin ::/EFI/BOOT/kernel.bin
 mcopy -i neolyx_new.img kernel/kernel.bin ::/kernel.bin
+
+echo "[IMG] Copying desktop..."
+mcopy -i neolyx_new.img desktop/bin/neolyx-desktop ::/EFI/BOOT/desktop.elf
 
 echo "[IMG] Installing user programs into /apps..."
 mmd -i neolyx_new.img ::/apps
@@ -42,6 +50,7 @@ echo "NeolyxOS Installed" | mcopy -i neolyx_new.img - ::/INSTALLED.MRK
 echo "[IMG] Verifying image contents..."
 mdir -i neolyx_new.img ::/EFI/BOOT/ | grep -q "kernel.bin" && echo "  ✓ Kernel verified"
 mdir -i neolyx_new.img ::/EFI/BOOT/ | grep -q "BOOTX64.EFI" && echo "  ✓ Bootloader verified"
+mdir -i neolyx_new.img ::/EFI/BOOT/ | grep -qi "desktop" && echo "  ✓ Desktop verified"
 
 echo "[IMG] Replacing old image..."
 if [ -f "neolyx.img" ]; then
