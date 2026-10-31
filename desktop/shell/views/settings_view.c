@@ -16,9 +16,8 @@
  *   Ctrl+F         focus search
  *   Alt+Left/Right or Ctrl+[ / Ctrl+]   back / forward
  *   Up/Down/PgUp/PgDn/Home/End/Space    scroll the pane (pane focus)
- * Pointer: click, drag-scroll (sidebar and pane), scrollbar drag; the
- * input stream has no wheel events (input_event_t), so dragging is the
- * pointer scroll gesture.
+ * Pointer: click, drag-scroll (sidebar and pane), scrollbar drag, and
+ * the scroll wheel (input_event_t.mouse.wheel) over the sidebar or pane.
  *
  * Copyright (c) 2025 KetiveeAI
  */
@@ -544,6 +543,23 @@ void settings_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t 
             break;
     }
     if (release) V.capture = CAP_NONE;
+}
+
+/* ============ Scroll wheel ============ */
+
+void settings_view_scroll(desktop_window_t *win, int32_t lx, int32_t ly, int32_t notches, void *ctx) {
+    (void)ctx;
+    if (!win || V.ch <= 0.0f || notches == 0) return;
+    if (V.capture == CAP_LIST && V.list_dragging) return;   /* drag in progress wins */
+    if (nxglass_hit(list_rect(), lx, ly)) {
+        V.list_scroll += (float)notches * k_row_h[V.sidebar_size];
+        list_clamp();
+        return;
+    }
+    const settings_pane_t *p = (V.current >= 0 && V.current < PANE_COUNT) ? g_panes[V.current].pane : 0;
+    nxc_rect_t pa = pane_area_local();
+    if (p && p->scroll && nxglass_hit(pa, lx, ly))
+        p->scroll(lx - (int32_t)pa.x, ly - (int32_t)pa.y, notches);
 }
 
 /* ============ Keyboard ============ */

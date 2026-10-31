@@ -782,6 +782,20 @@ int sui_pane_mouse(sui_build_fn fn, int32_t lx, int32_t ly, uint8_t b, uint8_t p
     return inside || press || release || held;
 }
 
+/* One wheel notch scrolls the same distance as the Up/Down keys. */
+#define SUI_WHEEL_PX 48.0f
+
+int sui_pane_scroll(int32_t lx, int32_t ly, int32_t notches) {
+    (void)lx; (void)ly;
+    if (!S.have_area || notches == 0) return 0;
+    if (S.sb_drag || S.active >= 0) return 1;   /* a thumb or slider drag owns the pane */
+    if (sui_max_scroll() <= 0.0f) return 0;
+    S.scroll += (float)notches * SUI_WHEEL_PX;
+    sui_clamp_scroll();
+    S.pressed = -1;                              /* a pending click no longer lines up */
+    return 1;
+}
+
 int sui_pane_key(sui_build_fn fn, uint8_t sc, uint8_t pressed, char ascii) {
     (void)fn; (void)ascii;
     if (!pressed || !S.have_area) return 0;

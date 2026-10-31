@@ -120,6 +120,13 @@ typedef struct desktop_shell_window {
     void (*mouse_handler)(struct desktop_shell_window *win, int32_t lx, int32_t ly,
                           uint8_t buttons, uint8_t prev_buttons, void *ctx);
     void *mouse_ctx;
+
+    /* Content scroll-wheel handler (optional). (lx, ly) is the pointer in
+     * content-local coordinates; notches > 0 scrolls the content down
+     * (toward its end), already adjusted for the natural-scrolling pref. */
+    void (*scroll_handler)(struct desktop_shell_window *win, int32_t lx, int32_t ly,
+                           int32_t notches, void *ctx);
+    void *scroll_ctx;
 } desktop_window_t;
 
 /* ============ Desktop API ============ */
@@ -200,6 +207,16 @@ void desktop_set_window_mouse_handler(uint32_t window_id,
                                                       void *ctx),
                                       void *ctx);
 
+/**
+ * desktop_set_window_scroll_handler - Set content-area scroll-wheel handler
+ */
+void desktop_set_window_scroll_handler(uint32_t window_id,
+                                       void (*handler)(desktop_window_t *win,
+                                                       int32_t lx, int32_t ly,
+                                                       int32_t notches,
+                                                       void *ctx),
+                                       void *ctx);
+
 /* ============ Window queries (for dock, task manager, Stage) ============ */
 
 /* Window slot i (0..MAX_WINDOWS-1); NULL when the slot is empty. */
@@ -245,6 +262,14 @@ void desktop_draw_cursor(int32_t x, int32_t y);
  * desktop_handle_mouse - Handle mouse input event
  */
 void desktop_handle_mouse(int32_t dx, int32_t dy, uint8_t buttons);
+
+/**
+ * desktop_handle_scroll - Handle a scroll-wheel event
+ *
+ * @notches: wheel notches from the input event; > 0 = wheel turned toward
+ *           the user. Delivered to the window under the pointer.
+ */
+void desktop_handle_scroll(int32_t notches);
 
 /**
  * desktop_handle_key - Handle keyboard input event
