@@ -88,6 +88,11 @@ typedef struct {
     volatile int32_t delta_y;
     volatile int32_t delta_z;
     volatile uint8_t buttons;
+    /* Buttons pressed since the last mouse_get_event, so a click that is
+     * pressed and released between two polls is still reported. */
+    volatile uint8_t buttons_latched;
+    /* Button state last returned by mouse_get_event */
+    uint8_t  buttons_reported;
     
     /* Screen bounds */
     int32_t  screen_width;
@@ -220,6 +225,7 @@ static void process_packet(void) {
     g_mouse.delta_y += dy;
     g_mouse.delta_z += dz;
     g_mouse.buttons = buttons;
+    g_mouse.buttons_latched |= buttons;
     
     /* Update absolute position */
     g_mouse.x += dx;
@@ -657,6 +663,7 @@ int mouse_get_event(int16_t *dx, int16_t *dy, uint8_t *buttons) {
                         g_mouse.delta_x += pdx;
                         g_mouse.delta_y += pdy;
                         g_mouse.buttons = p[0] & 0x07;
+                        g_mouse.buttons_latched |= g_mouse.buttons;
                         g_mouse.packet_idx = 0;
                         
                         serial_puts("[PS2_POLL] Got packet! dx=");
@@ -671,21 +678,29 @@ int mouse_get_event(int16_t *dx, int16_t *dy, uint8_t *buttons) {
     }
     /* ======================================================================= */
     
-    /* Check if there's any delta to report */
-    if (g_mouse.delta_x == 0 && g_mouse.delta_y == 0) {
-        /* No movement, just return current button state */
+    /* NOTE: No CLI/STI here! Syscalls already disabled interrupts. */
+    
+    /* A button pressed and already released since the last poll is
+     * reported as held once; the next poll then reports the release. */
+    uint8_t report = g_mouse.buttons | g_mouse.buttons_latched;
+    g_mouse.buttons_latched = 0;
+    
+    /* Report movement, or a button change on its own (a click without
+     * moving the mouse must still reach userspace). */
+    if (g_mouse.delta_x == 0 && g_mouse.delta_y == 0 &&
+        report == g_mouse.buttons_reported) {
         *dx = 0;
         *dy = 0;
-        *buttons = g_mouse.buttons;
+        *buttons = report;
         return -1;  /* No event */
     }
     
-    /* NOTE: No CLI/STI here! Syscalls already disabled interrupts. */
     *dx = (int16_t)g_mouse.delta_x;
     *dy = (int16_t)g_mouse.delta_y;
-    *buttons = g_mouse.buttons;
+    *buttons = report;
     g_mouse.delta_x = 0;
     g_mouse.delta_y = 0;
+    g_mouse.buttons_reported = report;
     
     return 0;  /* Event available */
 }
