@@ -321,6 +321,14 @@ static int fat_update_dirent(fat_mount_t *fat, vfs_node_t *node, uint8_t *scratc
 
 /* ============ Directory Iteration ============ */
 
+/* Directory slots of one name: long-name slots first, the 8.3 entry last */
+#define FAT_MAX_SLOTS 21
+typedef struct {
+    uint32_t count;
+    uint32_t cl[FAT_MAX_SLOTS];
+    uint32_t ix[FAT_MAX_SLOTS];
+} fat_slots_t;
+
 typedef struct {
     fat_mount_t *fat;
     uint8_t     *buf;           /* one cluster of directory entries */
@@ -332,6 +340,7 @@ typedef struct {
     uint8_t      lfn_sum;
     uint8_t      lfn_next;      /* next expected LFN sequence, 0 = none pending */
     uint8_t      lfn_ok;        /* a complete LFN precedes the next entry */
+    fat_slots_t  lfn_slots;     /* where the pending long-name entries are */
 } fat_dir_iter_t;
 
 typedef struct {
@@ -339,6 +348,7 @@ typedef struct {
     char         name[VFS_NAME_MAX + 1];   /* long name if present */
     char         short_name[13];           /* 8.3 name, lower case */
     uint32_t     cluster, index;           /* location of the 8.3 entry */
+    fat_slots_t  slots;                    /* every slot of this name */
 } fat_dir_item_t;
 
 static int fat_dir_iter_open(fat_dir_iter_t *it, fat_mount_t *fat, uint32_t dir_cluster) {
@@ -366,10 +376,11 @@ static void fat_lfn_reset(fat_dir_iter_t *it) {
     it->lfn_next = 0;
     it->lfn_ok = 0;
     it->lfn_len = 0;
+    it->lfn_slots.count = 0;
 }
 
 /* Fold one LFN entry into the pending long name. */
-static void fat_lfn_take(fat_dir_iter_t *it, const uint8_t *raw) {
+static void fat_lfn_take(fat_dir_iter_t *it, const uint8_t *raw, uint32_t cl, uint32_t ix) {
     uint8_t ord = raw[0];
     uint8_t seq = ord & 0x1F;
     if (ord & 0x40) {
@@ -379,10 +390,16 @@ static void fat_lfn_take(fat_dir_iter_t *it, const uint8_t *raw) {
         if (it->lfn_len > VFS_NAME_MAX) it->lfn_len = VFS_NAME_MAX;
         it->lfn_next = seq;
         it->lfn_ok = 0;
+        it->lfn_slots.count = 0;
     }
     if (it->lfn_next == 0 || seq != it->lfn_next || raw[13] != it->lfn_sum) {
         fat_lfn_reset(it);
         return;
+    }
+    if (it->lfn_slots.count < FAT_MAX_SLOTS - 1) {
+        it->lfn_slots.cl[it->lfn_slots.count] = cl;
+        it->lfn_slots.ix[it->lfn_slots.count] = ix;
+        it->lfn_slots.count++;
     }
     for (int k = 0; k < 13; k++) {
         uint32_t pos = (uint32_t)(seq - 1) * 13 + (uint32_t)k;
@@ -410,19 +427,24 @@ static int fat_dir_iter_next(fat_dir_iter_t *it, fat_dir_item_t *out) {
         uint8_t first = (uint8_t)de->name[0];
         if (first == 0x00) { it->cluster = 0; return 0; }
         if (first == 0xE5) { fat_lfn_reset(it); continue; }
-        if (de->attr == FAT_ATTR_LFN) { fat_lfn_take(it, (const uint8_t *)de); continue; }
+        if (de->attr == FAT_ATTR_LFN) { fat_lfn_take(it, (const uint8_t *)de, it->cluster, idx); continue; }
         if (de->attr & FAT_ATTR_VOLUME_ID) { fat_lfn_reset(it); continue; }
         
         out->de = *de;
         out->cluster = it->cluster;
         out->index = idx;
         fat_8_3_to_name(de, out->short_name);
+        out->slots.count = 0;
         if (it->lfn_ok && it->lfn_len > 0 && fat_lfn_checksum(de) == it->lfn_sum) {
             fat_memcpy(out->name, it->lfn, it->lfn_len);
             out->name[it->lfn_len] = '\0';
+            out->slots = it->lfn_slots;
         } else {
             fat_strcpy(out->name, out->short_name, sizeof(out->name));
         }
+        out->slots.cl[out->slots.count] = it->cluster;
+        out->slots.ix[out->slots.count] = idx;
+        out->slots.count++;
         fat_lfn_reset(it);
         return 1;
     }
@@ -763,24 +785,38 @@ static int fat_dir_put_entry(fat_mount_t *fat, uint32_t cluster, uint32_t index,
     return fat_write_cluster(fat, cluster, buf) == 0 ? VFS_OK : VFS_ERR_IO;
 }
 
-/* Create file or directory in FAT filesystem (long names supported) */
-static int fat_vfs_create(vfs_node_t *parent, const char *name, vfs_type_t type, uint32_t mode) {
-    if (!parent || !name || !parent->mount) return VFS_ERR_INVALID;
-    if (parent->type != VFS_DIRECTORY) return VFS_ERR_NOT_DIR;
-    (void)mode; /* FAT doesn't use Unix modes */
-    
-    fat_mount_t *fat = (fat_mount_t *)parent->mount->private_data;
-    if (!fat) return VFS_ERR_INVALID;
-    if (fat->fat_type != FAT_TYPE_FAT32) return VFS_ERR_READ_ONLY;
+/* Mark every slot of a name deleted, the 8.3 entry first. */
+static int fat_dir_erase(fat_mount_t *fat, const fat_slots_t *slots, uint8_t *buf) {
+    int rc = VFS_OK;
+    for (uint32_t k = slots->count; k > 0; k--) {
+        uint32_t i = k - 1;
+        if (fat_read_cluster(fat, slots->cl[i], buf) != 0) { rc = VFS_ERR_IO; continue; }
+        buf[slots->ix[i] * sizeof(fat_dirent_t)] = 0xE5;
+        if (fat_write_cluster(fat, slots->cl[i], buf) != 0) rc = VFS_ERR_IO;
+    }
+    return rc;
+}
+
+/*
+ * fat_dir_add_entry - Write @name into a directory.
+ * @tmpl:  the 8.3 entry to store (attr, first cluster, size, dates); its
+ *         name and ext are filled in here.
+ * @skip_cl/@skip_ix: an existing 8.3 entry that may carry the same name
+ *         (a case-only rename); 0/0 for none.
+ * @out:   where the new slots went, so the caller can undo the write.
+ */
+static int fat_dir_add_entry(fat_mount_t *fat, uint32_t dir_cluster, const char *name,
+                             fat_dirent_t *tmpl, uint32_t skip_cl, uint32_t skip_ix,
+                             fat_slots_t *out, uint8_t *buf) {
     if (!fat_name_valid(name)) return VFS_ERR_INVALID;
-    
-    uint32_t dir_cluster = fat_node_cluster(fat, parent);
-    if (dir_cluster < 2) return VFS_ERR_INVALID;
+    out->count = 0;
     
     fat_dir_item_t existing;
     int rc = fat_dir_lookup(fat, dir_cluster, name, &existing);
-    if (rc == VFS_OK) return VFS_ERR_EXIST;
-    if (rc != VFS_ERR_NOT_FOUND) return rc;
+    if (rc == VFS_OK && !(skip_cl >= 2 && existing.cluster == skip_cl && existing.index == skip_ix)) {
+        return VFS_ERR_EXIST;
+    }
+    if (rc != VFS_OK && rc != VFS_ERR_NOT_FOUND) return rc;
     
     /* Short entry: the name itself when it fits 8.3, else a BASE~N alias */
     char name8[8], ext3[3];
@@ -798,21 +834,74 @@ static int fat_vfs_create(vfs_node_t *parent, const char *name, vfs_type_t type,
     uint32_t len = 0;
     while (name[len]) len++;
     uint32_t nlfn = need_lfn ? (len + 12) / 13 : 0;
-    uint32_t slot_cl[21], slot_ix[21];
+    if (nlfn + 1 > FAT_MAX_SLOTS) return VFS_ERR_INVALID;
+    
+    rc = fat_dir_find_slots(fat, dir_cluster, nlfn + 1, out->cl, out->ix, buf);
+    if (rc != VFS_OK) return rc;
+    
+    fat_memcpy(tmpl->name, name8, 8);
+    fat_memcpy(tmpl->ext, ext3, 3);
+    
+    /* Long-name entries, highest sequence first, then the 8.3 entry */
+    uint8_t sum = fat_lfn_checksum(tmpl);
+    uint32_t written = 0;
+    for (uint32_t k = 0; k < nlfn && rc == VFS_OK; k++) {
+        uint32_t seq = nlfn - k;
+        uint8_t raw[32];
+        fat_memset(raw, 0, sizeof(raw));
+        raw[0] = (uint8_t)(seq | (k == 0 ? 0x40 : 0));
+        raw[11] = FAT_ATTR_LFN;
+        raw[13] = sum;
+        for (int c = 0; c < 13; c++) {
+            uint32_t pos = (seq - 1) * 13 + (uint32_t)c;
+            uint16_t ch = pos < len ? (uint8_t)name[pos] : (pos == len ? 0x0000 : 0xFFFF);
+            raw[k_lfn_off[c]] = (uint8_t)(ch & 0xFF);
+            raw[k_lfn_off[c] + 1] = (uint8_t)(ch >> 8);
+        }
+        rc = fat_dir_put_entry(fat, out->cl[k], out->ix[k], raw, buf);
+        if (rc == VFS_OK) written++;
+    }
+    if (rc == VFS_OK) rc = fat_dir_put_entry(fat, out->cl[nlfn], out->ix[nlfn], tmpl, buf);
+    
+    if (rc != VFS_OK) {
+        /* Leave nothing half-made: mark any written long-name slots deleted */
+        out->count = written;
+        fat_dir_erase(fat, out, buf);
+        out->count = 0;
+        return rc;
+    }
+    out->count = nlfn + 1;
+    return VFS_OK;
+}
+
+/* Create file or directory in FAT filesystem (long names supported) */
+static int fat_vfs_create(vfs_node_t *parent, const char *name, vfs_type_t type, uint32_t mode) {
+    if (!parent || !name || !parent->mount) return VFS_ERR_INVALID;
+    if (parent->type != VFS_DIRECTORY) return VFS_ERR_NOT_DIR;
+    (void)mode; /* FAT doesn't use Unix modes */
+    
+    fat_mount_t *fat = (fat_mount_t *)parent->mount->private_data;
+    if (!fat) return VFS_ERR_INVALID;
+    if (fat->fat_type != FAT_TYPE_FAT32) return VFS_ERR_READ_ONLY;
+    if (!fat_name_valid(name)) return VFS_ERR_INVALID;
+    
+    uint32_t dir_cluster = fat_node_cluster(fat, parent);
+    if (dir_cluster < 2) return VFS_ERR_INVALID;
     
     uint8_t *buf = (uint8_t *)kmalloc(fat->bytes_per_cluster);
     if (!buf) return VFS_ERR_NO_MEM;
     
-    rc = fat_dir_find_slots(fat, dir_cluster, nlfn + 1, slot_cl, slot_ix, buf);
-    if (rc != VFS_OK) { kfree(buf); return rc; }
-    
     fat_dirent_t entry;
     fat_memset(&entry, 0, sizeof(entry));
-    fat_memcpy(entry.name, name8, 8);
-    fat_memcpy(entry.ext, ext3, 3);
     /* No RTC date plumbing here yet: use the FAT epoch, 1980-01-01, which
      * unlike an all-zero date is a valid FAT date. */
     entry.create_date = entry.modify_date = entry.access_date = FAT_DATE_EPOCH;
+    
+    /* Refuse an existing name before allocating a directory cluster */
+    fat_dir_item_t existing;
+    int rc = fat_dir_lookup(fat, dir_cluster, name, &existing);
+    if (rc == VFS_OK) { kfree(buf); return VFS_ERR_EXIST; }
+    if (rc != VFS_ERR_NOT_FOUND) { kfree(buf); return rc; }
     
     uint32_t data_cluster = 0;
     if (type == VFS_DIRECTORY) {
@@ -848,31 +937,9 @@ static int fat_vfs_create(vfs_node_t *parent, const char *name, vfs_type_t type,
         entry.attr = FAT_ATTR_ARCHIVE;
     }
     
-    /* Long-name entries, highest sequence first, then the 8.3 entry */
-    uint8_t sum = fat_lfn_checksum(&entry);
-    for (uint32_t k = 0; k < nlfn && rc == VFS_OK; k++) {
-        uint32_t seq = nlfn - k;
-        uint8_t raw[32];
-        fat_memset(raw, 0, sizeof(raw));
-        raw[0] = (uint8_t)(seq | (k == 0 ? 0x40 : 0));
-        raw[11] = FAT_ATTR_LFN;
-        raw[13] = sum;
-        for (int c = 0; c < 13; c++) {
-            uint32_t pos = (seq - 1) * 13 + (uint32_t)c;
-            uint16_t ch = pos < len ? (uint8_t)name[pos] : (pos == len ? 0x0000 : 0xFFFF);
-            raw[k_lfn_off[c]] = (uint8_t)(ch & 0xFF);
-            raw[k_lfn_off[c] + 1] = (uint8_t)(ch >> 8);
-        }
-        rc = fat_dir_put_entry(fat, slot_cl[k], slot_ix[k], raw, buf);
-    }
-    if (rc == VFS_OK) rc = fat_dir_put_entry(fat, slot_cl[nlfn], slot_ix[nlfn], &entry, buf);
-    
+    fat_slots_t slots;
+    rc = fat_dir_add_entry(fat, dir_cluster, name, &entry, 0, 0, &slots, buf);
     if (rc != VFS_OK) {
-        /* Leave nothing half-made: mark any written long-name slots deleted */
-        uint8_t del[32];
-        fat_memset(del, 0, sizeof(del));
-        del[0] = 0xE5;
-        for (uint32_t k = 0; k < nlfn; k++) fat_dir_put_entry(fat, slot_cl[k], slot_ix[k], del, buf);
         if (data_cluster >= 2) fat_free_chain(fat, data_cluster);
         kfree(buf);
         serial_puts("[FAT] Create failed: ");
@@ -888,6 +955,186 @@ static int fat_vfs_create(vfs_node_t *parent, const char *name, vfs_type_t type,
     return VFS_OK;
 }
 
+static int fat_is_dot_entry(const fat_dirent_t *de) {
+    return de->name[0] == '.' &&
+           (de->name[1] == ' ' || (de->name[1] == '.' && de->name[2] == ' '));
+}
+
+static uint32_t fat_entry_cluster(const fat_dirent_t *de) {
+    return ((uint32_t)de->first_cluster_hi << 16) | de->first_cluster_lo;
+}
+
+/* 1 if the directory holds nothing but "." and "..", 0 if not, <0 on error. */
+static int fat_dir_is_empty(fat_mount_t *fat, uint32_t dir_cluster) {
+    fat_dir_iter_t it;
+    fat_dir_item_t item;
+    int rc = fat_dir_iter_open(&it, fat, dir_cluster);
+    if (rc != VFS_OK) return rc;
+    int empty = 1;
+    while ((rc = fat_dir_iter_next(&it, &item)) > 0) {
+        if (!fat_is_dot_entry(&item.de)) { empty = 0; break; }
+    }
+    fat_dir_iter_close(&it);
+    return rc < 0 ? rc : empty;
+}
+
+/* Cluster of the parent of directory @dir_cluster, read from its ".." entry. */
+static uint32_t fat_dir_parent(fat_mount_t *fat, uint32_t dir_cluster, uint8_t *buf) {
+    if (fat_read_cluster(fat, dir_cluster, buf) != 0) return 0;
+    fat_dirent_t *de = (fat_dirent_t *)buf;
+    if (de[1].name[0] != '.' || de[1].name[1] != '.') return 0;
+    uint32_t up = fat_entry_cluster(&de[1]);
+    return up < 2 ? fat->root_cluster : up;
+}
+
+/* Point the ".." entry of directory @dir_cluster at @parent_cluster. */
+static int fat_dir_set_parent(fat_mount_t *fat, uint32_t dir_cluster, uint32_t parent_cluster,
+                              uint8_t *buf) {
+    if (fat_read_cluster(fat, dir_cluster, buf) != 0) return VFS_ERR_IO;
+    fat_dirent_t *de = (fat_dirent_t *)buf;
+    if (de[1].name[0] != '.' || de[1].name[1] != '.') return VFS_ERR_IO;
+    uint32_t up = (parent_cluster == fat->root_cluster) ? 0 : parent_cluster;
+    de[1].first_cluster_lo = up & 0xFFFF;
+    de[1].first_cluster_hi = (up >> 16) & 0xFFFF;
+    return fat_write_cluster(fat, dir_cluster, buf) == 0 ? VFS_OK : VFS_ERR_IO;
+}
+
+/*
+ * fat_vfs_unlink - Delete a file or an empty directory.
+ * The name's slots are marked deleted before the data clusters are freed,
+ * so a crash in between leaks space instead of leaving an entry that
+ * points at free clusters. Read-only files are refused.
+ */
+static int fat_vfs_unlink(vfs_node_t *parent, const char *name) {
+    if (!parent || !name || !parent->mount) return VFS_ERR_INVALID;
+    if (parent->type != VFS_DIRECTORY) return VFS_ERR_NOT_DIR;
+    fat_mount_t *fat = (fat_mount_t *)parent->mount->private_data;
+    if (!fat) return VFS_ERR_INVALID;
+    if (fat->fat_type != FAT_TYPE_FAT32) return VFS_ERR_READ_ONLY;
+    
+    uint32_t dir_cluster = fat_node_cluster(fat, parent);
+    if (dir_cluster < 2) return VFS_ERR_INVALID;
+    
+    fat_dir_item_t item;
+    int rc = fat_dir_lookup(fat, dir_cluster, name, &item);
+    if (rc != VFS_OK) return rc;
+    if (fat_is_dot_entry(&item.de)) return VFS_ERR_INVALID;
+    if (item.de.attr & FAT_ATTR_READ_ONLY) return VFS_ERR_READ_ONLY;
+    
+    uint32_t first = fat_entry_cluster(&item.de);
+    if (item.de.attr & FAT_ATTR_DIRECTORY) {
+        if (first < 2 || first == fat->root_cluster) return VFS_ERR_INVALID;
+        int empty = fat_dir_is_empty(fat, first);
+        if (empty < 0) return empty;
+        if (!empty) return VFS_ERR_NOT_EMPTY;
+    }
+    
+    uint8_t *buf = (uint8_t *)kmalloc(fat->bytes_per_cluster);
+    if (!buf) return VFS_ERR_NO_MEM;
+    rc = fat_dir_erase(fat, &item.slots, buf);
+    kfree(buf);
+    if (rc != VFS_OK) {
+        serial_puts("[FAT] Delete failed while erasing entry: ");
+        serial_puts(name);
+        serial_puts("\n");
+        return rc;
+    }
+    if (first >= 2 && fat_free_chain(fat, first) != 0) {
+        serial_puts("[FAT] Delete: freeing cluster chain failed (clusters leaked)\n");
+    }
+    serial_puts("[FAT] Deleted: ");
+    serial_puts(name);
+    serial_puts("\n");
+    return VFS_OK;
+}
+
+/*
+ * fat_vfs_rename - Rename or move a name within one FAT volume.
+ * The new entry is written before the old one is erased, so a crash
+ * leaves the file reachable (possibly under both names) rather than lost.
+ * A moved directory gets its ".." entry pointed at the new parent.
+ * Refuses an existing target and moving a directory into itself.
+ */
+static int fat_vfs_rename(vfs_node_t *old_parent, const char *old_name,
+                          vfs_node_t *new_parent, const char *new_name) {
+    if (!old_parent || !new_parent || !old_name || !new_name) return VFS_ERR_INVALID;
+    if (!old_parent->mount || old_parent->mount != new_parent->mount) return VFS_ERR_INVALID;
+    if (old_parent->type != VFS_DIRECTORY || new_parent->type != VFS_DIRECTORY) return VFS_ERR_NOT_DIR;
+    fat_mount_t *fat = (fat_mount_t *)old_parent->mount->private_data;
+    if (!fat) return VFS_ERR_INVALID;
+    if (fat->fat_type != FAT_TYPE_FAT32) return VFS_ERR_READ_ONLY;
+    if (!fat_name_valid(new_name)) return VFS_ERR_INVALID;
+    
+    uint32_t src_dir = fat_node_cluster(fat, old_parent);
+    uint32_t dst_dir = fat_node_cluster(fat, new_parent);
+    if (src_dir < 2 || dst_dir < 2) return VFS_ERR_INVALID;
+    
+    fat_dir_item_t item;
+    int rc = fat_dir_lookup(fat, src_dir, old_name, &item);
+    if (rc != VFS_OK) return rc;
+    if (fat_is_dot_entry(&item.de)) return VFS_ERR_INVALID;
+    if (item.de.attr & FAT_ATTR_READ_ONLY) return VFS_ERR_READ_ONLY;
+    
+    int is_dir = (item.de.attr & FAT_ATTR_DIRECTORY) != 0;
+    uint32_t first = fat_entry_cluster(&item.de);
+    
+    uint8_t *buf = (uint8_t *)kmalloc(fat->bytes_per_cluster);
+    if (!buf) return VFS_ERR_NO_MEM;
+    
+    /* A directory cannot move into itself or anything below it */
+    if (is_dir && src_dir != dst_dir) {
+        if (first < 2) { kfree(buf); return VFS_ERR_INVALID; }
+        uint32_t c = dst_dir;
+        for (uint32_t guard = 0; c >= 2 && c != fat->root_cluster; guard++) {
+            if (c == first || guard > 4096) { kfree(buf); return VFS_ERR_INVALID; }
+            c = fat_dir_parent(fat, c, buf);
+        }
+        if (c < 2) { kfree(buf); return VFS_ERR_IO; }
+    }
+    
+    /* Same dates, attributes and data; only the name and place change */
+    fat_dirent_t entry = item.de;
+    fat_slots_t new_slots;
+    uint32_t skip_cl = (src_dir == dst_dir) ? item.cluster : 0;
+    uint32_t skip_ix = (src_dir == dst_dir) ? item.index : 0;
+    rc = fat_dir_add_entry(fat, dst_dir, new_name, &entry, skip_cl, skip_ix, &new_slots, buf);
+    if (rc != VFS_OK) { kfree(buf); return rc; }
+    
+    int parent_moved = 0;
+    if (is_dir && src_dir != dst_dir) {
+        rc = fat_dir_set_parent(fat, first, dst_dir, buf);
+        if (rc != VFS_OK) {
+            fat_dir_erase(fat, &new_slots, buf);
+            kfree(buf);
+            serial_puts("[FAT] Rename failed updating '..' of: ");
+            serial_puts(old_name);
+            serial_puts("\n");
+            return rc;
+        }
+        parent_moved = 1;
+    }
+    
+    rc = fat_dir_erase(fat, &item.slots, buf);
+    if (rc != VFS_OK) {
+        /* Undo, so two entries never share one cluster chain */
+        fat_dir_erase(fat, &new_slots, buf);
+        if (parent_moved) fat_dir_set_parent(fat, first, src_dir, buf);
+        kfree(buf);
+        serial_puts("[FAT] Rename failed erasing old entry: ");
+        serial_puts(old_name);
+        serial_puts("\n");
+        return rc;
+    }
+    
+    kfree(buf);
+    serial_puts("[FAT] Renamed: ");
+    serial_puts(old_name);
+    serial_puts(" -> ");
+    serial_puts(new_name);
+    serial_puts("\n");
+    return VFS_OK;
+}
+
 static vfs_operations_t fat_ops = {
     .open = fat_vfs_open,
     .close = fat_vfs_close,
@@ -896,8 +1143,8 @@ static vfs_operations_t fat_ops = {
     .readdir = fat_vfs_readdir,
     .finddir = fat_vfs_finddir,
     .create = fat_vfs_create,
-    .unlink = NULL,
-    .rename = NULL,
+    .unlink = fat_vfs_unlink,
+    .rename = fat_vfs_rename,
     .truncate = fat_vfs_truncate,
     .stat = NULL,
     .chmod = NULL,

@@ -275,6 +275,17 @@ void nx_kernel_start(void) {
         serial_puts("[KERNEL] WARNING: RAMFS mount failed!\n");
     }
 
+    /*
+     * System Integrity Protection: from here on, userspace cannot change
+     * /System, /EFI, /kernel.bin and the other protected paths. It is
+     * loaded after the volumes are mounted and before the first user
+     * process starts. Kernel-internal callers are not affected.
+     */
+    extern int sip_init(void);
+    if (sip_init() != 0) {
+        serial_puts("[KERNEL] WARNING: System Integrity Protection failed to initialize\n");
+    }
+
     serial_puts("[KERNEL] All subsystems ready!\n");
     klog("Kernel loaded successfully!");
     klog("System ready.");

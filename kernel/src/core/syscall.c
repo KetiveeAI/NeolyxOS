@@ -528,6 +528,26 @@ int64_t sys_unlink_impl(uint64_t path_ptr, uint64_t a2, uint64_t a3, uint64_t a4
     return vfs_unlink(path);
 }
 
+/*
+ * sys_rename_impl - Rename or move a file or directory on one volume.
+ * Both paths are copied from user memory and checked by SIP in
+ * vfs_rename. Returns 0 or a negative VFS error code.
+ */
+int64_t sys_rename_impl(uint64_t old_ptr, uint64_t new_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
+    (void)a3; (void)a4; (void)a5;
+    
+    char old_path[256];
+    char new_path[256];
+    if (syscall_strncpy_from_user(old_path, (const char *)old_ptr, 256) < 0) {
+        return -EFAULT;
+    }
+    if (syscall_strncpy_from_user(new_path, (const char *)new_ptr, 256) < 0) {
+        return -EFAULT;
+    }
+    
+    return vfs_rename(old_path, new_path);
+}
+
 int64_t sys_chdir_impl(uint64_t path_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     

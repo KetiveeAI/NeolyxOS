@@ -50,8 +50,17 @@ int64_t nx_host_syscall(int64_t num, int64_t a1, int64_t a2, int64_t a3) {
             return 0;
         case SYS_YIELD:
             return 0;
-        case SYS_BRK:
-            return (int64_t)(uintptr_t)g_heap;
+        case SYS_BRK: {
+            /* Program break inside the preallocated heap: brk(0) reports the
+             * current break, brk(addr) moves it (nx_malloc grows on demand). */
+            static uint64_t brk_cur;
+            uint64_t base = (uint64_t)(uintptr_t)g_heap, limit = base + (96ull << 20);
+            if (!brk_cur) brk_cur = base;
+            if (a1 == 0) return (int64_t)brk_cur;
+            if ((uint64_t)a1 < base || (uint64_t)a1 > limit) return -12;   /* ENOMEM */
+            brk_cur = (uint64_t)a1;
+            return (int64_t)brk_cur;
+        }
         case SYS_FB_INFO: {
             fb_info_t *info = (fb_info_t *)(uintptr_t)a1;
             if (!info) return -14;

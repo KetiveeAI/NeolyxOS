@@ -37,12 +37,13 @@ NX_SYSCALL(23, "write",   sys_write_impl,   3, PRIV_USER, 0)
 NX_SYSCALL(24, "seek",    sys_seek_impl,    3, PRIV_USER, 0)
 NX_SYSCALL(25, "stat",    sys_stat_impl,    2, PRIV_USER, 0)
 
-/* Directory Operations (30-34) */
+/* Directory Operations (30-35) */
 NX_SYSCALL(30, "readdir", sys_readdir_impl, 4, PRIV_USER, 0)
 NX_SYSCALL(31, "mkdir",   sys_mkdir_impl,   2, PRIV_USER, 0)
 NX_SYSCALL(32, "rmdir",   sys_unlink_impl,  1, PRIV_USER, 0)
 NX_SYSCALL(33, "chdir",   sys_chdir_impl,   1, PRIV_USER, 0)
 NX_SYSCALL(34, "getcwd",  sys_getcwd_impl,  2, PRIV_USER, 0)
+NX_SYSCALL(35, "rename",  sys_rename_impl,  2, PRIV_USER, NX_FLAG_AUDIT)
 
 /* Sockets (40-47) */
 NX_SYSCALL(40, "socket",   sys_socket_impl,   2, PRIV_USER, 0)

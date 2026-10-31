@@ -2598,6 +2598,7 @@ static void desktop_on_app_launched(const nx_event_t *event, void *userdata) {
     else if (shell_streq_ci(name, "Settings")) name = "System Settings";
     else if (shell_streq_ci(name, "Fonts")) name = "Font Manager";
     else if (shell_streq_ci(name, "Activity") || shell_streq_ci(name, "Tasks")) name = "Task Manager";
+    else if (shell_streq_ci(name, "Terminal") || shell_streq_ci(name, "Console")) name = "Shell";
     /* Already open: focus and restore */
     for (int i = 0; i < MAX_WINDOWS; i++) {
         if (g_windows[i].id != 0 && shell_streq_ci(g_windows[i].title, name)) {

@@ -4,7 +4,7 @@
  * Protects critical system files from modification,
  * similar to macOS System Integrity Protection.
  * 
- * Protected paths (read-only for all non-recovery processes):
+ * Protected paths (see g_default_rules in sip.c for the full table):
  *   /System/    - Core system files
  *   /Kernel/    - Kernel and drivers
  *   /Library/   - System libraries

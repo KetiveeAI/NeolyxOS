@@ -317,7 +317,7 @@ static void load_pins(void) {
         dock_log("warning: saved pinned list empty or invalid, using defaults");
     }
     static const char *defaults[] = {
-        "Files", "Browser", "Messages", "Notes", "Photos", "Music", "Mail", "Settings"
+        "Files", "Browser", "Messages", "Notes", "Photos", "Music", "Mail", "Settings", "Shell"
     };
     for (unsigned i = 0; i < sizeof(defaults) / sizeof(defaults[0]); i++)
         dock_add_icon(hash_ci(defaults[i]), defaults[i], 0);

@@ -80,7 +80,35 @@ static const menubar_menu_t g_menus[] = {
     { "Window", g_window_items, N(g_window_items) },
     { "Help",   g_help_items,   N(g_help_items) },
 };
-#define MENU_COUNT N(g_menus)
+#define STD_MENU_COUNT N(g_menus)
+
+/* ============ App-specific menu sets ============
+ *
+ * A shell-hosted app can replace the standard titles while its window has
+ * focus (menubar_register_app_menus). The set in use is picked from the
+ * focused window title each frame; actions of an app item go to the
+ * app's handler, actions of a standard menu reused in the set (Window,
+ * Help) still go to the shell handler. */
+
+#define APP_SET_MAX 4
+
+typedef struct {
+    char                  app[32];
+    const menubar_menu_t *menus;
+    int                   count;
+    menubar_action_fn     handler;
+} app_menu_set_t;
+
+static app_menu_set_t g_app_sets[APP_SET_MAX];
+static int g_app_set_count;
+static const app_menu_set_t *g_cur_set;     /* NULL = standard menus */
+
+static const menubar_menu_t *cur_menus(void) { return g_cur_set ? g_cur_set->menus : g_menus; }
+static int cur_count(void) {
+    int n = g_cur_set ? g_cur_set->count : STD_MENU_COUNT;
+    return n > MENUBAR_MENU_MAX ? MENUBAR_MENU_MAX : n;
+}
+#define MENU_COUNT cur_count()
 
 /* ============ State ============ */
 
@@ -112,6 +140,76 @@ void menubar_init(void) {
 }
 
 void menubar_set_handler(menubar_action_fn fn) { g_mb.handler = fn; }
+
+static int name_eq_ci(const char *a, const char *b) {
+    while (*a && *b) {
+        char x = *a, y = *b;
+        if (x >= 'A' && x <= 'Z') x = (char)(x + 32);
+        if (y >= 'A' && y <= 'Z') y = (char)(y + 32);
+        if (x != y) return 0;
+        a++; b++;
+    }
+    return *a == 0 && *b == 0;
+}
+
+int menubar_register_app_menus(const char *app_name, const menubar_menu_t *menus, int count,
+                               menubar_action_fn handler) {
+    if (!app_name || !app_name[0] || !menus || count <= 0 || count > MENUBAR_MENU_MAX || !handler) {
+        serial_puts("[MENUBAR] rejected app menu set: invalid arguments\n");
+        return -1;
+    }
+    int len = 0;
+    while (app_name[len]) len++;
+    if (len >= (int)sizeof(g_app_sets[0].app)) {
+        serial_puts("[MENUBAR] rejected app menu set: name too long\n");
+        return -1;
+    }
+    for (int i = 0; i < count; i++) {
+        if (!menus[i].title || !menus[i].items || menus[i].count <= 0 || menus[i].count > MENUBAR_ITEM_MAX) {
+            serial_puts("[MENUBAR] rejected app menu set: bad menu\n");
+            return -1;
+        }
+    }
+    app_menu_set_t *slot = 0;
+    for (int i = 0; i < g_app_set_count; i++)
+        if (name_eq_ci(g_app_sets[i].app, app_name)) slot = &g_app_sets[i];
+    if (!slot) {
+        if (g_app_set_count >= APP_SET_MAX) {
+            serial_puts("[MENUBAR] rejected app menu set: table full\n");
+            return -1;
+        }
+        slot = &g_app_sets[g_app_set_count++];
+    }
+    for (int i = 0; i <= len; i++) slot->app[i] = app_name[i];
+    slot->menus = menus;
+    slot->count = count;
+    slot->handler = handler;
+    serial_puts("[MENUBAR] app menus registered: ");
+    serial_puts(app_name);
+    serial_puts("\n");
+    return 0;
+}
+
+const menubar_menu_t *menubar_standard_menu(const char *title) {
+    if (!title) return 0;
+    for (int i = 0; i < STD_MENU_COUNT; i++)
+        if (name_eq_ci(g_menus[i].title, title)) return &g_menus[i];
+    return 0;
+}
+
+/* Pick the menu set for the focused app. A change closes an open menu so
+ * an index never points into the other set. */
+static void select_set(const char *app_name) {
+    const app_menu_set_t *want = 0;
+    for (int i = 0; app_name && i < g_app_set_count; i++)
+        if (name_eq_ci(g_app_sets[i].app, app_name)) { want = &g_app_sets[i]; break; }
+    if (want != g_cur_set) {
+        g_cur_set = want;
+        g_mb.open = -1;
+        g_mb.hover_item = -1;
+        g_mb.hover_title = -1;
+    }
+}
 int menubar_is_open(void) { return g_mb.open >= 0; }
 void menubar_close(void) { g_mb.open = -1; g_mb.hover_item = -1; }
 
@@ -128,14 +226,14 @@ float menubar_render_titles(nxc_canvas_t *c, float x, float h) {
     const nxui_theme_t *th = nxui_theme();
     g_mb.bar_h = h;
     for (int i = 0; i < MENU_COUNT && i < MENUBAR_MENU_MAX; i++) {
-        float tw = nxui_text_width(NXUI_TEXT_MENU, g_menus[i].title);
+        float tw = nxui_text_width(NXUI_TEXT_MENU, cur_menus()[i].title);
         float pad = 10.0f;
         g_mb.title_x[i] = x - pad;
         g_mb.title_w[i] = tw + 2.0f * pad;
         if (g_mb.open == i) {
             nxc_fill_rrect(c, nxc_rect(g_mb.title_x[i], 3.0f, g_mb.title_w[i], h - 6.0f), 6.0f, th->control_fill_pressed);
         }
-        nxui_text_in_rect(c, NXUI_TEXT_MENU, nxc_rect(x, 0, tw + 2.0f, h), g_menus[i].title, th->text_primary, NXC_ALIGN_LEFT);
+        nxui_text_in_rect(c, NXUI_TEXT_MENU, nxc_rect(x, 0, tw + 2.0f, h), cur_menus()[i].title, th->text_primary, NXC_ALIGN_LEFT);
         x += tw + 20.0f;
     }
     return x;
@@ -146,7 +244,7 @@ void menubar_render(nxc_canvas_t *c) {
     g_mb.anim = nxui_approach(g_mb.anim, g_mb.open >= 0 ? 1.0f : 0.0f, 0.035f, nxui_frame_dt());
     if (g_mb.open < 0 || g_mb.anim < 0.02f) return;
     const nxui_theme_t *th = nxui_theme();
-    const menubar_menu_t *m = &g_menus[g_mb.open];
+    const menubar_menu_t *m = &cur_menus()[g_mb.open];
     float mh = menu_height(m);
     float x = g_mb.title_x[g_mb.open];
     float y = g_mb.bar_h - 1.0f;
@@ -194,7 +292,7 @@ static int title_at(int x, int y) {
 static int item_at(int x, int y, int *inside_box) {
     *inside_box = 0;
     if (g_mb.open < 0) return -1;
-    const menubar_menu_t *m = &g_menus[g_mb.open];
+    const menubar_menu_t *m = &cur_menus()[g_mb.open];
     float bx = g_mb.title_x[g_mb.open], by = g_mb.bar_h - 1.0f, mh = menu_height(m);
     if ((float)x < bx || (float)x >= bx + MENU_W || (float)y < by || (float)y >= by + mh) return -1;
     *inside_box = 1;
@@ -208,9 +306,11 @@ static int item_at(int x, int y, int *inside_box) {
 }
 
 static void activate(int item) {
-    const menubar_menu_t *m = &g_menus[g_mb.open];
-    if (item >= 0 && item < m->count && m->items[item].label && m->items[item].enabled && g_mb.handler) {
-        g_mb.handler(g_mb.open, m->items[item].action);
+    const menubar_menu_t *m = &cur_menus()[g_mb.open];
+    if (item >= 0 && item < m->count && m->items[item].label && m->items[item].enabled) {
+        int action = m->items[item].action;
+        if (g_cur_set && action >= MENUBAR_APP_ACTION_BASE) g_cur_set->handler(g_mb.open, action);
+        else if (g_mb.handler) g_mb.handler(g_mb.open, action);
     }
     menubar_close();
 }
@@ -251,7 +351,7 @@ int menubar_handle_mouse(int x, int y, uint8_t buttons, uint8_t prev_buttons) {
 
 int menubar_handle_key(uint8_t scancode, uint8_t pressed) {
     if (!g_mb.initialized || g_mb.open < 0 || !pressed) return 0;
-    const menubar_menu_t *m = &g_menus[g_mb.open];
+    const menubar_menu_t *m = &cur_menus()[g_mb.open];
     switch (scancode) {
         case 0x01: menubar_close(); return 1;                           /* Esc */
         case 0x4B: g_mb.open = (g_mb.open + MENU_COUNT - 1) % MENU_COUNT; g_mb.hover_item = -1; return 1;
@@ -340,6 +440,7 @@ static void refresh_app_name(void) {
     g_app_name_win = id;
     str_copy(g_app_name, name, (int)sizeof(g_app_name));
     g_app_name_w = nxui_text_width(NXUI_TEXT_MENU_BOLD, g_app_name);
+    select_set(id ? g_app_name : 0);
     if (g_app_name_w > 220.0f) g_app_name_w = 220.0f;
 }
 

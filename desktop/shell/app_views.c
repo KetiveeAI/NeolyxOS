@@ -10,6 +10,7 @@ static const app_view_t g_views[] = {
     { "System Settings", 860, 560, settings_view_open, settings_view_render, settings_view_key, settings_view_mouse },
     { "Font Manager",    760, 500, fonts_view_open,    fonts_view_render,    fonts_view_key,    fonts_view_mouse },
     { "Task Manager",    780, 520, taskmgr_view_open,  taskmgr_view_render,  taskmgr_view_key,  taskmgr_view_mouse },
+    { "Shell",           720, 440, shell_view_open,    shell_view_render,    shell_view_key,    shell_view_mouse },
 };
 
 static int view_streq_ci(const char *a, const char *b) {
@@ -29,6 +30,8 @@ static const struct { const char *alias, *name; } g_aliases[] = {
     { "Fonts",    "Font Manager" },
     { "Activity", "Task Manager" },
     { "Tasks",    "Task Manager" },
+    { "Terminal", "Shell" },        /* the app was called Terminal before */
+    { "Console",  "Shell" },
 };
 
 const app_view_t *app_view_find(const char *name) {
