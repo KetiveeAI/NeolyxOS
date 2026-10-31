@@ -329,8 +329,9 @@ vfs_file_t *vfs_open(const char *path, uint32_t mode) {
     serial_puts(path);
     serial_puts("\n");
     
-    /* SIP check for write modes */
-    if ((mode & VFS_O_WRONLY) || (mode & VFS_O_RDWR) || (mode & VFS_O_CREATE)) {
+    /* SIP check for write modes. VFS_O_RDWR is RDONLY|WRONLY, so the
+     * WRONLY bit alone says whether the handle can write. */
+    if ((mode & VFS_O_WRONLY) || (mode & (VFS_O_CREATE | VFS_O_TRUNC | VFS_O_APPEND))) {
         if (sip_check_path(path, SIP_OP_WRITE) != 0) {
             serial_puts("[VFS] SIP: Write denied to ");
             serial_puts(path);
@@ -505,9 +506,44 @@ int vfs_readdir(const char *path, vfs_dirent_t *entries, uint32_t count, uint32_
     return dir->ops->readdir(dir, entries, count, read);
 }
 
+/*
+ * Is the last component of @path "." or ".."? Those name the directory
+ * itself or its parent and must never be created, deleted or renamed.
+ */
+static int vfs_is_dot_name(const char *name) {
+    if (!name) return 1;
+    if (name[0] == '.' && name[1] == '\0') return 1;
+    if (name[0] == '.' && name[1] == '.' && name[2] == '\0') return 1;
+    return 0;
+}
+
+/*
+ * Is the on-disk object behind @node held open? FAT nodes are created per
+ * lookup, so compare the mount and the entry location (inode), not the
+ * node pointer. Deleting or moving an open file would leave its handle
+ * writing through a stale directory entry.
+ */
+static int vfs_node_busy(const vfs_node_t *node) {
+    if (!node || node->inode == 0) return 0;
+    for (int i = 0; i < VFS_MAX_OPEN_FILES; i++) {
+        const vfs_node_t *o = open_files[i].node;
+        if (o && o->mount == node->mount && o->inode == node->inode) return 1;
+    }
+    return 0;
+}
+
 int vfs_create(const char *path, vfs_type_t type, uint32_t perms) {
+    if (!path || path[0] != '/') return VFS_ERR_INVALID;
+    if (vfs_strlen(path) >= VFS_PATH_MAX) return VFS_ERR_INVALID;
+    
+    const char *name = vfs_basename(path);
+    if (!name[0] || name[0] == '/' || vfs_is_dot_name(name)) return VFS_ERR_INVALID;
+    
+    /* Existing entries are reported as such, not as a protection hit */
+    if (vfs_resolve(path)) return VFS_ERR_EXIST;
+    
     /* SIP check before creating */
-    if (sip_check_path(path, SIP_OP_CREATE) != 0) {
+    if (sip_check_path(path, type == VFS_DIRECTORY ? SIP_OP_MKDIR : SIP_OP_CREATE) != 0) {
         serial_puts("[VFS] SIP: Create denied at ");
         serial_puts(path);
         serial_puts("\n");
@@ -525,17 +561,32 @@ int vfs_create(const char *path, vfs_type_t type, uint32_t perms) {
         return VFS_ERR_IO;
     }
     
-    const char *name = vfs_basename(path);
     return parent->ops->create(parent, name, type, perms);
 }
 
 int vfs_unlink(const char *path) {
+    if (!path || path[0] != '/') return VFS_ERR_INVALID;
+    if (vfs_strlen(path) >= VFS_PATH_MAX) return VFS_ERR_INVALID;
+    
+    const char *name = vfs_basename(path);
+    if (!name[0] || name[0] == '/' || vfs_is_dot_name(name)) return VFS_ERR_INVALID;
+    
     /* SIP check before deleting */
     if (sip_check_path(path, SIP_OP_DELETE) != 0) {
         serial_puts("[VFS] SIP: Delete denied for ");
         serial_puts(path);
         serial_puts("\n");
         return VFS_ERR_PERM;
+    }
+    
+    vfs_node_t *node = vfs_resolve(path);
+    if (!node) return VFS_ERR_NOT_FOUND;
+    if (node->mount && node == node->mount->root) return VFS_ERR_BUSY;   /* a mount point */
+    if (vfs_node_busy(node)) {
+        serial_puts("[VFS] Delete refused, file is open: ");
+        serial_puts(path);
+        serial_puts("\n");
+        return VFS_ERR_BUSY;
     }
     
     char parent_path[VFS_PATH_MAX];
@@ -548,8 +599,74 @@ int vfs_unlink(const char *path) {
         return VFS_ERR_IO;
     }
     
-    const char *name = vfs_basename(path);
-    return parent->ops->unlink(parent, name);
+    int rc = parent->ops->unlink(parent, name);
+    serial_puts(rc == VFS_OK ? "[VFS] Deleted: " : "[VFS] Delete failed: ");
+    serial_puts(path);
+    serial_puts("\n");
+    return rc;
+}
+
+int vfs_rename(const char *old_path, const char *new_path) {
+    if (!old_path || !new_path || old_path[0] != '/' || new_path[0] != '/') {
+        return VFS_ERR_INVALID;
+    }
+    if (vfs_strlen(old_path) >= VFS_PATH_MAX || vfs_strlen(new_path) >= VFS_PATH_MAX) {
+        return VFS_ERR_INVALID;
+    }
+    
+    const char *old_name = vfs_basename(old_path);
+    const char *new_name = vfs_basename(new_path);
+    if (!old_name[0] || old_name[0] == '/' || vfs_is_dot_name(old_name) ||
+        !new_name[0] || new_name[0] == '/' || vfs_is_dot_name(new_name)) {
+        return VFS_ERR_INVALID;
+    }
+    
+    /* Both ends are checked: taking a file out of a protected place and
+     * putting one into a protected place are both modifications. */
+    if (sip_check_path(old_path, SIP_OP_RENAME) != 0 ||
+        sip_check_path(new_path, SIP_OP_RENAME) != 0) {
+        serial_puts("[VFS] SIP: Rename denied: ");
+        serial_puts(old_path);
+        serial_puts(" -> ");
+        serial_puts(new_path);
+        serial_puts("\n");
+        return VFS_ERR_PERM;
+    }
+    
+    vfs_node_t *node = vfs_resolve(old_path);
+    if (!node) return VFS_ERR_NOT_FOUND;
+    if (node->mount && node == node->mount->root) return VFS_ERR_BUSY;
+    if (vfs_node_busy(node)) {
+        serial_puts("[VFS] Rename refused, file is open: ");
+        serial_puts(old_path);
+        serial_puts("\n");
+        return VFS_ERR_BUSY;
+    }
+    
+    char old_dir[VFS_PATH_MAX], new_dir[VFS_PATH_MAX];
+    vfs_dirname(old_path, old_dir);
+    vfs_dirname(new_path, new_dir);
+    
+    vfs_node_t *old_parent = vfs_resolve(old_dir);
+    vfs_node_t *new_parent = vfs_resolve(new_dir);
+    if (!old_parent || !new_parent) return VFS_ERR_NOT_FOUND;
+    if (new_parent->type != VFS_DIRECTORY) return VFS_ERR_NOT_DIR;
+    
+    /* A rename never crosses volumes; callers copy and delete instead */
+    if (old_parent->mount != new_parent->mount || node->mount != old_parent->mount) {
+        return VFS_ERR_INVALID;
+    }
+    if (!old_parent->ops || !old_parent->ops->rename) {
+        return VFS_ERR_IO;
+    }
+    
+    int rc = old_parent->ops->rename(old_parent, old_name, new_parent, new_name);
+    serial_puts(rc == VFS_OK ? "[VFS] Renamed: " : "[VFS] Rename failed: ");
+    serial_puts(old_path);
+    serial_puts(" -> ");
+    serial_puts(new_path);
+    serial_puts("\n");
+    return rc;
 }
 
 /*
@@ -582,8 +699,8 @@ int vfs_makedirs(const char *path, uint32_t perms) {
         /* Try to create this directory */
         int result = vfs_create(partial, VFS_DIRECTORY, perms);
         
-        if (result != VFS_OK && result != -2) {
-            /* -2 is "already exists", which is ok */
+        if (result != VFS_OK && result != VFS_ERR_EXIST) {
+            /* An existing directory is fine */
             /* Log the failure but continue anyway */
             serial_puts("[VFS] makedirs: failed at ");
             serial_puts(partial);

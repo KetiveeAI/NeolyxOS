@@ -40,6 +40,8 @@
 #define SYS_STAT        25
 #define SYS_SEEK        24
 #define SYS_MKDIR       31
+#define SYS_REMOVE      32  /* kernel name "rmdir": deletes a file or an empty directory */
+#define SYS_RENAME      35
 
 /* File open flags - MUST MATCH the kernel's VFS_O_* (include/fs/vfs.h) */
 #define O_RDONLY  0x0001
@@ -238,6 +240,29 @@ static inline int64_t nx_write(int fd, const void *buf, uint64_t count) {
  * An existing directory is also reported as an error. */
 static inline int nx_mkdir(const char *path) {
     return (int)syscall2(SYS_MKDIR, (int64_t)path, 0755);
+}
+
+/* Filesystem results returned by mkdir, remove and rename (kernel VFS codes) */
+#define NX_FS_OK            0
+#define NX_FS_NOT_FOUND    (-1)
+#define NX_FS_PROTECTED    (-2)   /* System Integrity Protection refused it */
+#define NX_FS_IO           (-3)   /* includes "this filesystem cannot do that" */
+#define NX_FS_EXISTS       (-5)
+#define NX_FS_NOT_DIR      (-6)
+#define NX_FS_NOT_EMPTY    (-8)
+#define NX_FS_BUSY         (-9)   /* open, or a mount point */
+#define NX_FS_INVALID     (-10)   /* bad name, across volumes, or into itself */
+#define NX_FS_READ_ONLY   (-12)   /* read-only file or volume */
+
+/* Delete a file or an empty directory. Returns NX_FS_OK or an NX_FS_* error. */
+static inline int nx_remove(const char *path) {
+    return (int)syscall1(SYS_REMOVE, (int64_t)path);
+}
+
+/* Rename or move within one volume. The target must not exist.
+ * Returns NX_FS_OK or an NX_FS_* error (NX_FS_INVALID across volumes). */
+static inline int nx_rename(const char *old_path, const char *new_path) {
+    return (int)syscall2(SYS_RENAME, (int64_t)old_path, (int64_t)new_path);
 }
 
 /* Seek in file, returns new position or negative error */

@@ -542,7 +542,7 @@ nxapp_icon_t nxapp_icon_from_name(const char *app_name) {
         { "path", NXAPP_FILES },
         { "reolab", NXAPP_REOLAB }, { "rolecut", NXAPP_ROLECUT }, { "rivee", NXAPP_RIVEE },
         { "browser", NXAPP_BROWSER }, { "zepra", NXAPP_BROWSER }, { "web", NXAPP_BROWSER },
-        { "terminal", NXAPP_TERMINAL }, { "console", NXAPP_TERMINAL },
+        { "terminal", NXAPP_TERMINAL }, { "console", NXAPP_TERMINAL }, { "shell", NXAPP_TERMINAL },
         { "settings", NXAPP_SETTINGS }, { "system settings", NXAPP_SETTINGS }, { "preferences", NXAPP_SETTINGS },
         { "calculator", NXAPP_CALCULATOR }, { "calendar", NXAPP_CALENDAR }, { "clock", NXAPP_CLOCK },
         { "notes", NXAPP_NOTES }, { "music", NXAPP_MUSIC }, { "photos", NXAPP_PHOTOS },

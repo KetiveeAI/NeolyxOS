@@ -11,6 +11,7 @@ static const app_view_t g_views[] = {
     { "Font Manager",    760, 500, fonts_view_open,    fonts_view_render,    fonts_view_key,    fonts_view_mouse },
     { "Task Manager",    780, 520, taskmgr_view_open,  taskmgr_view_render,  taskmgr_view_key,  taskmgr_view_mouse },
     { "Path",            860, 540, path_view_open,     path_view_render,     path_view_key,     path_view_mouse },
+    { "Shell",           720, 440, shell_view_open,    shell_view_render,    shell_view_key,    shell_view_mouse },
 };
 
 static int view_streq_ci(const char *a, const char *b) {
@@ -33,6 +34,8 @@ static const struct { const char *alias, *name; } g_aliases[] = {
     { "Files",        "Path" },
     { "File Manager", "Path" },
     { "Finder",       "Path" },
+    { "Terminal", "Shell" },        /* the app was called Terminal before */
+    { "Console",  "Shell" },
 };
 
 const app_view_t *app_view_find(const char *name) {
