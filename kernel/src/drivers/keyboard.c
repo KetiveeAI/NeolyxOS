@@ -345,8 +345,12 @@ int keyboard_is_capslock(void) {
 int keyboard_get_event(uint8_t *scancode, uint8_t *ascii, uint8_t *pressed) {
     if (!scancode || !ascii || !pressed) return -1;
     
-    /* Called from syscalls with interrupts masked, so no race with the IRQ */
+    /* Pop with IRQs off so the IRQ handler cannot push mid-read. The
+     * syscall path usually runs masked already; restore the caller's IF. */
+    uint64_t flags;
+    __asm__ volatile("pushfq; popq %0; cli" : "=r"(flags) :: "memory");
     if (kbd_evq_tail == kbd_evq_head) {
+        if (flags & 0x200) __asm__ volatile("sti" ::: "memory");
         return -1;  /* No event */
     }
     
@@ -354,6 +358,7 @@ int keyboard_get_event(uint8_t *scancode, uint8_t *ascii, uint8_t *pressed) {
     *ascii = kbd_evq[kbd_evq_tail].ascii;
     *pressed = kbd_evq[kbd_evq_tail].pressed;
     kbd_evq_tail = (kbd_evq_tail + 1) % KBD_EVQ_SIZE;
+    if (flags & 0x200) __asm__ volatile("sti" ::: "memory");
     
     return 0;
 }

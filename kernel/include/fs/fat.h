@@ -130,6 +130,7 @@ typedef struct {
     uint32_t total_clusters;
     
     uint32_t root_cluster;      /* Root cluster (FAT32) */
+    uint32_t num_fats;          /* FAT copies kept in step on writes */
     
     char volume_label[12];
     

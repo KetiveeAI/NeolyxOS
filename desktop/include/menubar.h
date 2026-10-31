@@ -50,4 +50,29 @@ int  menubar_handle_key(uint8_t scancode, uint8_t pressed);
 int  menubar_is_open(void);
 void menubar_close(void);
 
+/* ============ The whole bar ============
+ *
+ * menubar_render_bar draws the bar background, the focused app's name in
+ * bold (from desktop_focused_window_id; "NeolyxOS" when no window has
+ * focus), the menu titles, and the status area on the right:
+ *
+ *   [battery] [volume] [Wi-Fi]  clock  [bell] [Control Center]
+ *
+ * The bell and Control Center items are centered at fixed distances from
+ * the right edge so the shell's click zones keep matching them:
+ *   Control Center  center w - MENUBAR_CC_CENTER  (shell zone w-50 .. w-20)
+ *   Notifications   center w - MENUBAR_NC_CENTER  (shell zone w-80 .. w-55)
+ *
+ * clock_text is preformatted by the shell (it owns the RTC cache), may be
+ * NULL. Volume and Wi-Fi come from the Control Center state; the battery
+ * item is shown only after menubar_set_power_status reports a battery. */
+#define MENUBAR_CC_CENTER   35.0f
+#define MENUBAR_NC_CENTER   67.0f
+
+void menubar_render_bar(nxc_canvas_t *c, float w, float h, const char *clock_text);
+
+/* percent 0..100, or -1 for "no battery / unknown" (hides the item).
+ * charging 0 or 1. Returns 0, or -1 on invalid arguments (nothing changes). */
+int  menubar_set_power_status(int percent, int charging);
+
 #endif /* MENUBAR_H */

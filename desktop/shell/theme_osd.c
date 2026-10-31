@@ -11,6 +11,7 @@
 #include <stddef.h>
 #include "../include/theme_osd.h"
 #include "../include/nxui.h"
+#include "../include/nxglass.h"
 #include "../include/nxsyscall.h"
 
 /* OSD State */
@@ -18,8 +19,8 @@ static theme_osd_state_t g_theme_osd = {0};
 static int g_theme_osd_initialized = 0;
 
 /* Configuration */
-#define THEME_OSD_WIDTH       200
-#define THEME_OSD_HEIGHT      50
+#define THEME_OSD_WIDTH       240
+#define THEME_OSD_HEIGHT      56
 #define THEME_OSD_DURATION    2000    /* 2 seconds */
 #define THEME_OSD_FADE_TIME   500     /* 0.5 second fade */
 #define THEME_OSD_RADIUS      25      /* Pill shape */
@@ -29,11 +30,6 @@ static int g_theme_osd_initialized = 0;
 #define THEME_TEXT_COLOR      0xFFFFFFFF
 #define THEME_MOON_COLOR      0xFF89B4FA  /* Blue moon for dark mode */
 #define THEME_SUN_COLOR       0xFFF9E2AF  /* Yellow sun for light mode */
-
-/* External drawing functions */
-extern void desktop_draw_text(int32_t x, int32_t y, const char *text, uint32_t color);
-extern void fill_rounded_rect(int32_t x, int32_t y, uint32_t w, uint32_t h, int32_t r, uint32_t color);
-extern void fill_circle(int32_t cx, int32_t cy, int32_t r, uint32_t color);
 
 /* Initialize */
 void theme_osd_init(uint32_t screen_w, uint32_t screen_h) {
@@ -91,89 +87,14 @@ void theme_osd_tick(void) {
     }
 }
 
-/* Draw moon icon (crescent) */
-static void draw_moon_icon(int32_t cx, int32_t cy, uint8_t alpha) {
-    uint32_t color = ((uint32_t)alpha << 24) | (THEME_MOON_COLOR & 0x00FFFFFF);
-    uint32_t bg = ((uint32_t)(alpha * 0xD0 / 255) << 24) | (THEME_BG_COLOR & 0x00FFFFFF);
-    
-    /* Full moon circle */
-    fill_circle(cx, cy, 10, color);
-    /* Cutout circle offset to create crescent */
-    fill_circle(cx + 5, cy - 3, 8, bg);
-}
-
-/* Draw sun icon (circle with rays) */
-static void draw_sun_icon(int32_t cx, int32_t cy, uint8_t alpha) {
-    uint32_t color = ((uint32_t)alpha << 24) | (THEME_SUN_COLOR & 0x00FFFFFF);
-    
-    /* Center circle */
-    fill_circle(cx, cy, 8, color);
-    
-    /* Rays (small circles around the center) */
-    for (int i = 0; i < 8; i++) {
-        int angle = i * 45;
-        int dx = 0, dy = 0;
-        switch (i) {
-            case 0: dx = 0;  dy = -12; break;  /* N */
-            case 1: dx = 8;  dy = -8;  break;  /* NE */
-            case 2: dx = 12; dy = 0;   break;  /* E */
-            case 3: dx = 8;  dy = 8;   break;  /* SE */
-            case 4: dx = 0;  dy = 12;  break;  /* S */
-            case 5: dx = -8; dy = 8;   break;  /* SW */
-            case 6: dx = -12; dy = 0;  break;  /* W */
-            case 7: dx = -8; dy = -8;  break;  /* NW */
-        }
-        (void)angle;
-        fill_circle(cx + dx, cy + dy, 2, color);
-    }
-}
-
-/* Render */
-static void theme_osd_render_legacy(uint32_t *fb, uint32_t pitch) {
-    if (!g_theme_osd.visible || g_theme_osd.opacity == 0) return;
-    
-    (void)fb;
-    (void)pitch;
-    
-    uint8_t a = g_theme_osd.opacity;
-    int32_t x = g_theme_osd.x;
-    int32_t y = g_theme_osd.y;
-    uint32_t w = g_theme_osd.width;
-    uint32_t h = g_theme_osd.height;
-    
-    /* Background pill */
-    uint32_t bg = ((uint32_t)((a * 0xD0) / 255) << 24) | (THEME_BG_COLOR & 0x00FFFFFF);
-    fill_rounded_rect(x, y, w, h, THEME_OSD_RADIUS, bg);
-    
-    /* Icon */
-    int icon_cx = x + 30;
-    int icon_cy = y + h / 2;
-    
-    if (g_theme_osd.dark_mode_on) {
-        draw_moon_icon(icon_cx, icon_cy, a);
-    } else {
-        draw_sun_icon(icon_cx, icon_cy, a);
-    }
-    
-    /* Text */
-    uint32_t text_color = ((uint32_t)a << 24) | (THEME_TEXT_COLOR & 0x00FFFFFF);
-    const char *text = g_theme_osd.dark_mode_on ? "Dark Mode On" : "Dark Mode Off";
-    desktop_draw_text(x + 52, y + 18, text, text_color);
-}
-
 /* ============ Canvas renderer ============ */
 
+/* Appearance HUD: sun or moon on ultrathin glass (cached). */
 void theme_osd_render(nxc_canvas_t *c) {
     if (!c || !g_theme_osd.visible || g_theme_osd.opacity == 0) return;
-    const nxui_theme_t *th = nxui_theme();
     nxc_rect_t box = nxc_rect((float)g_theme_osd.x, (float)g_theme_osd.y, (float)g_theme_osd.width, (float)g_theme_osd.height);
-    nxc_save(c);
-    nxc_set_alpha(c, g_theme_osd.opacity);
-    nxui_elevation(c, box, 16.0f, 2);
-    nxui_material(c, box, 16.0f, &th->mat_hud);
-    float cy = box.y + box.h * 0.5f;
-    nxsym_draw(c, g_theme_osd.dark_mode_on ? NXSYM_MOON : NXSYM_SUN, box.x + 30.0f, cy, 24.0f, th->text_primary, 1.0f);
-    nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, nxc_rect(box.x + 56.0f, box.y, box.w - 68.0f, box.h),
-                      g_theme_osd.dark_mode_on ? "Dark appearance" : "Light appearance", th->text_primary, NXC_ALIGN_LEFT);
-    nxc_restore(c);
+    const nxglass_tokens_t *t = nxglass_tokens();
+    nxglass_hud(c, box, g_theme_osd.dark_mode_on ? NXSYM_MOON : NXSYM_SUN, 1.0f, "Appearance",
+                g_theme_osd.dark_mode_on ? "Dark" : "Light", -1.0f,
+                g_theme_osd.dark_mode_on ? t->info : t->warning, g_theme_osd.opacity);
 }

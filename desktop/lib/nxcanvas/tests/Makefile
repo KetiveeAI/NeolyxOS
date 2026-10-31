@@ -9,7 +9,8 @@
 HOSTCC  ?= gcc
 OUT     ?= out
 CFLAGS  = -std=c11 -O1 -g -Wall -Wextra -Werror=implicit-function-declaration \
-          -fsanitize=address,undefined -fno-omit-frame-pointer -D_POSIX_C_SOURCE=200809L
+          -fsanitize=address,undefined -fno-omit-frame-pointer -D_POSIX_C_SOURCE=200809L \
+          -DNX_HOST_PREVIEW
 LDFLAGS = -fsanitize=address,undefined -lm
 
 ENGINE  = ..
@@ -29,7 +30,9 @@ TESTS = core:nxc_core.c,nxc_math.c \
         raster:nxc_core.c,nxc_math.c,nxc_paint.c,nxc_raster.c \
         effects:nxc_core.c,nxc_math.c,nxc_paint.c,nxc_effects.c,nxc_image.c,nxc_shapes.c,nxc_raster.c \
         font:nxc_core.c,nxc_math.c,nxc_paint.c,nxc_font.c,nxc_raster.c \
-        text:nxc_core.c,nxc_math.c,nxc_paint.c,nxc_raster.c,nxc_font.c,nxc_text.c,nxc_shapes.c,nxc_image.c,nxc_effects.c
+        text:nxc_core.c,nxc_math.c,nxc_paint.c,nxc_raster.c,nxc_font.c,nxc_text.c,nxc_shapes.c,nxc_image.c,nxc_effects.c \
+        quality:nxc_core.c,nxc_math.c,nxc_paint.c,nxc_raster.c,nxc_font.c,nxc_text.c,nxc_shapes.c,nxc_image.c,nxc_effects.c \
+        registry:nxc_core.c,nxc_math.c,nxc_paint.c,nxc_raster.c,nxc_font.c,nxc_text.c,../nxfont_registry.c
 
 all-tests:
 	@set -e; for t in $(TESTS); do \

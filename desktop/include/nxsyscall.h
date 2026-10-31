@@ -39,12 +39,13 @@
 #define SYS_WRITE       23
 #define SYS_STAT        25
 #define SYS_SEEK        24
+#define SYS_MKDIR       31
 
-/* File open flags */
-#define O_RDONLY  0x0000
-#define O_WRONLY  0x0001
-#define O_RDWR    0x0002
-#define O_CREAT   0x0040
+/* File open flags - MUST MATCH the kernel's VFS_O_* (include/fs/vfs.h) */
+#define O_RDONLY  0x0001
+#define O_WRONLY  0x0002
+#define O_RDWR    0x0003
+#define O_CREAT   0x0100
 #define O_TRUNC   0x0200
 #define O_APPEND  0x0400
 
@@ -228,6 +229,12 @@ static inline int64_t nx_read(int fd, void *buf, uint64_t count) {
 /* Write to file, returns bytes written or negative error */
 static inline int64_t nx_write(int fd, const void *buf, uint64_t count) {
     return syscall3(SYS_WRITE, (int64_t)fd, (int64_t)buf, (int64_t)count);
+}
+
+/* Create a directory (parent must exist), returns 0 or negative error.
+ * An existing directory is also reported as an error. */
+static inline int nx_mkdir(const char *path) {
+    return (int)syscall2(SYS_MKDIR, (int64_t)path, 0755);
 }
 
 /* Seek in file, returns new position or negative error */

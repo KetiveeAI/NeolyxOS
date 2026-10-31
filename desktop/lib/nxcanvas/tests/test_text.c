@@ -22,7 +22,17 @@ static uint8_t *read_file(const char *path, uint32_t *size) {
     return d;
 }
 
-#define FONT_DIR "/home/swa/NEOLYXOS/neolyx-os/resources/fonts/"
+/* Font directory relative to tests/ (override with NXC_FONT_DIR). */
+static const char *font_dir(void) {
+    const char *d = getenv("NXC_FONT_DIR");
+    return (d && *d) ? d : "../../../../resources/fonts/";
+}
+
+static const char *font_path(const char *rel) {
+    static char buf[1024];
+    snprintf(buf, sizeof(buf), "%s%s", font_dir(), rel);
+    return buf;
+}
 
 static uint8_t *g_blobs[8];
 static int g_nblobs;
@@ -169,9 +179,9 @@ static void specimen(nxc_font_t *reg, nxc_font_t *med, nxc_font_t *bold) {
 
 int main(void) {
     nxc_test_init(1024, 1024);
-    nxc_font_t *reg = load(FONT_DIR "NXSans/NXSans-Text.ttf");
-    nxc_font_t *med = load(FONT_DIR "NXSans/NXSans-UI.ttf");
-    nxc_font_t *bold = load(FONT_DIR "NXSans/NXSans-Bold.ttf");
+    nxc_font_t *reg = load(font_path("NXSans/NXSans-Text.ttf"));
+    nxc_font_t *med = load(font_path("NXSans/NXSans-UI.ttf"));
+    nxc_font_t *bold = load(font_path("NXSans/NXSans-Bold.ttf"));
     test_layout(reg);
     test_draw(reg);
     specimen(reg, med, bold);
