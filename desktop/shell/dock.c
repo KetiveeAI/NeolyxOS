@@ -186,9 +186,15 @@ static int   g_mouse_x, g_mouse_y;
 /* Geometry constants (dock layout) */
 #define SHELF_PAD      9.0f     /* inner padding around icons */
 #define SEP_W          13.0f
-#define SPRING_K       1400.0f
-#define SPRING_D       74.8f    /* 2 * sqrt(SPRING_K): critically damped */
-#define MAG_SPAN       2.6f     /* magnification reach, in icon slots */
+/* Motion is kept calm: soft critically damped springs (no overshoot,
+ * about 0.25 s to settle) and a wide, low magnification bump so icons
+ * swell gently instead of popping. */
+#define SPRING_K       620.0f
+#define SPRING_D       49.8f    /* 2 * sqrt(SPRING_K): critically damped */
+#define MAG_SPAN       3.4f     /* magnification reach, in icon slots */
+#define MAG_BLEND_K    170.0f   /* pointer enter/leave fade of the magnification */
+#define MAG_BLEND_D    26.1f    /* 2 * sqrt(MAG_BLEND_K) */
+#define BOUNCE_LIFT    0.28f    /* launch hop height, fraction of the icon size */
 
 /* ============ Configuration ============ */
 
@@ -501,12 +507,14 @@ void dock_start_bounce(uint32_t app_id) {
 float dock_bounce_lift(uint32_t key, float amplitude) {
     dock_anim_t *a = anim_find(key);
     if (!a || a->bounce < 0.0f) return 0.0f;
-    /* Two decaying hops: 0..0.5 full height, 0.5..1 at 40 %. */
+    /* Two soft, decaying hops: 0..0.55 full height, 0.55..1 at 30 %.
+     * Each hop follows a sine arch (eases in and out at the shelf). */
     float t = a->bounce / BOUNCE_TIME;
     if (t >= 1.0f) return 0.0f;
-    float hop = t < 0.5f ? t * 2.0f : (t - 0.5f) * 2.0f;
-    float amp = t < 0.5f ? 1.0f : 0.4f;
-    return amplitude * amp * 4.0f * hop * (1.0f - hop);
+    float hop = t < 0.55f ? t / 0.55f : (t - 0.55f) / 0.45f;
+    float amp = t < 0.55f ? 1.0f : 0.3f;
+    float arch = 4.0f * hop * (1.0f - hop);      /* 0..1..0 */
+    return amplitude * amp * arch * (3.0f - 2.0f * arch) * arch;   /* smoothstep-shaped crest */
 }
 
 /* ============ Model ============ */
@@ -897,9 +905,11 @@ static void draw_mini_window(nxc_canvas_t *c, const dock_item_t *it, float x, fl
     nxc_fill_rect(c, nxc_rect(r.x, r.y, r.w, s * 0.13f), th->window_titlebar);
     nxc_restore(c);
     float dr = s * 0.022f + 0.6f, dy = r.y + s * 0.065f;
-    nxc_fill_circle(c, r.x + s * 0.07f, dy, dr, th->traffic_close);
-    nxc_fill_circle(c, r.x + s * 0.13f, dy, dr, th->traffic_minimize);
-    nxc_fill_circle(c, r.x + s * 0.19f, dy, dr, th->traffic_zoom);
+    /* Window controls at the right, as on real windows (close, zoom, minimize) */
+    float rx = r.x + r.w;
+    nxc_fill_circle(c, rx - s * 0.19f, dy, dr, NXC_RGB(0xFF, 0x10, 0x28));
+    nxc_fill_circle(c, rx - s * 0.13f, dy, dr, NXC_RGB(0x85, 0x72, 0xDE));
+    nxc_fill_circle(c, rx - s * 0.07f, dy, dr, NXC_RGB(0x4B, 0x7A, 0x9A));
     nxc_stroke_rrect(c, r, rad, 1.0f, th->window_border);
     float is = s * 0.42f;
     nxapp_icon_draw(c, (nxapp_icon_t)it->kind, x + (s - is) * 0.5f, r.y + s * 0.18f, is, 255);
@@ -1009,7 +1019,7 @@ static void render_dock(nxc_canvas_t *c, int mx, int my) {
                pc + shift <= margin + thick + (g_cfg.mag_size - 1.0f) * base * g_magblend + 2.0f &&
                pm >= g_rpos[0] - SHELF_PAD && pm <= g_rpos[n - 1] + g_rsize[n - 1] + SHELF_PAD;
     float mag = g_cfg.mag_on ? g_cfg.mag_size : 1.0f;
-    nxui_spring_step(&g_mag_spring, (over && mag > 1.0f) ? 1.0f : 0.0f, 520.0f, 45.6f, dt);
+    nxui_spring_step(&g_mag_spring, (over && mag > 1.0f) ? 1.0f : 0.0f, MAG_BLEND_K, MAG_BLEND_D, dt);
     g_magblend = g_mag_spring.value < 0.0f ? 0.0f : (g_mag_spring.value > 1.0f ? 1.0f : g_mag_spring.value);
     if (over) g_last_pm = pm;
     float anchor = g_last_pm;
@@ -1143,7 +1153,7 @@ static void render_dock(nxc_canvas_t *c, int mx, int my) {
         }
         float sz = dsz[i];
         if (sz < 1.0f) continue;
-        float lift = dock_bounce_lift(it->key, base * 0.55f);
+        float lift = dock_bounce_lift(it->key, base * BOUNCE_LIFT);
         nxc_rect_t r = to_screen(dpos[i], sz, icon_c0 + lift, sz);
         int pressed = (i == g_press_item && (g_dock.pressed_idx == i));
         draw_item(c, it, r, 255);
@@ -1169,7 +1179,7 @@ static void render_dock(nxc_canvas_t *c, int mx, int my) {
     if (g_tip_item >= 0 && g_tip_item < n && g_tip_alpha > 0.02f) {
         int i = g_tip_item;
         float sz = dsz[i];
-        float lift = dock_bounce_lift(m->items[i].key, base * 0.55f);
+        float lift = dock_bounce_lift(m->items[i].key, base * BOUNCE_LIFT);
         nxc_rect_t r = to_screen(dpos[i], sz, icon_c0 + lift, sz);
         render_tooltip(c, &m->items[i], r, g_tip_alpha);
     }

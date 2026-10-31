@@ -75,11 +75,13 @@ AREA_TASKMGR_SRC  = shell/views/taskmgr_view.c lib/nxproc.c
 
 AREA_WINDOWS_SRC  = shell/stage.c shell/overview.c shell/switcher.c
 
+AREA_PATH_SRC     = lib/nxpath_relay.c shell/views/path_view.c shell/desktop_items.c
+
 AREA_SHELL_SRC    = shell/views/shell_view.c
 
 SHELL_SRC += $(AREA_SHARED_SRC) $(AREA_GLASS_SRC) $(AREA_SETTINGS_SRC) $(AREA_FONTS_SRC) \
              $(AREA_SETUP_SRC) $(AREA_DOCK_SRC) $(AREA_NET_SRC) $(AREA_TASKMGR_SRC) \
-             $(AREA_WINDOWS_SRC) $(AREA_SHELL_SRC)
+             $(AREA_WINDOWS_SRC) $(AREA_PATH_SRC) $(AREA_SHELL_SRC)
 
 WIDGET_SRC = widgets/widgets.c
 

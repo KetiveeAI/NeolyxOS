@@ -117,6 +117,69 @@ int settings_sys_hypervisor(char *out, int cap) {
 #endif
 }
 
+int settings_sys_cpu_topology(uint32_t *logical, uint32_t *cores) {
+    if (!logical || !cores) return -1;
+    *logical = *cores = 0;
+#if SETTINGS_HAVE_CPUID
+    uint32_t a, b, c, d;
+    cpuid(0, &a, &b, &c, &d);
+    uint32_t max_leaf = a;
+    int intel = b == 0x756E6547u && d == 0x49656E69u && c == 0x6C65746Eu;   /* GenuineIntel */
+    if (max_leaf < 1) return -1;
+    cpuid(1, &a, &b, &c, &d);
+    uint32_t lp = (d & (1u << 28)) ? ((b >> 16) & 0xFFu) : 1u;   /* HTT: logical per package */
+    if (lp == 0) lp = 1;
+    uint32_t nc = 0;
+    if (intel && max_leaf >= 4) {
+        cpuid(4, &a, &b, &c, &d);
+        if (a & 0x1Fu) nc = ((a >> 26) & 0x3Fu) + 1u;
+    } else {
+        cpuid(0x80000000u, &a, &b, &c, &d);
+        if (a >= 0x80000008u) {
+            cpuid(0x80000008u, &a, &b, &c, &d);
+            nc = (c & 0xFFu) + 1u;
+        }
+    }
+    if (nc > lp) nc = lp;
+    *logical = lp;
+    *cores = nc ? nc : lp;
+    return 0;
+#else
+    return SETTINGS_ERR_UNSUPPORTED;
+#endif
+}
+
+int settings_sys_cpu_features(char *out, int cap) {
+    if (!out || cap < 2) return -1;
+    out[0] = '\0';
+#if SETTINGS_HAVE_CPUID
+    uint32_t a, b, c, d, max_leaf;
+    cpuid(0, &max_leaf, &b, &c, &d);
+    if (max_leaf < 1) return -1;
+    cpuid(1, &a, &b, &c, &d);
+    uint32_t c1 = c, d1 = d, b7 = 0;
+    if (max_leaf >= 7) { cpuid(7, &a, &b, &c, &d); b7 = b; }
+    struct { int on; const char *name; } f[] = {
+        { (int)((d1 >> 26) & 1u), "SSE2" },
+        { (int)((c1 >> 20) & 1u), "SSE4.2" },
+        { (int)((c1 >> 28) & 1u), "AVX" },
+        { (int)((b7 >> 5) & 1u),  "AVX2" },
+        { (int)((b7 >> 16) & 1u), "AVX-512" },
+        { (int)((c1 >> 25) & 1u), "AES" },
+        { (int)((c1 >> 30) & 1u), "RDRAND" },
+        { (int)((c1 >> 5) & 1u),  "VT-x" },
+    };
+    for (unsigned i = 0; i < sizeof(f) / sizeof(f[0]); i++) {
+        if (!f[i].on) continue;
+        if (out[0]) sx_strcat(out, ", ", cap);
+        sx_strcat(out, f[i].name, cap);
+    }
+    return out[0] ? 0 : -1;
+#else
+    return SETTINGS_ERR_UNSUPPORTED;
+#endif
+}
+
 /* ============ Kernel-backed ============ */
 
 int settings_sys_display(uint32_t *w, uint32_t *h, uint32_t *bpp) {
@@ -187,6 +250,55 @@ int settings_sys_memory(uint64_t *total_bytes, uint64_t *used_bytes) {
 #else
     return r < 0 ? (int)r : -1;
 #endif
+}
+
+/* Mirror of the kernel's nx_abi_info_t (kernel/include/core/nx_abi.h)
+ * for abi.query (0). MUST MATCH the kernel layout. */
+typedef struct {
+    uint16_t major, minor, patch, flags;
+    uint32_t syscall_count;
+    uint32_t reserved[3];
+} settings_kernel_abi_t;
+_Static_assert(sizeof(settings_kernel_abi_t) == 24, "nx_abi_info_t layout changed");
+
+static void copy_kstr(char *dst, const char *src, int cap) {
+    /* Kernel strings are fixed arrays; never trust them to be terminated. */
+    int i = 0;
+    for (; i < cap - 1 && src[i]; i++) {
+        char ch = src[i];
+        dst[i] = (ch >= 0x20 && ch <= 0x7E) ? ch : '?';
+    }
+    dst[i] = '\0';
+}
+
+int settings_sys_kernel(settings_kernel_info_t *out) {
+    if (!out) return -1;
+    for (unsigned i = 0; i < sizeof(*out); i++) ((volatile uint8_t *)out)[i] = 0;
+
+    settings_kernel_abi_t abi;
+    for (unsigned i = 0; i < sizeof(abi); i++) ((volatile uint8_t *)&abi)[i] = 0;
+    if (syscall1(0, (int64_t)(uintptr_t)&abi) == 0 && abi.major > 0) {
+        out->abi_ok = 1;
+        out->abi_major = abi.major;
+        out->abi_minor = abi.minor;
+        out->abi_patch = abi.patch;
+        out->syscall_count = abi.syscall_count;
+    }
+
+    settings_kernel_sysinfo_t info;
+    for (unsigned i = 0; i < sizeof(info); i++) ((volatile uint8_t *)&info)[i] = 0;
+    int64_t r = syscall1(SETTINGS_SYS_INFO, (int64_t)(uintptr_t)&info);
+    if (r != 0) {
+        static int logged;
+        if (!logged) { logged = 1; settings_log("about: SYS_INFO unavailable"); }
+        return r < 0 ? (int)r : -1;
+    }
+    copy_kstr(out->os_name, info.os_name, (int)sizeof(out->os_name));
+    copy_kstr(out->os_version, info.os_version, (int)sizeof(out->os_version));
+    copy_kstr(out->arch, info.arch, (int)sizeof(out->arch));
+    out->uptime_ms = info.uptime_ms;
+    out->num_cpus = info.num_cpus;
+    return 0;
 }
 
 int settings_sys_volume(const char **name, uint64_t *total_bytes, uint64_t *used_bytes) {

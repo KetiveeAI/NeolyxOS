@@ -32,6 +32,8 @@
 #include "../include/battery_warning.h"
 #include "../include/network_indicator.h"
 #include "../include/nxui.h"
+#include "../include/nxglass.h"
+#include "../include/desktop_items.h"
 #include "../include/menubar.h"
 #include "../include/app_view.h"
 #include "../include/setup_assistant.h"
@@ -840,6 +842,8 @@ static int g_external_storage_connected = 0;
 
 /* Desktop icons: only connected devices appear. */
 static void render_desktop_icons(void) {
+    desktop_items_render(nxui_canvas(), (int32_t)g_desktop.width, (int32_t)g_desktop.height,
+                         g_external_storage_connected);
     if (!g_external_storage_connected) return;
     nxc_canvas_t *c = nxui_canvas();
     const nxui_theme_t *th = nxui_theme();
@@ -1062,22 +1066,15 @@ static nxc_rect_t window_frame_rect(const desktop_window_t *w) {
     return nxc_rect((float)w->x, (float)w->y, (float)w->width, (float)w->height + (float)WIN_TITLE_H);
 }
 
-/* Center of traffic light i (0 close, 1 minimize, 2 zoom). */
-static void traffic_light_center(const desktop_window_t *w, int i, float *cx, float *cy) {
-    *cx = (float)w->x + 14.0f + 16.0f * (float)i;
-    *cy = (float)w->y + (float)WIN_TITLE_H * 0.5f;
+/* Title bar strip of a window (window controls sit at its right end). */
+static nxc_rect_t window_titlebar_rect(const desktop_window_t *w) {
+    return nxc_rect((float)w->x, (float)w->y, (float)w->width, (float)WIN_TITLE_H);
 }
 
-/* Which traffic light (0..2) contains (x, y), or -1. */
+/* Which window control (0 close, 1 minimize, 2 zoom) contains (x, y), or -1. */
 static int traffic_light_at(const desktop_window_t *w, int32_t x, int32_t y) {
     if (!w || w->width <= 60) return -1;
-    for (int i = 0; i < 3; i++) {
-        float cx, cy;
-        traffic_light_center(w, i, &cx, &cy);
-        float dx = (float)x - cx, dy = (float)y - cy;
-        if (dx * dx + dy * dy <= 8.0f * 8.0f) return i;
-    }
-    return -1;
+    return nxglass_winctl_at(window_titlebar_rect(w), x, y);
 }
 
 /*
@@ -1107,29 +1104,17 @@ static void draw_window_body(desktop_window_t *win, int shadow, int hover_ok) {
     nxc_restore(c);
 
     if (win->width > 60 && win->height > 6) {
-        /* Hovering the light group shows every light in color with its glyph */
-        int group_hover = 0;
-        if (hover_ok && !g_snapshot_pass) {
-            int32_t mx = g_desktop.mouse_x, my = g_desktop.mouse_y;
-            group_hover = mx >= win->x + 4 && mx < win->x + 56 && my >= win->y && my < win->y + WIN_TITLE_H;
-        }
-        nxc_color_t lit[3] = { th->traffic_close, th->traffic_minimize, th->traffic_zoom };
-        for (int i = 0; i < 3; i++) {
-            float cx, cy;
-            traffic_light_center(win, i, &cx, &cy);
-            nxc_color_t col = (focused || group_hover) ? lit[i] : th->traffic_inactive;
-            if (g_light_press_id == win->id && g_light_press_idx == i)
-                col = nxc_color_lerp(col, NXC_RGB(0, 0, 0), 0.25f);
-            nxc_fill_circle(c, cx, cy, 6.0f, col);
-            nxc_stroke_circle(c, cx, cy, 6.0f, 0.75f, NXC_ARGB(60, 0, 0, 0));
-            if (group_hover) {
-                static const nxsym_t glyph[3] = { NXSYM_CLOSE, NXSYM_MINIMIZE, NXSYM_MAXIMIZE };
-                nxsym_draw(c, glyph[i], cx, cy, i == 2 ? 6.5f : 7.0f, NXC_ARGB(160, 0x30, 0x10, 0x10), 0.0f);
-            }
-        }
-        nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM,
-                          nxc_rect(frame.x + 62.0f, frame.y, frame.w - 124.0f, WIN_TITLE_H),
-                          win->title, focused ? th->text_primary : th->text_tertiary, NXC_ALIGN_CENTER);
+        /* Window controls at the right end of the title bar */
+        nxc_rect_t tb = window_titlebar_rect(win);
+        int hover = -1;
+        if (hover_ok && !g_snapshot_pass) hover = traffic_light_at(win, g_desktop.mouse_x, g_desktop.mouse_y);
+        int pressed = g_light_press_id == win->id ? g_light_press_idx : -1;
+        nxglass_winctl_draw(c, tb, focused || hover >= 0, pressed, hover);
+        float m = NXGLASS_WINCTL_GROUP_W + NXGLASS_WINCTL_MARGIN + 8.0f;
+        if (frame.w > 2.0f * m + 24.0f)
+            nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM,
+                              nxc_rect(frame.x + m, frame.y, frame.w - 2.0f * m, WIN_TITLE_H),
+                              win->title, focused ? th->text_primary : th->text_tertiary, NXC_ALIGN_CENTER);
     }
 
     /* Content callback: draws in absolute coordinates inside the content rect */
@@ -2535,6 +2520,10 @@ void desktop_handle_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
         }
     }
 
+    /* Desktop items (files in ~/Desktop, served by the Path relay) */
+    if ((buttons & 0x01) && !(prev_buttons & 0x01) && !window_at_point(mx, my))
+        desktop_items_click(mx, my, (int32_t)g_desktop.width, (int32_t)g_desktop.height);
+
     /* Handle right click - show quick menu on title bar */
     if ((buttons & 0x02) && !(prev_buttons & 0x02)) {
         desktop_window_t *win = window_at_point(mx, my);
@@ -2594,7 +2583,7 @@ static void desktop_on_app_launched(const nx_event_t *event, void *userdata) {
     const char *name = app->app_name;
     if (!name[0]) return;
     /* Dock labels map to registered startup apps where one exists */
-    if (shell_streq_ci(name, "Files")) name = "File Manager";
+    if (shell_streq_ci(name, "Files") || shell_streq_ci(name, "File Manager")) name = "Path";
     else if (shell_streq_ci(name, "Settings")) name = "System Settings";
     else if (shell_streq_ci(name, "Fonts")) name = "Font Manager";
     else if (shell_streq_ci(name, "Activity") || shell_streq_ci(name, "Tasks")) name = "Task Manager";
@@ -2635,8 +2624,8 @@ static void desktop_menu_action(int menu, int action) {
     (void)menu;
     desktop_window_t *fw = focused_window();
     switch (action) {
-        case 1:  /* New Window */
-            desktop_launch_app("File Manager");
+        case 1:  /* New Window: a Path window */
+            if (desktop_launch_app("Path") != 0) serial_puts("[DESKTOP] Path: focused the open window\n");
             break;
         case 4: case 5:  /* Close Window, Quit */
             if (fw) window_close(fw);
@@ -2654,9 +2643,8 @@ static void desktop_menu_action(int menu, int action) {
         case 22: /* Keyboard Shortcuts */
             keyboard_osd_help_show();
             break;
-        case 23: /* About */
-            notification_push("System", "NeolyxOS", "Vajra desktop on the NXCanvas renderer", 0xFFE8660A);
-            notification_center_show();
+        case 23: /* About This System -> Settings */
+            if (settings_view_show_pane("about") != 0) serial_puts("[DESKTOP] About This System failed to open\n");
             break;
         default:
             serial_puts("[MENU] action not wired yet\n");

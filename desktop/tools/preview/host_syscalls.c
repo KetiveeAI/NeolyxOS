@@ -16,6 +16,8 @@
 #include <stdint.h>
 #include "../../include/nxsyscall.h"
 #include "preview.h"
+#include <dirent.h>
+#include <sys/stat.h>
 
 /* ============ Emulated machine ============ */
 
@@ -38,6 +40,68 @@ void preview_machine_init(void) {
     memset(g_heap, 0, 96u << 20);
 }
 
+/* ============ File system (preview only) ============ */
+/*
+ * SYS_READDIR / SYS_STAT read a host folder that stands in for the
+ * NeolyxOS root: $NX_PREVIEW_FSROOT. Without it, both return -ENOSYS
+ * (the shell then shows its "cannot list files" state). Paths reaching
+ * here were already validated by the Path relay; ".." is refused again.
+ */
+typedef struct { char name[256]; int32_t type; uint64_t inode; uint64_t size; } host_dirent_t;
+typedef struct { uint64_t ino; uint32_t mode, nlink, uid, gid; uint64_t size, at, mt, ct; } host_stat_t;
+
+static int host_fs_path(const char *vpath, char *out, size_t cap) {
+    const char *root = getenv("NX_PREVIEW_FSROOT");
+    if (!root || !root[0] || !vpath || vpath[0] != '/' || strstr(vpath, "..")) return -1;
+    int n = snprintf(out, cap, "%s%s", root, vpath);
+    return (n < 0 || (size_t)n >= cap) ? -1 : 0;
+}
+
+static int64_t host_readdir(const char *vpath, host_dirent_t *ents, uint64_t count, uint32_t *nread) {
+    char hp[1024];
+    if (!getenv("NX_PREVIEW_FSROOT")) return -38;
+    if (host_fs_path(vpath, hp, sizeof hp) != 0 || !ents) return -14;
+    DIR *d = opendir(hp);
+    if (!d) return -1;                                  /* VFS_ERR_NOT_FOUND */
+    uint32_t n = 0;
+    struct dirent *de;
+    while ((de = readdir(d)) && n < count) {
+        if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) continue;
+        char cp[1280];
+        struct stat st;
+        snprintf(cp, sizeof cp, "%s/%s", hp, de->d_name);
+        if (stat(cp, &st) != 0) continue;
+        memset(&ents[n], 0, sizeof ents[n]);
+        snprintf(ents[n].name, sizeof ents[n].name, "%s", de->d_name);
+        ents[n].type = S_ISDIR(st.st_mode) ? 2 : 1;
+        ents[n].inode = (uint64_t)st.st_ino;
+        ents[n].size = S_ISDIR(st.st_mode) ? 0 : (uint64_t)st.st_size;
+        n++;
+    }
+    closedir(d);
+    if (nread) *nread = n;
+    return 0;
+}
+
+static int64_t host_stat(const char *vpath, host_stat_t *out) {
+    char hp[1024];
+    struct stat st;
+    if (!getenv("NX_PREVIEW_FSROOT")) return -38;
+    if (host_fs_path(vpath, hp, sizeof hp) != 0 || !out) return -14;
+    if (stat(hp, &st) != 0) return -1;
+    memset(out, 0, sizeof *out);
+    out->mode = S_ISDIR(st.st_mode) ? 0040755u : 0100644u;
+    out->size = (uint64_t)st.st_size;
+    return 0;
+}
+
+int64_t nx_host_syscall4(int64_t num, int64_t a1, int64_t a2, int64_t a3, int64_t a4) {
+    if (num == 30)
+        return host_readdir((const char *)(uintptr_t)a1, (host_dirent_t *)(uintptr_t)a2, (uint64_t)a3,
+                            (uint32_t *)(uintptr_t)a4);
+    return nx_host_syscall(num, a1, a2, a3);
+}
+
 /* ============ Dispatcher ============ */
 
 int64_t nx_host_syscall(int64_t num, int64_t a1, int64_t a2, int64_t a3) {
@@ -45,6 +109,8 @@ int64_t nx_host_syscall(int64_t num, int64_t a1, int64_t a2, int64_t a3) {
     switch (num) {
         case SYS_TIME:
             return (int64_t)g_clock_ms;
+        case SYS_STAT:
+            return host_stat((const char *)(uintptr_t)a1, (host_stat_t *)(uintptr_t)a2);
         case SYS_SLEEP:
             if (a1 > 0 && a1 < 100000) g_clock_ms += (uint64_t)a1;
             return 0;
@@ -106,7 +172,7 @@ int64_t nx_host_syscall(int64_t num, int64_t a1, int64_t a2, int64_t a3) {
             return 1792966200 + (int64_t)(g_clock_ms / 1000u);   /* 2026-10-25 22:10 UTC-ish */
         case SYS_OPEN:
             return -2;   /* no filesystem in the preview */
-        case SYS_CLOSE: case SYS_READ: case SYS_WRITE: case SYS_SEEK: case SYS_STAT:
+        case SYS_CLOSE: case SYS_READ: case SYS_WRITE: case SYS_SEEK:
             return -9;
         case SYS_EXIT:
             fprintf(stderr, "preview: desktop called exit(%lld)\n", (long long)a1);

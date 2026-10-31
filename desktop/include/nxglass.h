@@ -263,17 +263,30 @@ nxc_status_t nxglass_hud(nxc_canvas_t *c, nxc_rect_t r, int sym, float sym_value
 
 /* ============ Window chrome ============ */
 
-/* Traffic-light button centers relative to the title bar's left edge
- * (matching the shell's 12 px hit boxes). */
-#define NXGLASS_TRAFFIC_X0     14.0f
-#define NXGLASS_TRAFFIC_STEP   16.0f
-#define NXGLASS_TRAFFIC_R       6.0f
+/* Window controls: three squircle buttons at the RIGHT end of the title
+ * bar, left to right close, zoom, minimize (owner design, 2026-10-31).
+ * Indices used by every caller: 0 close, 1 minimize, 2 zoom. */
+#define NXGLASS_WINCTL_SIZE    16.0f   /* button edge (px) */
+#define NXGLASS_WINCTL_GAP      4.0f   /* space between buttons */
+#define NXGLASS_WINCTL_MARGIN  10.0f   /* right edge of the group to the frame edge */
+/* Width of the whole group (keep the title text clear of it). */
+#define NXGLASS_WINCTL_GROUP_W (3.0f * NXGLASS_WINCTL_SIZE + 2.0f * NXGLASS_WINCTL_GAP)
+
+/* Rect of control idx (0 close, 1 minimize, 2 zoom) in title bar tb.
+ * Returns an empty rect for an invalid idx. */
+nxc_rect_t nxglass_winctl_rect(nxc_rect_t tb, int idx);
+/* Control under (x, y) in title bar tb: 0 close, 1 minimize, 2 zoom, -1. */
+int nxglass_winctl_at(nxc_rect_t tb, int32_t x, int32_t y);
+/* Draw the three controls. lit: full color (focused or hovered window);
+ * pressed: index being pressed (-1 none); hover: index under the pointer
+ * (-1 none). */
+nxc_status_t nxglass_winctl_draw(nxc_canvas_t *c, nxc_rect_t tb, int lit, int pressed, int hover);
 
 /* Glass title bar in r (the top strip of a window frame, rounded top
- * corners of `radius`). hovered_controls shows the glyphs in the lights. */
+ * corners of `radius`). hovered_controls lights the controls. */
 nxc_status_t nxglass_titlebar(nxc_canvas_t *c, nxc_rect_t r, float radius, const char *title,
                               int focused, int hovered_controls);
-/* 0 close, 1 minimize, 2 zoom, -1 none. */
+/* 0 close, 1 minimize, 2 zoom, -1 none (same as nxglass_winctl_at). */
 int nxglass_titlebar_button_at(nxc_rect_t r, int32_t x, int32_t y);
 
 /* ============ Preview gallery ============ */

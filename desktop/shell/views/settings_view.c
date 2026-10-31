@@ -43,6 +43,7 @@ typedef struct {
 #define TILE_KIND(k, col) { (k), 0, 0, (col) }
 
 static const pane_entry_t g_panes[] = {
+    { &settings_pane_about,         0, TILE_SYM(NXSYM_INFO,      0xFF0A84FF), "about this system computer version kernel processor cpu cores memory ram display resolution storage disk hardware specs configuration" },
     { &settings_pane_network,       0, TILE_SYM(NXSYM_WIFI,      0xFF0A84FF), "wifi wi-fi ethernet internet ip dns bluetooth" },
     { &settings_pane_notifications, 1, TILE_SYM(NXSYM_BELL,      0xFFFF453A), "alerts banners do not disturb focus" },
     { &settings_pane_sound,         1, TILE_SYM(NXSYM_VOLUME,    0xFFFF375F), "volume audio output input alert mute speaker" },
@@ -65,7 +66,7 @@ static const pane_entry_t g_panes[] = {
 
 /* Accepted aliases for settings_view_show_pane / control center ids. */
 static const struct { const char *alias; const char *id; } g_aliases[] = {
-    { "about", "general" }, { "security", "privacy" }, { "trackpad", "mouse" },
+    { "system", "about" }, { "info", "about" }, { "security", "privacy" }, { "trackpad", "mouse" },
     { "taskbar", "dock" }, { "accounts", "users" }, { "date", "datetime" },
     { "time", "datetime" }, { "updates", "update" }, { "displays", "display" },
     { "bluetooth", "network" }, { "wifi", "network" },
@@ -121,7 +122,7 @@ static struct {
     int      shift, ctrl, alt;
     /* geometry of the last frame */
     float    cw, ch;
-} V = { .current = 3, .pending = -1, .sidebar_size = 1, .pressed_row = -1 };
+} V = { .current = 0,   /* About This System */ .pending = -1, .sidebar_size = 1, .pressed_row = -1 };
 
 static const float k_row_h[3]  = { 28.0f, 32.0f, 36.0f };
 static const float k_tile_s[3] = { 20.0f, 22.0f, 25.0f };
