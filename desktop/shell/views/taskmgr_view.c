@@ -19,6 +19,7 @@
 #include "app_view.h"
 #include "nxui.h"
 #include "nxglass.h"
+#include "nxframe.h"
 #include "nxicons.h"
 #include "nxproc.h"
 #include "nxsyscall.h"
@@ -1044,7 +1045,7 @@ static uint32_t tm_btn_state(nxc_rect_t r, int enabled, int id) {
 
 static void tm_draw_footer(nxc_canvas_t *c, const tm_layout_t *L) {
     const nxui_theme_t *th = nxui_theme();
-    nxglass_separator(c, L->footer.x, L->footer.y, L->footer.w);
+    nxframe_strip(c, L->footer, NULL);   /* Neolyx status strip */
     nxc_rect_t tr = nxc_rect(L->footer.x + TM_PAD, L->footer.y, L->footer.w - 2.0f * TM_PAD - 240.0f, L->footer.h);
     char msg[128];
     tm_sb_t b; sb_init(&b, msg, sizeof(msg));
@@ -1287,6 +1288,7 @@ void taskmgr_view_render(desktop_window_t *win, void *ctx) {
     g_tm.sheet_t = nxui_approach(g_tm.sheet_t, g_tm.sheet_open ? 1.0f : 0.0f, 0.06f, dt);
 
     tm_layout_t L = tm_layout(win);
+    if (g_tm.tab >= 0 && g_tm.tab < TAB_COUNT) desktop_set_window_place(win->id, k_tabs[g_tm.tab]);
     g_tm.hover_tab = (g_tm.pointer_in && !g_tm.sheet_open)
                    ? nxglass_segment_at(L.tabs, TAB_COUNT, g_tm.mx, g_tm.my) : -1;
     nxglass_segmented(c, L.tabs, k_tabs, TAB_COUNT, g_tm.tab, g_tm.hover_tab);

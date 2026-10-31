@@ -33,6 +33,7 @@
 #include "../include/network_indicator.h"
 #include "../include/nxui.h"
 #include "../include/nxglass.h"
+#include "../include/nxframe.h"
 #include "../include/desktop_items.h"
 #include "../include/menubar.h"
 #include "../include/app_view.h"
@@ -1101,6 +1102,7 @@ static void draw_window_body(desktop_window_t *win, int shadow, int hover_ok) {
                   focused ? th->window_titlebar : th->window_titlebar_inactive);
     nxc_fill_rect(c, nxc_rect(frame.x, frame.y + WIN_TITLE_H - 1.0f, frame.w, 1.0f), th->separator);
     nxc_fill_rect(c, nxc_rect(frame.x, frame.y, frame.w, 1.0f), th->highlight);   /* top sheen */
+    if (focused && !g_snapshot_pass) nxframe_crest(c, frame);                     /* focus crest */
     nxc_restore(c);
 
     if (win->width > 60 && win->height > 6) {
@@ -1110,11 +1112,9 @@ static void draw_window_body(desktop_window_t *win, int shadow, int hover_ok) {
         if (hover_ok && !g_snapshot_pass) hover = traffic_light_at(win, g_desktop.mouse_x, g_desktop.mouse_y);
         int pressed = g_light_press_id == win->id ? g_light_press_idx : -1;
         nxglass_winctl_draw(c, tb, focused || hover >= 0, pressed, hover);
-        float m = NXGLASS_WINCTL_GROUP_W + NXGLASS_WINCTL_MARGIN + 8.0f;
-        if (frame.w > 2.0f * m + 24.0f)
-            nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM,
-                              nxc_rect(frame.x + m, frame.y, frame.w - 2.0f * m, WIN_TITLE_H),
-                              win->title, focused ? th->text_primary : th->text_tertiary, NXC_ALIGN_CENTER);
+        /* Neolyx frame: "App / Place" anchored left, controls on the right */
+        nxframe_title(c, tb, win->title, win->place,
+                      NXGLASS_WINCTL_GROUP_W + NXGLASS_WINCTL_MARGIN + 8.0f, focused);
     }
 
     /* Content callback: draws in absolute coordinates inside the content rect */
@@ -1695,6 +1695,7 @@ uint32_t desktop_create_window(const char *title, int32_t x, int32_t y,
     } else {
         win->title[0] = '\0';  /* Empty title if NULL passed */
     }
+    win->place[0] = '\0';
     win->x = x;
     win->y = y;
     win->width = width;
@@ -1998,6 +1999,13 @@ void wm_shell_raise(uint32_t window_id) {
 
 int wm_shell_minimize(uint32_t window_id) {
     return window_minimize(window_by_id(window_id));
+}
+
+void desktop_set_window_place(uint32_t window_id, const char *place) {
+    desktop_window_t *w = window_by_id(window_id);
+    if (!w) return;
+    if (place) shell_strcpy(w->place, place, WINDOW_PLACE_MAX);
+    else w->place[0] = '\0';
 }
 
 void desktop_set_window_render(uint32_t window_id,
