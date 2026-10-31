@@ -224,6 +224,56 @@ float nxframe_caps(nxc_canvas_t *c, float x, float baseline, const char *text, n
     return caption_caps(c, x, baseline, text, color);
 }
 
+/* ============ Panels, tabs, selection ============ */
+
+nxc_status_t nxframe_panel(nxc_canvas_t *c, nxc_rect_t r) {
+    if (!c) return NXC_ERR_INVALID_ARG;
+    if (!rect_ok(r)) return NXC_OK;
+    const nxui_theme_t *th = nxui_theme();
+    int light = is_light();
+    nxc_status_t st = nxc_fill_rrect(c, r, NXFRAME_PANEL_RADIUS,
+                                     light ? NXC_ARGB(255, 0xFF, 0xFF, 0xFF) : nxframe_rail_tone());
+    if (st != NXC_OK) return st;
+    return nxc_stroke_rrect(c, r, NXFRAME_PANEL_RADIUS, 1.0f, th->separator);
+}
+
+nxc_status_t nxframe_tabs(nxc_canvas_t *c, nxc_rect_t r, const char *const *labels,
+                          int count, int selected, int hovered) {
+    if (!c || !labels || count <= 0 || count > 64) return NXC_ERR_INVALID_ARG;
+    if (!rect_ok(r)) return NXC_OK;
+    const nxui_theme_t *th = nxui_theme();
+    float sw = r.w / (float)count;
+    /* Baseline rule under the whole strip */
+    nxc_fill_rect(c, nxc_rect(r.x, r.y + r.h - 1.0f, r.w, 1.0f), th->separator);
+    for (int i = 0; i < count; i++) {
+        nxc_rect_t s = nxc_rect(r.x + sw * (float)i, r.y, sw, r.h);
+        if (i == hovered && i != selected)
+            nxc_fill_rrect(c, nxc_rect(s.x + 2.0f, s.y + 2.0f, s.w - 4.0f, s.h - 5.0f), 4.0f,
+                           is_light() ? NXC_ARGB(12, 0, 0, 0) : NXC_ARGB(14, 0xFF, 0xFF, 0xFF));
+        if (labels[i])
+            nxui_text_in_rect(c, i == selected ? NXUI_TEXT_BODY_SEMIBOLD : NXUI_TEXT_BODY,
+                              nxc_rect(s.x + 4.0f, s.y, s.w - 8.0f, s.h - 2.0f), labels[i],
+                              i == selected ? th->text_primary : th->text_secondary, NXC_ALIGN_CENTER);
+        if (i == selected) {
+            float uw = s.w * 0.5f;
+            if (uw > 56.0f) uw = 56.0f;
+            nxc_fill_rrect(c, nxc_rect(s.x + (s.w - uw) * 0.5f, r.y + r.h - 3.0f, uw, 3.0f), 1.5f, th->accent);
+        }
+    }
+    return NXC_OK;
+}
+
+nxc_status_t nxframe_selection(nxc_canvas_t *c, nxc_rect_t r) {
+    if (!c) return NXC_ERR_INVALID_ARG;
+    if (!rect_ok(r)) return NXC_OK;
+    const nxui_theme_t *th = nxui_theme();
+    nxc_status_t st = nxc_fill_rrect(c, r, 5.0f, NXC_WITH_ALPHA(th->accent, is_light() ? 34 : 44));
+    if (st != NXC_OK) return st;
+    float bh = r.h - 10.0f;
+    if (bh < 6.0f) bh = r.h;
+    return nxc_fill_rrect(c, nxc_rect(r.x, r.y + (r.h - bh) * 0.5f, 3.0f, bh), 1.5f, th->accent);
+}
+
 /* ============ Status strip ============ */
 
 nxc_status_t nxframe_strip(nxc_canvas_t *c, nxc_rect_t r, const char *text) {

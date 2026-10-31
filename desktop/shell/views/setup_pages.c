@@ -10,6 +10,7 @@
  */
 
 #include "setup_internal.h"
+#include "nxframe.h"
 #include "nxsyscall.h"
 
 /* ============ Small drawing helpers ============ */
@@ -134,7 +135,7 @@ static void focus_ring(nxc_canvas_t *c, nxc_rect_t r, float radius) {
 static void draw_list(nxc_canvas_t *c, nxc_rect_t r, int slot, const setup_choice_t *items, int count,
                       int sel, float row_h, int show_detail) {
     const nxui_theme_t *th = nxui_theme();
-    nxglass_card(c, r, 12.0f);
+    nxframe_panel(c, r);
     if (setup_focus_ring_visible(slot)) focus_ring(c, r, 12.0f);
     for (int i = 0; i < count; i++) {
         nxc_rect_t row = nxc_rect(r.x + 4.0f, r.y + 4.0f + row_h * (float)i, r.w - 8.0f, row_h);
@@ -160,7 +161,7 @@ static void draw_toggle_rows(nxc_canvas_t *c, nxc_rect_t r, int slot_base, const
     const nxui_theme_t *th = nxui_theme();
     const float rh = 52.0f;
     nxc_rect_t box = nxc_rect(r.x, r.y, r.w, rh * (float)count);
-    nxglass_card(c, box, 12.0f);
+    nxframe_panel(c, box);
     float dt = nxui_frame_dt();
     for (int i = 0; i < count; i++) {
         int slot = slot_base + i;
@@ -324,7 +325,7 @@ static void render_network(nxc_canvas_t *c, nxc_rect_t card) {
 
     if (g_setup.net_count <= 0) {
         nxc_rect_t box = nxc_rect(r.x + 40.0f, r.y + 10.0f, r.w - 80.0f, 150.0f);
-        nxglass_card(c, box, 12.0f);
+        nxframe_panel(c, box);
         nxsym_draw(c, NXSYM_WIFI_OFF, cx, box.y + 46.0f, 30.0f, th->text_tertiary, 0.0f);
         nxc_text_opts_t o = { 0 };
         o.align = NXC_ALIGN_CENTER;
@@ -339,7 +340,7 @@ static void render_network(nxc_canvas_t *c, nxc_rect_t card) {
     const float rh = 40.0f;
     float lh = rh * (float)g_setup.net_count + 8.0f;
     nxc_rect_t lr = nxc_rect(r.x + 40.0f, r.y, r.w - 80.0f, lh);
-    nxglass_card(c, lr, 12.0f);
+    nxframe_panel(c, lr);
     if (setup_focus_ring_visible(0)) focus_ring(c, lr, 12.0f);
     for (int i = 0; i < g_setup.net_count; i++) {
         const setup_net_entry_t *n = &g_setup.nets[i];
@@ -722,7 +723,7 @@ static void render_done(nxc_canvas_t *c, nxc_rect_t card) {
 
     nxc_rect_t r = content_rect(card);
     nxc_rect_t box = nxc_rect(r.x + 30.0f, r.y, r.w - 60.0f, 4.0f * 38.0f + 8.0f);
-    nxglass_card(c, box, 12.0f);
+    nxframe_panel(c, box);
     static const char *const appear[3] = { "Light", "Dark", "Auto" };
     const char *net = (g_setup.net_joined >= 0 && g_setup.net_joined < g_setup.net_count)
                     ? g_setup.nets[g_setup.net_joined].ssid : "Not connected";

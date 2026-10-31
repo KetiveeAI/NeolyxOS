@@ -23,6 +23,7 @@
 #include "app_view.h"
 #include "nxui.h"
 #include "nxglass.h"
+#include "nxframe.h"
 #include "nxicons.h"
 #include "nxfont_registry.h"
 #include "nxsyscall.h"
@@ -365,7 +366,7 @@ static float row_height(int kind) { return kind == 0 ? 26.0f : ROW_H; }
 
 static void draw_sidebar(nxc_canvas_t *c, const fv_layout_t *L) {
     const nxui_theme_t *th = nxui_theme();
-    nxglass_sidebar(c, L->sidebar);
+    nxframe_rail(c, L->sidebar);
     nxglass_field(c, L->search, g_fv.search, "Search fonts", 1,
                   g_fv.focus == FOCUS_SEARCH ? NXGLASS_FOCUSED : 0);
 
@@ -378,7 +379,7 @@ static void draw_sidebar(nxc_canvas_t *c, const fv_layout_t *L) {
         float rh = row_height(rows[i].kind);
         if (y > L->list.y + L->list.h) break;
         if (rows[i].kind == 0) {
-            nxui_text(c, NXUI_TEXT_SUBHEADLINE, L->list.x + 8, y + 18, rows[i].name, th->text_tertiary, 0);
+            nxframe_caps(c, L->list.x + 8, y + 18, rows[i].name, th->text_tertiary);
         } else if (rows[i].kind == 2) {
             nxui_text(c, NXUI_TEXT_FOOTNOTE, L->list.x + 8, y + 19, rows[i].name, th->text_tertiary, 0);
         } else {
@@ -392,8 +393,8 @@ static void draw_sidebar(nxc_canvas_t *c, const fv_layout_t *L) {
             detail[0] = 0;
             if (enabled == 0) fv_copy(detail, sizeof(detail), "Off");
             else fv_cat_u32(detail, sizeof(detail), ns);
-            nxglass_row(c, r, NXSYM_COUNT, 0, detail,
-                        (sel ? NXGLASS_SELECTED : 0) | (hov ? NXGLASS_HOVER : 0));
+            nxframe_rail_item(c, r, -1, 0, detail,
+                              (sel ? NXFRAME_SELECTED : 0u) | (hov ? NXFRAME_HOVER : 0u));
             /* "Aa" in the family's own regular face. */
             const nxc_font_t *pf = nxfont_lookup(rows[i].name, 400, 0);
             if (!pf && ns > 0) pf = nxfont_face(ids[0]);
@@ -451,7 +452,7 @@ static void draw_header(nxc_canvas_t *c, const fv_layout_t *L) {
 
     static const char *const tabs[3] = { "Specimen", "Characters", "Info" };
     int hov_tab = nxglass_segment_at(L->tabs, 3, g_fv.mx, g_fv.my);
-    nxglass_segmented(c, L->tabs, tabs, 3, (int)g_fv.tab, hov_tab);
+    nxframe_tabs(c, L->tabs, tabs, 3, (int)g_fv.tab, hov_tab);
 
     /* Style chips */
     float cx = x;
@@ -485,7 +486,7 @@ static void draw_specimen(nxc_canvas_t *c, const fv_layout_t *L) {
     const nxui_theme_t *th = nxui_theme();
     const nxc_font_t *f = sel_face();
     nxc_rect_t card = L->sample_card;
-    nxglass_card(c, card, 12.0f);
+    nxframe_panel(c, card);
     if (g_fv.focus == FOCUS_SAMPLE)
         nxc_stroke_rrect(c, card, 12.0f, 1.5f, NXC_WITH_ALPHA(th->accent, 200));
     const char *txt = g_fv.sample[0] ? g_fv.sample : (g_fv.focus == FOCUS_SAMPLE ? "" : k_default_sample);
@@ -567,7 +568,7 @@ static void draw_chars(nxc_canvas_t *c, const fv_layout_t *L) {
     const nxui_theme_t *th = nxui_theme();
     const nxc_font_t *f = sel_face();
     ensure_chars();
-    nxglass_card(c, nxc_rect(L->grid.x - 1, L->grid.y - 1, L->grid.w + 2, L->grid.h + 2), 10.0f);
+    nxframe_panel(c, nxc_rect(L->grid.x - 1, L->grid.y - 1, L->grid.w + 2, L->grid.h + 2));
     uint32_t first = g_fv.page * GRID_PAGE;
     nxc_font_metrics_t m;
     if (nxc_font_metrics(f, 22.0f, &m) != NXC_OK) m.cap_height = 15.0f;
@@ -611,7 +612,7 @@ static void draw_chars(nxc_canvas_t *c, const fv_layout_t *L) {
 
     /* Detail: big glyph on metric lines, code point. */
     nxc_rect_t d = L->detail;
-    nxglass_card(c, d, 12.0f);
+    nxframe_panel(c, d);
     if (g_fv.nchars == 0) {
         nxui_text_in_rect(c, NXUI_TEXT_BODY, d, "No characters", th->text_tertiary, NXC_ALIGN_CENTER);
         return;
@@ -714,7 +715,7 @@ static void draw_info(nxc_canvas_t *c, const fv_layout_t *L) {
     float x = L->body.x, w = L->body.w;
     float colw = (w - 16) * 0.5f;
     nxc_rect_t card = nxc_rect(x, L->body.y, w, 162);
-    nxglass_card(c, card, 12.0f);
+    nxframe_panel(c, card);
     char buf[96];
     float kw = 74, vw = colw - kw - 24;
     float y = card.y + 26, dy = 22;
@@ -778,7 +779,7 @@ static void draw_sheet(nxc_canvas_t *c, const fv_layout_t *L) {
     nxc_rect_t s = L->sheet;
     nxui_elevation(c, s, 14.0f, 3);
     nxc_fill_rrect(c, s, 14.0f, th->window_bg);
-    nxglass_card(c, s, 14.0f);
+    nxframe_panel(c, s);
     nxui_text(c, NXUI_TEXT_TITLE2, s.x + 20, s.y + 34, "Install a Font", th->text_primary, 0);
     nxui_text_wrapped(c, NXUI_TEXT_FOOTNOTE, nxc_rect(s.x + 20, s.y + 44, s.w - 40, 40),
                       "Enter the absolute path of a TrueType (.ttf) file. The file is checked "
@@ -884,6 +885,7 @@ void fonts_view_render(desktop_window_t *win, void *ctx) {
     if (!win || !c) return;
     nxc_rect_t content = app_view_content_rect(win);
     fv_layout_t L = layout_for(win);
+    desktop_set_window_place(win->id, g_fv.family[0] ? g_fv.family : NULL);
     nxc_save(c);
     nxc_translate(c, content.x, content.y);
     draw_sidebar(c, &L);

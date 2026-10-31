@@ -117,6 +117,25 @@ nxc_status_t nxframe_row_wash(nxc_canvas_t *c, nxc_rect_t r, uint32_t state);
  * Returns its width; measures only when c is NULL. */
 float nxframe_caps(nxc_canvas_t *c, float x, float baseline, const char *text, nxc_color_t color);
 
+/* ============ Panels, tabs, selection ============ */
+
+/* Neolyx panel: a flat inset surface with a hairline edge and small
+ * corners (replaces glass cards inside app windows). */
+#define NXFRAME_PANEL_RADIUS 6.0f
+nxc_status_t nxframe_panel(nxc_canvas_t *c, nxc_rect_t r);
+
+/*
+ * Tab strip in r: equal-width text tabs, the selected one in primary ink
+ * with a saffron underline, others secondary; hovered gets a faint wash.
+ * Hit-test with the same equal-width geometry (nxglass_segment_at).
+ */
+nxc_status_t nxframe_tabs(nxc_canvas_t *c, nxc_rect_t r, const char *const *labels,
+                          int count, int selected, int hovered);
+
+/* The one selection mark of NeolyxOS (rows, tables, lists): saffron wash
+ * and a saffron bar on the left edge of r. */
+nxc_status_t nxframe_selection(nxc_canvas_t *c, nxc_rect_t r);
+
 /* ============ Status strip ============ */
 
 /* Status strip in r: flat tone, top hairline, left text (may be NULL). */
