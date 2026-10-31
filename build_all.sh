@@ -43,16 +43,24 @@ fi
 # the UEFI loader reads \EFI\BOOT\desktop.elf from the boot image.
 echo "[3/5] Building bootloader..."
 cd ../boot
+# Keep the committed BOOTX64.EFI as a fallback: some gnu-efi/binutils
+# combinations cannot link it (e.g. "bootloader.so: file format not
+# recognized"), and that must not stop the kernel and image steps.
+BOOT_FALLBACK=$(mktemp)
+[ -f BOOTX64.EFI ] && cp BOOTX64.EFI "$BOOT_FALLBACK"
 if [ -f /usr/include/efi/efi.h ]; then
-    make clean >/dev/null 2>&1 || true
-    if ! make >/dev/null 2>&1 || [ ! -f BOOTX64.EFI ]; then
-        echo "ERROR: Bootloader build failed (run 'make' in boot/ for details)"
-        exit 1
+    rm -f ./*.o ./*.so
+    if make >/dev/null 2>&1 && [ -s BOOTX64.EFI ] && [ BOOTX64.EFI -nt main.c ]; then
+        echo "      Bootloader built: boot/BOOTX64.EFI"
+    elif [ -s "$BOOT_FALLBACK" ]; then
+        cp "$BOOT_FALLBACK" BOOTX64.EFI
+        echo "      WARNING: bootloader build failed (run 'make' in boot/ for details);"
+        echo "               using the committed boot/BOOTX64.EFI"
     fi
-    echo "      Bootloader built: boot/BOOTX64.EFI"
 else
     echo "      gnu-efi not installed; using the committed boot/BOOTX64.EFI"
 fi
+rm -f "$BOOT_FALLBACK"
 if [ ! -f BOOTX64.EFI ]; then
     echo "ERROR: boot/BOOTX64.EFI missing"
     exit 1
