@@ -1240,39 +1240,110 @@ nxc_status_t nxglass_titlebar(nxc_canvas_t *c, nxc_rect_t r, float radius, const
     nxc_fill_rect(c, nxc_rect(r.x, r.y + r.h - 1.0f, r.w, 1.0f), t->separator);
 
     if (r.w > 60.0f) {
-        float cy = r.y + r.h * 0.5f;
-        const nxc_color_t lights[3] = { th->traffic_close, th->traffic_minimize, th->traffic_zoom };
-        const nxsym_t glyph[3] = { NXSYM_CLOSE, NXSYM_MINIMIZE, NXSYM_MAXIMIZE };
-        for (int i = 0; i < 3; i++) {
-            float cx = r.x + NXGLASS_TRAFFIC_X0 + NXGLASS_TRAFFIC_STEP * (float)i;
-            if (focused || hovered_controls) {
-                nxc_color_t col = lights[i];
-                nxc_paint_t lp = nxc_paint_linear(cx, cy - NXGLASS_TRAFFIC_R, cx, cy + NXGLASS_TRAFFIC_R,
-                                                  nxc_color_lerp(col, NXC_RGB(0xFF, 0xFF, 0xFF), 0.18f), col);
-                nxc_fill_circle_paint(c, cx, cy, NXGLASS_TRAFFIC_R, &lp);
-                nxc_stroke_circle(c, cx, cy, NXGLASS_TRAFFIC_R, 0.75f, nxc_color_lerp(NXC_WITH_ALPHA(col, 160), NXC_ARGB(160, 0, 0, 0), 0.35f));
-                if (hovered_controls)
-                    nxsym_draw(c, glyph[i], cx, cy, 7.0f, NXC_ARGB(160, 0x40, 0x08, 0x00), 0.0f);
-            } else {
-                nxc_fill_circle(c, cx, cy, NXGLASS_TRAFFIC_R, th->traffic_inactive);
-            }
-        }
-        if (title && r.w > 140.0f)
-            nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, nxc_rect(r.x + 70.0f, r.y, r.w - 140.0f, r.h), title,
+        nxglass_winctl_draw(c, r, focused || hovered_controls, -1, -1);
+        float m = NXGLASS_WINCTL_GROUP_W + NXGLASS_WINCTL_MARGIN + 8.0f;
+        if (title && r.w > 2.0f * m + 40.0f)
+            nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, nxc_rect(r.x + m, r.y, r.w - 2.0f * m, r.h), title,
                               focused ? t->label : t->label_tertiary, NXC_ALIGN_CENTER);
     }
     return NXC_OK;
 }
 
 int nxglass_titlebar_button_at(nxc_rect_t r, int32_t x, int32_t y) {
-    if (!rect_ok(r)) return -1;
-    float cy = r.y + r.h * 0.5f;
+    return nxglass_winctl_at(r, x, y);
+}
+
+/* ---- Window controls ---- */
+
+/* Left-to-right slot of each control index (0 close, 1 minimize, 2 zoom). */
+static const int k_winctl_slot[3] = { 0, 2, 1 };
+
+nxc_rect_t nxglass_winctl_rect(nxc_rect_t tb, int idx) {
+    if (idx < 0 || idx > 2 || !rect_ok(tb)) return nxc_rect(0.0f, 0.0f, 0.0f, 0.0f);
+    const float s = NXGLASS_WINCTL_SIZE;
+    float x0 = tb.x + tb.w - NXGLASS_WINCTL_MARGIN - NXGLASS_WINCTL_GROUP_W;
+    float x = x0 + (float)k_winctl_slot[idx] * (s + NXGLASS_WINCTL_GAP);
+    float y = tb.y + (tb.h - s) * 0.5f;
+    return nxc_rect((float)(int)(x + 0.5f), (float)(int)(y + 0.5f), s, s);
+}
+
+int nxglass_winctl_at(nxc_rect_t tb, int32_t x, int32_t y) {
+    if (!rect_ok(tb) || tb.w <= NXGLASS_WINCTL_GROUP_W + 2.0f * NXGLASS_WINCTL_MARGIN) return -1;
     for (int i = 0; i < 3; i++) {
-        float cx = r.x + NXGLASS_TRAFFIC_X0 + NXGLASS_TRAFFIC_STEP * (float)i;
-        float dx = (float)x - cx, dy = (float)y - cy;
-        if (dx >= -7.0f && dx < 7.0f && dy >= -7.0f && dy < 7.0f) return i;
+        nxc_rect_t b = nxglass_winctl_rect(tb, i);
+        /* 2 px of slack around each button (half the gap), full bar height */
+        float hx = NXGLASS_WINCTL_GAP * 0.5f;
+        if ((float)x >= b.x - hx && (float)x < b.x + b.w + hx &&
+            (float)y >= tb.y && (float)y < tb.y + tb.h) return i;
     }
     return -1;
+}
+
+/* Glyphs are drawn on the 20.57 px design grid of the owner's SVGs
+ * (close.svg, expand.svg, minimize.svg) and scaled to the button. */
+static void winctl_glyph(nxc_canvas_t *c, int idx, nxc_rect_t b, nxc_color_t ink) {
+    const float k = b.w / 20.57f;
+#define GX(v) (b.x + (v) * k)
+#define GY(v) (b.y + (v) * k)
+    if (idx == 0) {
+        /* Close: two quarter discs, top-left and bottom-right */
+        float r = 7.6f * k;
+        nxc_save(c);
+        nxc_clip_rect(c, nxc_irect((int32_t)GX(2.38f), (int32_t)GY(2.85f),
+                                   (int32_t)(8.5f * k + 1.0f), (int32_t)(7.64f * k + 0.5f)));
+        nxc_fill_circle(c, GX(10.87f), GY(10.49f), r, ink);
+        nxc_restore(c);
+        nxc_save(c);
+        nxc_clip_rect(c, nxc_irect((int32_t)GX(8.87f), (int32_t)GY(10.49f),
+                                   (int32_t)(8.5f * k + 1.0f), (int32_t)(7.64f * k + 1.0f)));
+        nxc_fill_circle(c, GX(8.87f), GY(10.49f), r, ink);
+        nxc_restore(c);
+    } else if (idx == 2) {
+        /* Zoom: two rounded squares on the diagonal */
+        float rr = 2.6f * k;
+        nxc_fill_rrect(c, nxc_rect(GX(2.36f), GY(2.95f), 8.23f * k, 7.55f * k), rr, ink);
+        nxc_fill_rrect(c, nxc_rect(GX(9.76f), GY(10.5f), 8.23f * k, 7.55f * k), rr, ink);
+    } else {
+        /* Minimize: a bar in the lower right with a rounded outer corner */
+        float rr = 6.0f * k;
+        nxc_rect_t bar = nxc_rect(GX(8.25f), GY(11.2f), 10.29f * k, 6.72f * k);
+        nxc_save(c);
+        nxc_clip_rect(c, nxc_irect((int32_t)bar.x, (int32_t)bar.y, (int32_t)(bar.w + 0.5f), (int32_t)(bar.h + 0.5f)));
+        nxc_fill_rrect(c, nxc_rect(bar.x - rr, bar.y - rr, bar.w + rr, bar.h + rr), rr, ink);
+        nxc_restore(c);
+    }
+#undef GX
+#undef GY
+}
+
+nxc_status_t nxglass_winctl_draw(nxc_canvas_t *c, nxc_rect_t tb, int lit, int pressed, int hover) {
+    if (!c) return NXC_ERR_INVALID_ARG;
+    if (!rect_ok(tb) || tb.w <= NXGLASS_WINCTL_GROUP_W + 2.0f * NXGLASS_WINCTL_MARGIN) return NXC_OK;
+    const nxui_theme_t *th = nxui_theme();
+    /* Owner palette: close #FF0016..#FF2138, zoom #A18EF7..#6956C5, minimize #4B7A9A */
+    static const uint32_t top[3] = { 0xFFFF0016u, 0xFF4B7A9Au, 0xFFA18EF7u };
+    static const uint32_t bot[3] = { 0xFFFF2138u, 0xFF4B7A9Au, 0xFF6956C5u };
+    for (int i = 0; i < 3; i++) {
+        nxc_rect_t b = nxglass_winctl_rect(tb, i);
+        float rad = b.w * 0.38f;
+        if (lit) {
+            nxc_color_t c0 = (nxc_color_t)top[i], c1 = (nxc_color_t)bot[i];
+            if (pressed == i) {
+                c0 = nxc_color_lerp(c0, NXC_RGB(0, 0, 0), 0.22f);
+                c1 = nxc_color_lerp(c1, NXC_RGB(0, 0, 0), 0.22f);
+            } else if (hover == i) {
+                c0 = nxc_color_lerp(c0, NXC_RGB(0xFF, 0xFF, 0xFF), 0.12f);
+                c1 = nxc_color_lerp(c1, NXC_RGB(0xFF, 0xFF, 0xFF), 0.12f);
+            }
+            nxc_paint_t p = nxc_paint_linear(b.x, b.y, b.x, b.y + b.h, c0, c1);
+            nxc_fill_rrect_paint(c, b, rad, &p);
+            winctl_glyph(c, i, b, NXC_RGB(0xFF, 0xFF, 0xFF));
+        } else {
+            nxc_fill_rrect(c, b, rad, th->traffic_inactive);
+            winctl_glyph(c, i, b, NXC_WITH_ALPHA(th->text_tertiary, 150));
+        }
+    }
+    return NXC_OK;
 }
 
 /* ============ Preview gallery ============ */

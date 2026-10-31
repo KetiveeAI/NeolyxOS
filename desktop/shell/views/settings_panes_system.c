@@ -1,7 +1,7 @@
 /*
  * NeolyxOS - System Settings: system panes
  *
- * General (About), Software Update, Storage, Date & Time, Privacy &
+ * About This System, General, Software Update, Storage, Date & Time, Privacy &
  * Security, Users & Accounts, Developer.
  *
  * Panes show live values where the system has an interface and say so
@@ -34,56 +34,163 @@ static void two_digits(int v, char *out) {
     out[2] = '\0';
 }
 
+/* ============ About This System ============ */
+
+static void fmt_display(char *out, int cap) {
+    char n[16];
+    uint32_t w = 0, h = 0, bpp = 0;
+    if (settings_sys_display(&w, &h, &bpp) != 0) { sx_strcpy(out, "Unavailable", cap); return; }
+    sx_itoa(w, out, cap);
+    sx_strcat(out, " x ", cap);
+    sx_strcat(out, sx_itoa(h, n, (int)sizeof(n)), cap);
+    sx_strcat(out, ", ", cap);
+    sx_strcat(out, sx_itoa(bpp, n, (int)sizeof(n)), cap);
+    sx_strcat(out, "-bit color", cap);
+}
+
+/*
+ * Everything about this computer in one place. Values come from the
+ * kernel (SYS_INFO, abi.query, framebuffer info), the processor (CPUID)
+ * and the build; anything the system cannot report is labelled as such
+ * instead of being guessed.
+ */
+static void build_about(sui_t *ui) {
+    char ver[48], cpu[64], feat[96], topo[48], hv[40], disp[48], up[48], n[16], a[24], b[24], cap[80];
+    sui_header(ui, "about", "About This System",
+               "Your computer's software, processor, memory, display and storage, read live from the system.");
+
+    /* ---- Software ---- */
+    settings_kernel_info_t k;
+    int k_ok = settings_sys_kernel(&k) == 0;
+    sx_join3(ver, (int)sizeof(ver), NEOLYX_VERSION, " (", NEOLYX_CODENAME);
+    sx_strcat(ver, ")", (int)sizeof(ver));
+    sui_section(ui, "Software");
+    sui_card_begin(ui);
+    sui_info(ui, "Operating system", NEOLYX_OS_NAME);
+    sui_info(ui, "Version", ver);
+    sui_info(ui, "Kernel", k_ok && k.os_version[0] ? k.os_version : "Not reported");
+    if (k.abi_ok) {
+        char abi[48];
+        sx_itoa(k.abi_major, abi, (int)sizeof(abi));
+        sx_strcat(abi, ".", (int)sizeof(abi));
+        sx_strcat(abi, sx_itoa(k.abi_minor, n, (int)sizeof(n)), (int)sizeof(abi));
+        sx_strcat(abi, ".", (int)sizeof(abi));
+        sx_strcat(abi, sx_itoa(k.abi_patch, n, (int)sizeof(n)), (int)sizeof(abi));
+        sx_strcat(abi, ", ", (int)sizeof(abi));
+        sx_strcat(abi, sx_itoa((int64_t)k.syscall_count, n, (int)sizeof(n)), (int)sizeof(abi));
+        sx_strcat(abi, " system calls", (int)sizeof(abi));
+        sui_info(ui, "Kernel interface", abi);
+    } else {
+        sui_info(ui, "Kernel interface", "Not reported");
+    }
+    sui_info(ui, "Desktop", "Vajra shell");
+    sui_info(ui, "Architecture", k_ok && k.arch[0] ? k.arch : NEOLYX_ARCH);
+    fmt_uptime(settings_sys_uptime_ms(), up, (int)sizeof(up));
+    sui_info(ui, "Uptime", up);
+    sui_card_end(ui);
+
+    /* ---- Processor ---- */
+    if (settings_sys_cpu_brand(cpu, (int)sizeof(cpu)) != 0) sx_strcpy(cpu, "Unavailable", (int)sizeof(cpu));
+    uint32_t lp = 0, cores = 0;
+    if (settings_sys_cpu_topology(&lp, &cores) == 0 && lp > 0) {
+        sx_itoa(cores, topo, (int)sizeof(topo));
+        sx_strcat(topo, cores == 1 ? " core, " : " cores, ", (int)sizeof(topo));
+        sx_strcat(topo, sx_itoa(lp, n, (int)sizeof(n)), (int)sizeof(topo));
+        sx_strcat(topo, lp == 1 ? " thread" : " threads", (int)sizeof(topo));
+    } else {
+        sx_strcpy(topo, "Not reported", (int)sizeof(topo));
+    }
+    if (settings_sys_cpu_features(feat, (int)sizeof(feat)) != 0) sx_strcpy(feat, "Not reported", (int)sizeof(feat));
+    int hvr = settings_sys_hypervisor(hv, (int)sizeof(hv));
+    if (hvr == 1) sx_strcpy(hv, "Physical hardware", (int)sizeof(hv));
+    else if (hvr < 0) sx_strcpy(hv, "Unknown", (int)sizeof(hv));
+    sui_section(ui, "Processor");
+    sui_card_begin(ui);
+    sui_info(ui, "Model", cpu);
+    sui_info(ui, "Cores per processor", topo);
+    if (k_ok && k.num_cpus > 0) sui_info(ui, "Processors in use", sx_itoa(k.num_cpus, n, (int)sizeof(n)));
+    sui_info(ui, "Extensions", feat);
+    sui_info(ui, "Platform", hv);
+    sui_card_end(ui);
+
+    /* ---- Memory ---- */
+    uint64_t mt = 0, mu = 0;
+    int mem_ok = settings_sys_memory(&mt, &mu) == 0 && mt > 0;
+    sui_section(ui, "Memory");
+    sui_card_begin(ui);
+    if (mem_ok) {
+        settings_format_bytes(mt, 0, b, (int)sizeof(b));
+        sui_info(ui, "Installed", b);
+        settings_format_bytes(mu, 0, a, (int)sizeof(a));
+        sx_join3(cap, (int)sizeof(cap), a, " of ", b);
+        sx_strcat(cap, " in use", (int)sizeof(cap));
+        sui_meter(ui, "In use", cap, (float)((double)mu / (double)mt));
+        settings_format_bytes(mt - mu, 0, a, (int)sizeof(a));
+        sui_info(ui, "Available", a);
+    } else {
+        sui_info(ui, "Installed", "Not reported");
+    }
+    sui_card_end(ui);
+#ifdef NX_HOST_PREVIEW
+    if (mem_ok) sui_note(ui, "Preview build: the memory figures above are demo data.");
+#else
+    if (!mem_ok) sui_note(ui, "The kernel did not report memory size.");
+#endif
+
+    /* ---- Graphics and display ---- */
+    fmt_display(disp, (int)sizeof(disp));
+    sui_section(ui, "Display");
+    sui_card_begin(ui);
+    sui_info(ui, "Resolution", disp);
+    sui_info(ui, "Output", "UEFI framebuffer (GOP)");
+    sui_card_end(ui);
+
+    /* ---- Storage ---- */
+    const char *vname = 0;
+    uint64_t vt = 0, vu = 0;
+    int vol_ok = settings_sys_volume(&vname, &vt, &vu) == 0 && vt > 0;
+    sui_section(ui, "Storage");
+    sui_card_begin(ui);
+    if (vol_ok) {
+        settings_format_bytes(vu, 1, a, (int)sizeof(a));
+        settings_format_bytes(vt, 1, b, (int)sizeof(b));
+        sx_join3(cap, (int)sizeof(cap), a, " of ", b);
+        sx_strcat(cap, " used", (int)sizeof(cap));
+        sui_meter(ui, vname ? vname : "System volume", cap, (float)((double)vu / (double)vt));
+    } else {
+        sui_meter(ui, "System volume", "Unavailable", -1.0f);
+    }
+    sui_card_end(ui);
+#ifdef NX_HOST_PREVIEW
+    sui_note(ui, "Preview build: the volume figures above are demo data.");
+#else
+    if (!vol_ok)
+        sui_note(ui, "Volume size cannot be shown yet: the kernel does not report volume statistics to applications.");
+#endif
+
+    sui_card_begin(ui);
+    sui_nav_row(ui, "storage", "Storage", NULL);
+    sui_nav_row(ui, "update", "Software Update", NULL);
+    sui_card_end(ui);
+}
+
+SUI_DEFINE_PANE(settings_pane_about, "about", "About This System", build_about);
+
 /* ============ General ============ */
 
 static void build_general(sui_t *ui) {
-    char cpu[64], hv[40], disp[48], up[48], mem[32], ver[48], n[16];
+    char ver[48];
     sui_header(ui, "general", "General",
-               "Information about this computer and the system-wide settings that apply to every user.");
+               "System-wide settings that apply to every user of this computer.");
 
     sx_join3(ver, (int)sizeof(ver), NEOLYX_VERSION, " (", NEOLYX_CODENAME);
     sx_strcat(ver, ")", (int)sizeof(ver));
 
-    if (settings_sys_cpu_brand(cpu, (int)sizeof(cpu)) != 0) sx_strcpy(cpu, "Unavailable", (int)sizeof(cpu));
-    int hvr = settings_sys_hypervisor(hv, (int)sizeof(hv));
-    if (hvr == 1) sx_strcpy(hv, "Physical hardware", (int)sizeof(hv));
-    else if (hvr < 0) sx_strcpy(hv, "Unknown", (int)sizeof(hv));
-
-    uint32_t w = 0, h = 0, bpp = 0;
-    if (settings_sys_display(&w, &h, &bpp) == 0) {
-        sx_itoa(w, disp, (int)sizeof(disp));
-        sx_strcat(disp, " x ", (int)sizeof(disp));
-        sx_strcat(disp, sx_itoa(h, n, (int)sizeof(n)), (int)sizeof(disp));
-        sx_strcat(disp, ", ", (int)sizeof(disp));
-        sx_strcat(disp, sx_itoa(bpp, n, (int)sizeof(n)), (int)sizeof(disp));
-        sx_strcat(disp, "-bit color", (int)sizeof(disp));
-    } else {
-        sx_strcpy(disp, "Unavailable", (int)sizeof(disp));
-    }
-    fmt_uptime(settings_sys_uptime_ms(), up, (int)sizeof(up));
-    uint64_t mt = 0, mu = 0;
-    int mem_ok = settings_sys_memory(&mt, &mu) == 0;
-    if (mem_ok) settings_format_bytes(mt, 0, mem, (int)sizeof(mem));
-    else sx_strcpy(mem, "Not reported", (int)sizeof(mem));
-
-    sui_section(ui, "About");
     sui_card_begin(ui);
     sui_info(ui, "Name", NEOLYX_OS_NAME);
     sui_info(ui, "Version", ver);
-    sui_info(ui, "Desktop", "Vajra shell");
-    sui_info(ui, "Processor", cpu);
-    sui_info(ui, "Architecture", NEOLYX_ARCH);
-    sui_info(ui, "Memory", mem);
-    sui_info(ui, "Display", disp);
-    sui_info(ui, "Platform", hv);
-    sui_info(ui, "Uptime", up);
+    sui_nav_row(ui, "about", "About This System", "Processor, memory, display and storage");
     sui_card_end(ui);
-    if (!mem_ok)
-        sui_note(ui, "Memory size could not be read from the kernel.");
-#ifdef NX_HOST_PREVIEW
-    else
-        sui_note(ui, "Preview build: the memory size above is demo data.");
-#endif
 
     sui_card_begin(ui);
     sui_nav_row(ui, "update", "Software Update", NULL);

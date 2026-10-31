@@ -74,4 +74,12 @@ void taskmgr_view_render(desktop_window_t *win, void *ctx);
 void taskmgr_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ctx);
 void taskmgr_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t b, uint8_t pb, void *ctx);
 
+/* shell/views/path_view.c  (Path, the file browser; reads through nxpath_relay.h) */
+int  path_view_open(uint32_t win_id);
+void path_view_render(desktop_window_t *win, void *ctx);
+void path_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ctx);
+void path_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t b, uint8_t pb, void *ctx);
+/* Open Path at a folder (launches or focuses the window). 0 on success. */
+int  path_view_open_at(const char *path);
+
 #endif /* APP_VIEW_H */

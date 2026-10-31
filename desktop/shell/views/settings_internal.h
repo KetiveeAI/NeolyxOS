@@ -215,11 +215,31 @@ int settings_sys_clock(int *year, int *month, int *day, int *hour, int *min, int
  * returns clearly marked demo data. */
 int settings_sys_memory(uint64_t *total_bytes, uint64_t *used_bytes);
 int settings_sys_volume(const char **name, uint64_t *total_bytes, uint64_t *used_bytes);
+/* CPU topology from CPUID: logical processors and cores per package.
+ * Either may be 0 when the processor does not report it. */
+int settings_sys_cpu_topology(uint32_t *logical, uint32_t *cores);
+/* Notable instruction-set extensions from CPUID ("SSE4.2, AVX2, AES"). */
+int settings_sys_cpu_features(char *out, int cap);
+/* Kernel identity and counters from SYS_INFO (50) and abi.query (0).
+ * Strings are always NUL-terminated; fields the kernel does not report
+ * are zero / empty. Returns 0 when SYS_INFO answered. */
+typedef struct {
+    char     os_name[32];
+    char     os_version[32];
+    char     arch[16];
+    uint64_t uptime_ms;
+    uint32_t num_cpus;
+    int      abi_ok;               /* abi.query answered */
+    uint16_t abi_major, abi_minor, abi_patch;
+    uint32_t syscall_count;
+} settings_kernel_info_t;
+int settings_sys_kernel(settings_kernel_info_t *out);
 /* Human-readable size ("12.4 GB"); decimal = 1 uses powers of 1000 (storage). */
 void settings_format_bytes(uint64_t bytes, int decimal, char *out, int cap);
 
 /* ============ Panes ============ */
 
+extern const settings_pane_t settings_pane_about;
 extern const settings_pane_t settings_pane_general;
 extern const settings_pane_t settings_pane_appearance;
 extern const settings_pane_t settings_pane_display;

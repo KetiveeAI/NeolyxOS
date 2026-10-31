@@ -69,7 +69,7 @@ static const menubar_item_t g_window_items[] = {
 static const menubar_item_t g_help_items[] = {
     { "Keyboard Shortcuts", "Hold NX", 1, MB_HELP_SHORTCUTS },
     { NULL, NULL, 0, 0 },
-    { "About NeolyxOS",     NULL,      1, MB_HELP_ABOUT },
+    { "About This System",  NULL,      1, MB_HELP_ABOUT },
 };
 
 #define N(a) ((int)(sizeof(a) / sizeof(a[0])))

@@ -42,7 +42,7 @@
 #define DOCK_ICON_SIZE_DEFAULT  48
 #define DOCK_MAG_SIZE_MIN       1.0f    /* magnified scale factor */
 #define DOCK_MAG_SIZE_MAX       2.0f
-#define DOCK_MAG_SIZE_DEFAULT   1.6f
+#define DOCK_MAG_SIZE_DEFAULT   1.3f    /* subtle by default (owner, 2026-10-31) */
 #define DOCK_TASKBAR_HEIGHT     48
 
 /* Return codes of the settings API */

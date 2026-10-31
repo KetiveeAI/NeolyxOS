@@ -15,6 +15,7 @@
 #include "nxconfig.h"
 #include "nxsyscall.h"
 #include "nxnet.h"
+#include "nxpath_relay.h"
 
 /* ============ Logging ============ */
 
@@ -456,6 +457,13 @@ static int clamp_index(int v, int count) { return (v < 0 || v >= count) ? 0 : v;
 
 int setup_store_save_prefs(const setup_model_t *m) {
     if (!m) return SETUP_ERR_INVALID;
+    /* Path relay: the signed-in user's home is /Users/<account>. */
+    if (m->account.buf[0]) {
+        if (nxrelay_set_user(m->account.buf) != NXRELAY_OK)
+            setup_log("[SETUP] warning: account name not usable as a home folder name\n");
+        else if (nxrelay_ensure_home() != NXRELAY_OK)
+            setup_log("[SETUP] warning: some home folders could not be created\n");
+    }
     nxc_config_t *cfg = store_config();
     if (!cfg) return SETUP_ERR_IO;
     int rc = SETUP_OK;

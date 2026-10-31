@@ -118,6 +118,10 @@ static inline int64_t syscall2(int64_t num, int64_t a1, int64_t a2) {
 static inline int64_t syscall3(int64_t num, int64_t a1, int64_t a2, int64_t a3) {
     return nx_host_syscall(num, a1, a2, a3);
 }
+int64_t nx_host_syscall4(int64_t num, int64_t a1, int64_t a2, int64_t a3, int64_t a4);
+static inline int64_t syscall4(int64_t num, int64_t a1, int64_t a2, int64_t a3, int64_t a4) {
+    return nx_host_syscall4(num, a1, a2, a3, a4);
+}
 #else
 /* Inline syscall with 0-3 arguments */
 static inline int64_t syscall0(int64_t num) {
@@ -165,8 +169,6 @@ static inline int64_t syscall3(int64_t num, int64_t a1, int64_t a2, int64_t a3) 
     );
     return ret;
 }
-#endif /* NX_HOST_PREVIEW */
-
 static inline int64_t syscall4(int64_t num, int64_t a1, int64_t a2, int64_t a3, int64_t a4) {
     int64_t ret;
     register int64_t r10 __asm__("r10") = a4;
@@ -178,6 +180,7 @@ static inline int64_t syscall4(int64_t num, int64_t a1, int64_t a2, int64_t a3, 
     );
     return ret;
 }
+#endif /* NX_HOST_PREVIEW */
 
 /* ============ Process Wrappers ============ */
 
