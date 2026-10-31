@@ -43,6 +43,14 @@ static volatile int kbd_e0_prefix = 0;
 /* Key buffer (ring buffer) */
 #define KEY_BUFFER_SIZE     64
 static volatile uint16_t key_buffer[KEY_BUFFER_SIZE];
+/* Make code (scancode without the release bit) of each buffered key, kept
+ * in step with key_buffer. The syscall reports it per event: last_scancode
+ * is overwritten by the key's release long before userspace polls. */
+static volatile uint8_t key_scan_buffer[KEY_BUFFER_SIZE];
+/* ASCII of each buffered key (0 for special keys). Kept separately because
+ * the 0x100 special-key marker in key_buffer is the same bit as
+ * KEY_FLAG_SHIFT, so the keycode alone cannot tell 'T' from a special key. */
+static volatile uint8_t key_ascii_buffer[KEY_BUFFER_SIZE];
 static volatile int key_buffer_head = 0;
 static volatile int key_buffer_tail = 0;
 
@@ -77,10 +85,12 @@ static const char kbd_map_shift[128] = {
 
 /* ============ Buffer Operations ============ */
 
-static void buffer_push(uint16_t key) {
+static void buffer_push(uint16_t key, uint8_t scan, uint8_t ascii) {
     int next = (key_buffer_head + 1) % KEY_BUFFER_SIZE;
     if (next != key_buffer_tail) {
         key_buffer[key_buffer_head] = key;
+        key_scan_buffer[key_buffer_head] = scan;
+        key_ascii_buffer[key_buffer_head] = ascii;
         key_buffer_head = next;
     }
     /* Buffer full - drop key */
@@ -161,7 +171,7 @@ void keyboard_irq(void) {
         if (kbd_shift) keycode |= KEY_FLAG_SHIFT;
         if (kbd_ctrl)  keycode |= KEY_FLAG_CTRL;
         if (kbd_alt)   keycode |= KEY_FLAG_ALT;
-        buffer_push(keycode);
+        buffer_push(keycode, key, 0);
         return;
     }
     
@@ -223,7 +233,7 @@ void keyboard_irq(void) {
     }
     
     if (keycode) {
-        buffer_push(keycode);
+        buffer_push(keycode, key, (uint8_t)c);
     }
 }
 
@@ -305,27 +315,34 @@ int keyboard_is_capslock(void) {
  * Returns 0 if event available, -1 if no events
  */
 int keyboard_get_event(uint8_t *scancode, uint8_t *ascii, uint8_t *pressed) {
-    if (!keyboard_has_key()) {
-        return -1;  /* No event */
+    if (!scancode || !ascii || !pressed) {
+        return -1;
     }
     
-    uint16_t keycode = buffer_pop();
+    /* Pop key and scancode together with IRQs off so the IRQ handler
+     * cannot push between the two reads. */
+    uint64_t flags;
+    __asm__ volatile("pushfq; popq %0; cli" : "=r"(flags) :: "memory");
+    if (key_buffer_head == key_buffer_tail) {
+        if (flags & 0x200) __asm__ volatile("sti" ::: "memory");
+        return -1;  /* No event */
+    }
+    uint16_t keycode = key_buffer[key_buffer_tail];
+    uint8_t scan = key_scan_buffer[key_buffer_tail];
+    uint8_t asc = key_ascii_buffer[key_buffer_tail];
+    key_buffer_tail = (key_buffer_tail + 1) % KEY_BUFFER_SIZE;
+    if (flags & 0x200) __asm__ volatile("sti" ::: "memory");
+    
     if (keycode == 0) {
         return -1;  /* Empty */
     }
     
-    /* Extract scancode from last_scancode */
-    *scancode = last_scancode & 0x7F;
+    *scancode = scan;
     
-    /* Extract ASCII from keycode (lower 8 bits) */
-    if (keycode & 0x100) {
-        *ascii = 0;  /* Special key */
-    } else {
-        *ascii = (uint8_t)(keycode & 0xFF);
-    }
+    *ascii = asc;  /* 0 for special keys */
     
-    /* Check if it was a release (last_scancode high bit) */
-    *pressed = !(last_scancode & 0x80);
+    /* Only key presses are buffered (see keyboard_irq) */
+    *pressed = 1;
     
     return 0;
 }

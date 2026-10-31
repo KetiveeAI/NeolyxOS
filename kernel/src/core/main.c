@@ -356,8 +356,15 @@ void nx_kernel_start(void) {
         
         serial_puts("[KERNEL] Loading desktop from embedded ELF data...\n");
         
-        /* Include the embedded desktop ELF data */
-        #include "../fs/desktop_elf_data.h"
+        /*
+         * The embedded desktop ELF lives once, at file scope, in ramfs.c
+         * (via ramfs_binaries.h). It used to be #included HERE, inside this
+         * function, which made the multi-megabyte array a stack local: every
+         * boot copied it onto the kernel stack and overran it, corrupting
+         * kernel memory once the desktop grew past a few MB.
+         */
+        extern unsigned char desktop_elf_data[];
+        extern unsigned int desktop_elf_data_len;
         
         /* Direct ELF loader */
         extern int elf_load(const void *data, void *info);
@@ -373,7 +380,7 @@ void nx_kernel_start(void) {
         } elf_info;
         
         serial_puts("[KERNEL] Desktop ELF size: ");
-        uint64_t sz = sizeof(desktop_elf_data);
+        uint64_t sz = desktop_elf_data_len;
         char szstr[16];
         int idx = 0;
         if (sz == 0) { szstr[idx++] = '0'; }

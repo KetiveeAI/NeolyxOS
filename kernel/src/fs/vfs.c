@@ -341,14 +341,28 @@ vfs_file_t *vfs_open(const char *path, uint32_t mode) {
     
     serial_puts("[VFS_OPEN] Calling vfs_resolve...\n");
     vfs_node_t *node = vfs_resolve(path);
+    if (!node && (mode & VFS_O_CREATE)) {
+        /* Create the file; its parent directory must already exist */
+        int rc = vfs_create(path, VFS_FILE, 0644);
+        if (rc != VFS_OK && rc != VFS_ERR_EXIST) {
+            serial_puts("[VFS_OPEN] create failed for ");
+            serial_puts(path);
+            serial_puts("\n");
+            return NULL;
+        }
+        node = vfs_resolve(path);
+    }
     if (!node) {
         serial_puts("[VFS_OPEN] vfs_resolve returned NULL!\n");
-        if (mode & VFS_O_CREATE) {
-            /* TODO: Create file */
-        }
         return NULL;
     }
     serial_puts("[VFS_OPEN] vfs_resolve found node\n");
+    
+    int writing = (mode & VFS_O_WRONLY) != 0;   /* VFS_O_RDWR includes this bit */
+    if (writing && node->type == VFS_DIRECTORY) {
+        serial_puts("[VFS_OPEN] cannot open a directory for writing\n");
+        return NULL;
+    }
     
     /* Find free file handle */
     vfs_file_t *file = NULL;
@@ -372,8 +386,19 @@ vfs_file_t *vfs_open(const char *path, uint32_t mode) {
         }
     }
     
+    /* Truncate before the handle is handed out */
+    if (writing && (mode & VFS_O_TRUNC) && node->size > 0) {
+        if (!node->ops || !node->ops->truncate || node->ops->truncate(node, 0) != VFS_OK) {
+            serial_puts("[VFS_OPEN] truncate failed for ");
+            serial_puts(path);
+            serial_puts("\n");
+            if (node->ops && node->ops->close) node->ops->close(node);
+            return NULL;
+        }
+    }
+    
     file->node = node;
-    file->offset = 0;
+    file->offset = (writing && (mode & VFS_O_APPEND)) ? node->size : 0;
     file->mode = mode;
     file->flags = 0;
     node->ref_count++;
@@ -416,7 +441,8 @@ int64_t vfs_read(vfs_file_t *file, void *buffer, uint64_t size) {
 
 int64_t vfs_write(vfs_file_t *file, const void *buffer, uint64_t size) {
     if (!file || !file->node) return VFS_ERR_INVALID;
-    if (!(file->mode & VFS_O_WRONLY) && !(file->mode & VFS_O_RDWR)) {
+    /* VFS_O_RDWR is VFS_O_RDONLY | VFS_O_WRONLY, so the write bit decides */
+    if (!(file->mode & VFS_O_WRONLY)) {
         return VFS_ERR_PERM;
     }
     
