@@ -1,7 +1,7 @@
 /*
  * NeolyxOS Kernel Objects and Handles (kernel-internal)
  *
- * Kernel objects (shared memory now; channels and ports next) are reached
+ * Kernel objects (shared memory, channel endpoints, ports) are reached
  * from userspace only through handles: per-process integers that carry
  * rights. A handle value is (generation << 8) | slot, so a closed and reused
  * slot never matches an old value. Objects are reference-counted and are
@@ -28,8 +28,8 @@ struct nx_shm;
 
 /* Object types */
 #define NX_OBJ_SHM          1
-#define NX_OBJ_CHAN         2   /* reserved for step 2 */
-#define NX_OBJ_PORT         3   /* reserved for step 2 */
+#define NX_OBJ_CHAN         2   /* one channel endpoint */
+#define NX_OBJ_PORT         3   /* named service port */
 
 #define NX_RIGHTS_ALL       (NX_RIGHT_READ | NX_RIGHT_WRITE | NX_RIGHT_MAP | \
                              NX_RIGHT_TRANSFER | NX_RIGHT_DUPLICATE)
@@ -43,6 +43,7 @@ struct nx_object {
     uint32_t type;                  /* NX_OBJ_* */
     uint32_t refs;                  /* handles + mappings + queued references */
     nx_object_destroy_fn destroy;
+    nx_object_t *dnext;             /* pending-destroy list (see nx_object_unref) */
 };
 
 typedef struct {
@@ -66,14 +67,20 @@ typedef struct nx_proc_ipc {
     uint32_t map_count;
     nx_shm_mapping_t maps[NX_SHM_MAP_MAX];
     uint64_t shm_bytes;             /* bytes of live shm objects this process created */
-    uint64_t queued_bytes;          /* reserved for step 2 (channel queues) */
+    uint64_t queued_bytes;          /* message bytes it sent that are not yet received */
+    uint32_t waiting;               /* non-zero while blocked in obj.wait */
 } nx_proc_ipc_t;
 
 /* ============ Objects ============ */
 
 void nx_object_ref(nx_object_t *obj);
 
-/** Drop one reference; destroys the object when it was the last one. */
+/**
+ * Drop one reference; destroys the object when it was the last one.
+ * Destruction is iterative: an object whose destroy drops further last
+ * references (an endpoint queue holding endpoints holding endpoints...)
+ * never recurses on the kernel stack.
+ */
 void nx_object_unref(nx_object_t *obj);
 
 /* ============ Handles ============ */
@@ -105,6 +112,22 @@ int nx_handle_get(struct process *proc, int32_t handle, uint32_t type,
 int nx_handle_close(struct process *proc, int32_t handle);
 
 /**
+ * Remove a handle from proc's table WITHOUT dropping its reference: the
+ * caller takes over that reference (used to move handles into a message).
+ * @return 0, or -EBADF
+ */
+int nx_handle_take(struct process *proc, int32_t handle, nx_object_t **obj, uint32_t *rights);
+
+/** Number of free handle slots of proc (NX_HANDLE_MAX when it has no state). */
+uint32_t nx_handle_free_slots(struct process *proc);
+
+/**
+ * Wake every process blocked in obj.wait so it re-checks its handles.
+ * Called whenever a channel or port changes state.
+ */
+void nx_ipc_wake_waiters(void);
+
+/**
  * Release everything a process holds: unmap every shm mapping, close every
  * handle, stop charging it for shm it created, and free its IPC state.
  * Called on exit, kill, fault and exec. Safe when the process has none.
@@ -119,6 +142,11 @@ void nx_shm_unmap_all(struct process *proc, nx_proc_ipc_t *ipc);
 /** Stop charging proc for objects it created that outlive it. */
 void nx_shm_forget_creator(struct process *proc);
 
+/* ============ Channels and ports (nx_chan.c) ============ */
+
+/** Stop charging proc for messages it sent that are still queued. */
+void nx_chan_forget_sender(struct process *proc);
+
 /* ============ Syscall handlers ============ */
 
 int64_t sys_handle_close_impl(uint64_t h, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5);
@@ -126,5 +154,12 @@ int64_t sys_handle_dup_impl(uint64_t h, uint64_t rights, uint64_t a3, uint64_t a
 int64_t sys_shm_create_impl(uint64_t size, uint64_t flags, uint64_t a3, uint64_t a4, uint64_t a5);
 int64_t sys_shm_map_impl(uint64_t h, uint64_t prot, uint64_t out_size, uint64_t a4, uint64_t a5);
 int64_t sys_shm_unmap_impl(uint64_t addr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5);
+int64_t sys_chan_create_impl(uint64_t out, uint64_t flags, uint64_t a3, uint64_t a4, uint64_t a5);
+int64_t sys_chan_send_impl(uint64_t h, uint64_t msg, uint64_t a3, uint64_t a4, uint64_t a5);
+int64_t sys_chan_recv_impl(uint64_t h, uint64_t msg, uint64_t a3, uint64_t a4, uint64_t a5);
+int64_t sys_obj_wait_impl(uint64_t items, uint64_t count, uint64_t timeout_ms, uint64_t a4, uint64_t a5);
+int64_t sys_port_listen_impl(uint64_t name, uint64_t flags, uint64_t a3, uint64_t a4, uint64_t a5);
+int64_t sys_port_connect_impl(uint64_t name, uint64_t flags, uint64_t a3, uint64_t a4, uint64_t a5);
+int64_t sys_port_accept_impl(uint64_t port, uint64_t out_pid, uint64_t a3, uint64_t a4, uint64_t a5);
 
 #endif /* NEOLYX_NX_HANDLE_H */

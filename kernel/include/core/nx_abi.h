@@ -13,7 +13,7 @@
 
 /* ABI Version - Semver style */
 #define NX_ABI_MAJOR  1
-#define NX_ABI_MINOR  0
+#define NX_ABI_MINOR  1
 #define NX_ABI_PATCH  0
 
 /* Maximum syscall number supported */

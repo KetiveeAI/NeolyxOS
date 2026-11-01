@@ -894,6 +894,28 @@ void process_sleep(uint32_t ms) {
     irq_restore(flags);
 }
 
+int process_sleep_until(uint64_t deadline_tick) {
+    process_t *self = current_process;
+    if (!scheduler_running || !self || self == idle_process) return -1;
+
+    uint64_t flags = irq_save();
+    self->wake_tick = deadline_tick;
+    self->state = PROC_STATE_SLEEPING;
+    sleeping_count++;
+    schedule();
+    irq_restore(flags);
+    return 0;
+}
+
+void process_wake_sleeper(process_t *proc) {
+    if (!proc || proc->state != PROC_STATE_SLEEPING) return;
+
+    uint64_t flags = irq_save();
+    if (sleeping_count) sleeping_count--;
+    scheduler_add(proc);
+    irq_restore(flags);
+}
+
 void process_block(void) {
     if (!current_process || current_process == idle_process) return;
 

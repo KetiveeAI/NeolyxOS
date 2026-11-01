@@ -55,8 +55,10 @@ int64_t sys_abi_query_impl(uint64_t info_ptr, uint64_t a2, uint64_t a3,
     info.major = NX_ABI_MAJOR;
     info.minor = NX_ABI_MINOR;
     info.patch = NX_ABI_PATCH;
-    /* Capability flags: shm/handles only when the shared region exists */
-    info.flags = addrspace_shared_ok() ? NX_ABI_FLAG_SHM : 0;
+    /* Capability flags: shm only when the shared region exists; channels,
+     * obj.wait and ports do not depend on it and are always present. */
+    info.flags = NX_ABI_FLAG_IPC;
+    if (addrspace_shared_ok()) info.flags |= NX_ABI_FLAG_SHM;
     info.syscall_count = nx_syscall_count;
     info.reserved[0] = 0;
     info.reserved[1] = 0;

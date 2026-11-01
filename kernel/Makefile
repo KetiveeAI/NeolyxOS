@@ -76,6 +76,7 @@ obj-y += syscall.o
 obj-y += nx_syscall.o
 obj-y += nx_handle.o
 obj-y += nx_shm.o
+obj-y += nx_chan.o
 obj-y += process.o
 obj-y += boot_image.o
 obj-y += elf.o
@@ -281,6 +282,9 @@ nx_handle.o: src/core/nx_handle.c include/core/nx_handle.h include/core/nx_ipc.h
 
 nx_shm.o: src/core/nx_shm.c include/core/nx_handle.h include/core/nx_ipc.h include/core/process.h include/mm/addrspace.h
 	$(CC) $(CFLAGS) -c src/core/nx_shm.c -o nx_shm.o
+
+nx_chan.o: src/core/nx_chan.c include/core/nx_handle.h include/core/nx_ipc.h include/core/process.h include/core/syscall.h
+	$(CC) $(CFLAGS) -c src/core/nx_chan.c -o nx_chan.o
 
 nx_syscall.o: src/core/nx_syscall.c include/core/nx_abi.h include/core/syscall.h include/core/process.h include/core/syscall_table.def
 	$(CC) $(CFLAGS) -c src/core/nx_syscall.c -o nx_syscall.o

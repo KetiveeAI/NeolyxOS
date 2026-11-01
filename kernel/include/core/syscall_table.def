@@ -94,9 +94,16 @@ NX_SYSCALL(130, "rtc.get",  sys_rtc_get_impl,  1, PRIV_USER, 0)
 NX_SYSCALL(131, "rtc.set",  sys_rtc_set_impl,  1, PRIV_SYSTEM, NX_FLAG_AUDIT)
 NX_SYSCALL(132, "rtc.unix", sys_rtc_unix_impl, 0, PRIV_USER, 0)
 
-/* Handles and Shared Memory (140-143, 149) - ABI v1.1, core/nx_ipc.h */
+/* Handles, Shared Memory and IPC (140-152, 148 reserved) - ABI v1.1, core/nx_ipc.h */
 NX_SYSCALL(140, "handle.close", sys_handle_close_impl, 1, PRIV_USER, 0)
 NX_SYSCALL(141, "shm.create",   sys_shm_create_impl,   2, PRIV_USER, 0)
 NX_SYSCALL(142, "shm.map",      sys_shm_map_impl,      3, PRIV_USER, 0)
 NX_SYSCALL(143, "shm.unmap",    sys_shm_unmap_impl,    1, PRIV_USER, 0)
+NX_SYSCALL(144, "chan.create",  sys_chan_create_impl,  2, PRIV_USER, 0)
+NX_SYSCALL(145, "chan.send",    sys_chan_send_impl,    2, PRIV_USER, 0)
+NX_SYSCALL(146, "chan.recv",    sys_chan_recv_impl,    2, PRIV_USER, 0)
+NX_SYSCALL(147, "obj.wait",     sys_obj_wait_impl,     3, PRIV_USER, 0)
 NX_SYSCALL(149, "handle.dup",   sys_handle_dup_impl,   2, PRIV_USER, 0)
+NX_SYSCALL(150, "port.listen",  sys_port_listen_impl,  2, PRIV_USER, NX_FLAG_AUDIT)
+NX_SYSCALL(151, "port.connect", sys_port_connect_impl, 2, PRIV_USER, NX_FLAG_AUDIT)
+NX_SYSCALL(152, "port.accept",  sys_port_accept_impl,  2, PRIV_USER, 0)

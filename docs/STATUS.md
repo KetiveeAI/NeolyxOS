@@ -25,8 +25,8 @@ None of the rows below has been verified on real hardware yet.
 | Processes | Partial | Per-process address spaces; `spawn`, `exec`, `fork`, `wait`, `exit`. No threads. |
 | Scheduler | Partial | Round-robin; the timer preempts ring 3 only, kernel code is not preemptible. One CPU, no SMP. |
 | Memory syscalls | Partial | Only `brk` is registered. `mmap`/`munmap` are declared in `syscall.h` but are not in `syscall_table.def`, so they return `ENOSYS`. |
-| Shared memory | Partial | Handles (`handle.close` 140, `handle.dup` 149) and `shm.create`/`shm.map`/`shm.unmap` (141 to 143) per `docs/desktop/proposals/kernel-shm-ipc.md`, mapped in a per-process shared region at `0x4000_0000_0000`. Pages are zeroed, returned to the PMM when the last handle and mapping go, and released on exit, kill, fault and `exec`. Verified by `tests/userland/shmtest`. Handles cannot cross processes until channels land. |
-| IPC | Missing | No pipes, ports or channels. PTY syscalls 60 to 67 are declared in `syscall.h` but not registered. |
+| Shared memory | Partial | Handles (`handle.close` 140, `handle.dup` 149) and `shm.create`/`shm.map`/`shm.unmap` (141 to 143) per `docs/desktop/proposals/kernel-shm-ipc.md`, mapped in a per-process shared region at `0x4000_0000_0000`. Pages are zeroed, returned to the PMM when the last handle and mapping go, and released on exit, kill, fault and `exec`. Verified by `tests/userland/shmtest`. Handles cross processes over channels (see IPC). |
+| IPC | Working | Channels (`chan.create`/`chan.send`/`chan.recv` 144 to 146), `obj.wait` (147) and named ports (`port.listen`/`port.connect`/`port.accept` 150 to 152) per `docs/desktop/proposals/kernel-shm-ipc.md`; ABI 1.1 with `NX_ABI_FLAG_IPC`. Messages of up to 1 KiB carry up to 4 handles; sends never block; `nx.*` port names are reserved for system processes. Verified by `tests/userland/ipc_test` (two processes share a 4 MiB buffer, the client crashes, all memory returns). No pipes; PTY syscalls 60 to 67 are declared in `syscall.h` but not registered. |
 | File descriptors | Partial | Per process: 16 descriptors in each PCB (`fd_table`), kept across `exec`, closed when the process exits, is killed or faults. Socket numbers are still one global table in the network stack, shared by every process. Verified by `tests/userland/fdtest`. |
 | Framebuffer syscalls | Partial | `fb.map` gives any user process the raw framebuffer. `fb.flip` copies the full frame. No vsync. |
 | Input syscalls | Partial | One global event queue: the first process to poll takes each event. `input.register` is a no-op. |
@@ -52,8 +52,8 @@ None of the rows below has been verified on real hardware yet.
 | Desktop shell | Real | One userspace process (`desktop/`) draws everything with NXCanvas on the CPU: menu bar, dock, windows, overlays. |
 | Shell-hosted apps | Real | Settings, Path, Shell, Task Manager, Fonts and Setup are views inside the desktop process (`desktop/shell/views/`). |
 | Window manager | Real, single process | Windows, z-order, snap, Overview, Stage, switcher, all inside the desktop process. |
-| nxrender (`gui/nxrender_c`) | Not used | About 12k lines. `desktop/shell/nxrender_bridge.c` has empty draw functions. `nxserver_compositor.c` is designed for shared-memory windows but there is no kernel shared memory. `gpu_driver.c` reports a fake GPU and needs hosted libc. |
-| Out-of-process GUI apps | Missing | No way for a second process to get a window: no shared memory, no IPC, single input queue. |
+| nxrender (`gui/nxrender_c`) | Not used | About 12k lines. `desktop/shell/nxrender_bridge.c` has empty draw functions. `nxserver_compositor.c` is designed for shared-memory windows; kernel shared memory and channels now exist (ABI 1.1) but it does not use them yet. `gpu_driver.c` reports a fake GPU and needs hosted libc. |
+| Out-of-process GUI apps | Missing | No way for a second process to get a window. Kernel shared memory and IPC exist (ABI 1.1); the window server (nxserver) and libnxwindow are not built yet, and there is a single input queue. |
 | GPU acceleration | Missing | `gpu.c` and `nxgfx_accel.c` are CPU loops. |
 | Vulkan (`lib/vulkan`) | Missing | Future work. |
 
