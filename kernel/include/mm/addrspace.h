@@ -33,14 +33,27 @@
 /* Heap reserve per process (grown on demand by brk) */
 #define USER_HEAP_RESERVE   (64ULL * 1024 * 1024)
 
-/* Mapping flags for addrspace_map_alloc() */
+/* Mapping flags for addrspace_map_alloc() / addrspace_map_shared() */
 #define AS_MAP_WRITE        0x1
+
+/*
+ * Shared region: 512 GiB per process at PML4 slot 128, where shm objects
+ * are mapped (docs/desktop/proposals/kernel-shm-ipc.md). It lies outside
+ * the kernel identity map, so it needs no PMM reservation. Its PDPT, PDs
+ * and PTs are private to the process and allocated on first use. Leaf
+ * entries carry AS_PTE_SHARED: the frames belong to an shm object, never
+ * to the address space, and teardown never frees them.
+ */
+#define AS_SHARED_BASE      0x0000400000000000ULL
+#define AS_SHARED_END       0x0000408000000000ULL
 
 typedef struct addrspace {
     uint64_t pml4_phys;         /* Private PML4 (loaded into CR3) */
     uint64_t pdpt_phys;         /* Private PDPT for PML4[0] */
     uint64_t pd_phys;           /* Private PD for 0-1GB */
     uint64_t pages_mapped;      /* User frames owned by this space */
+    uint64_t shared_pdpt_phys;  /* PDPT for the shared region (0 = none yet) */
+    uint64_t shared_pages;      /* Pages currently mapped in the shared region */
 } addrspace_t;
 
 /**
@@ -89,11 +102,35 @@ int addrspace_map_alloc(addrspace_t *as, uint64_t va, uint64_t size, uint32_t fl
 int addrspace_copy_in(addrspace_t *as, uint64_t va, const void *src, uint64_t len);
 
 /**
- * Check that [va, va+len) lies in the user window and every page is
- * mapped (and writable when write != 0).
+ * Check that [va, va+len) lies in the user window or in the shared region
+ * and every page is mapped (and writable when write != 0).
  * @return 0 when valid, -1 otherwise
  */
 int addrspace_check_range(const addrspace_t *as, uint64_t va, uint64_t len, int write);
+
+/**
+ * Whether the shared region could be set up at boot (its PML4 slot was
+ * empty in the kernel tables). When 0, shared mappings are refused.
+ */
+int addrspace_shared_ok(void);
+
+/**
+ * Map existing frames at va in the shared region. va must be page-aligned
+ * and [va, va + count pages) must lie in the region and be unmapped. On
+ * failure nothing stays mapped (page tables allocated on the way may stay;
+ * they are freed with the space).
+ *
+ * @return 0 on success, -1 on bad range, overlap or out of memory
+ */
+int addrspace_map_shared(addrspace_t *as, uint64_t va, const uint64_t *frames,
+                         uint64_t count, uint32_t flags);
+
+/**
+ * Remove count pages at va from the shared region. The frames are not
+ * freed (they belong to their shm object). Page tables left empty are
+ * freed. TLB entries are flushed when the space is the active one.
+ */
+void addrspace_unmap_shared(addrspace_t *as, uint64_t va, uint64_t count);
 
 /** Load a space into CR3 (NULL loads the kernel-only tables). */
 void addrspace_activate(const addrspace_t *as);
