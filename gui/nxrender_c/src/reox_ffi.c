@@ -97,6 +97,7 @@ static void reox_ffi_fail(const char* fn, const char* reason) {
 
 void reox_ffi_set_log_sink(void (*sink)(const char* msg)) {
     g_log_sink = sink;
+    nxgfx_set_log_sink(sink);          /* NXGFX diagnostics go to the same place */
 }
 
 const char* reox_ffi_last_error(void) {

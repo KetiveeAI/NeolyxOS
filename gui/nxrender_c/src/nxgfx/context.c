@@ -4,22 +4,13 @@
  * Copyright (c) 2025 KetiveeAI
  */
 
-#include "nxgfx/nxgfx.h"
+#include "nxgfx_internal.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
-struct nx_context {
-    uint32_t* framebuffer;
-    uint32_t width;
-    uint32_t height;
-    uint32_t pitch;
-    nx_rect_t clip;
-    bool has_clip;
-    /* 3D rendering support */
-    float* depth_buffer;
-    bool depth_test_enabled;
-};
+/* struct nx_context lives in nxgfx_internal.h (shared with text.c and
+ * the NXCanvas bridge). */
 
 /* Pack color to 32-bit ARGB */
 static inline uint32_t color_to_argb(nx_color_t c) {
@@ -52,6 +43,7 @@ nx_context_t* nxgfx_init(void* fb, uint32_t w, uint32_t h, uint32_t pitch) {
     ctx->clip = nx_rect(0, 0, w, h);
     ctx->depth_buffer = NULL;
     ctx->depth_test_enabled = false;
+    nxgfx__canvas_attach(ctx);      /* NXCanvas view; legacy path if it fails */
     return ctx;
 }
 
@@ -82,6 +74,17 @@ void nxgfx_clear(nx_context_t* ctx, nx_color_t color) {
 
 void nxgfx_fill_rect(nx_context_t* ctx, nx_rect_t rect, nx_color_t color) {
     if (!ctx) return;
+    if (color.a < 255) {
+        /* Translucent fills blend (the integer path below overwrites) */
+        nxc_canvas_t* c = nxgfx__canvas(ctx);
+        if (c) {
+            if (color.a == 0 || rect.width == 0 || rect.height == 0) return;
+            (void)nxc_fill_rect(c, (nxc_rect_t){ (float)rect.x, (float)rect.y,
+                                                 (float)rect.width, (float)rect.height },
+                                nxgfx__color(color));
+            return;
+        }
+    }
     int32_t x0 = rect.x < 0 ? 0 : rect.x;
     int32_t y0 = rect.y < 0 ? 0 : rect.y;
     int32_t x1 = (int32_t)(rect.x + rect.width);
@@ -290,6 +293,13 @@ void nxgfx_fill_complex_path(nx_context_t* ctx,
 
 void nxgfx_fill_circle(nx_context_t* ctx, nx_point_t center, uint32_t radius, nx_color_t color) {
     if (!ctx || radius == 0) return;
+    nxc_canvas_t* c = nxgfx__canvas(ctx);
+    if (c) {
+        /* Exact area coverage, centered on the pixel at `center` */
+        (void)nxc_fill_circle(c, (float)center.x + 0.5f, (float)center.y + 0.5f,
+                              (float)radius, nxgfx__color(color));
+        return;
+    }
     int32_t r = (int32_t)radius;
     float rf = (float)radius;
     
@@ -324,6 +334,32 @@ static float rfpart(float x) { return 1.0f - fpart(x); }
 
 void nxgfx_draw_line(nx_context_t* ctx, nx_point_t p1, nx_point_t p2, nx_color_t color, uint32_t w) {
     if (!ctx) return;
+    nxc_canvas_t* c = nxgfx__canvas(ctx);
+    if (c) {
+        uint32_t lw = w == 0 ? 1u : w;
+        if (lw > 256u) lw = 256u;
+        if (p1.y == p2.y || p1.x == p2.x) {
+            /* Axis-aligned: whole pixels from p1 to p2 inclusive, lw thick,
+             * so separators and borders stay hairline-sharp */
+            int64_t off = (int64_t)(lw - 1u) / 2;
+            int64_t x0 = p1.x < p2.x ? p1.x : p2.x, x1 = p1.x < p2.x ? p2.x : p1.x;
+            int64_t y0 = p1.y < p2.y ? p1.y : p2.y, y1 = p1.y < p2.y ? p2.y : p1.y;
+            int64_t len = (p1.y == p2.y ? x1 - x0 : y1 - y0) + 1;   /* 1 .. 2^32 */
+            if (len > (int64_t)UINT32_MAX) len = (int64_t)UINT32_MAX;
+            int64_t ox = (p1.y == p2.y) ? x0 : x0 - off;
+            int64_t oy = (p1.y == p2.y) ? y0 - off : y0;
+            if (ox < INT32_MIN || oy < INT32_MIN) return;        /* entirely off-surface */
+            nx_rect_t r = (p1.y == p2.y)
+                ? nx_rect((int32_t)ox, (int32_t)oy, (uint32_t)len, lw)
+                : nx_rect((int32_t)ox, (int32_t)oy, lw, (uint32_t)len);
+            nxgfx_fill_rect(ctx, r, color);
+            return;
+        }
+        (void)nxc_draw_line(c, (float)p1.x + 0.5f, (float)p1.y + 0.5f,
+                            (float)p2.x + 0.5f, (float)p2.y + 0.5f,
+                            (float)lw, nxgfx__color(color));
+        return;
+    }
     
     float x0 = (float)p1.x, y0 = (float)p1.y;
     float x1 = (float)p2.x, y1 = (float)p2.y;
@@ -398,6 +434,18 @@ void nxgfx_draw_line(nx_context_t* ctx, nx_point_t p1, nx_point_t p2, nx_color_t
 void nxgfx_fill_rounded_rect(nx_context_t* ctx, nx_rect_t r, nx_color_t c, uint32_t rad) {
     if (!ctx) return;
     if (rad == 0) { nxgfx_fill_rect(ctx, r, c); return; }
+    nxc_canvas_t* cv = nxgfx__canvas(ctx);
+    if (cv) {
+        if (r.width == 0 || r.height == 0) return;
+        /* One shape with exact corner coverage (no seams where the
+         * legacy corner circles overlapped the side rects) */
+        uint32_t lim = (r.width < r.height ? r.width : r.height) / 2u;
+        float radius = (float)(rad < lim ? rad : lim);
+        (void)nxc_fill_rrect(cv, (nxc_rect_t){ (float)r.x, (float)r.y,
+                                               (float)r.width, (float)r.height },
+                             radius, nxgfx__color(c));
+        return;
+    }
     nxgfx_fill_rect(ctx, nx_rect(r.x + rad, r.y, r.width - 2*rad, r.height), c);
     nxgfx_fill_rect(ctx, nx_rect(r.x, r.y + rad, rad, r.height - 2*rad), c);
     nxgfx_fill_rect(ctx, nx_rect(r.x + r.width - rad, r.y + rad, rad, r.height - 2*rad), c);
@@ -563,11 +611,35 @@ void nxgfx_fill_radial_gradient(nx_context_t* ctx, nx_point_t center, uint32_t r
     }
 }
 
+/* Stroke an arc (degrees, clockwise on screen) through NXCanvas.
+ * Returns false when ctx has no NXCanvas view. */
+static bool arc_stroke_nxc(nx_context_t* ctx, nx_point_t center, uint32_t radius,
+                           float start_angle, float end_angle, nx_color_t color, float width) {
+    nxc_canvas_t* c = nxgfx__canvas(ctx);
+    if (!c) return false;
+    if (!(start_angle == start_angle) || !(end_angle == end_angle)) return true;  /* NaN: nothing */
+    nxc_point_t pts[16];
+    uint8_t verbs[8];
+    nxc_path_t path;
+    if (nxc_path_init(&path, pts, 16, verbs, 8) != NXC_OK) return true;
+    const float k = 3.14159265f / 180.0f;
+    if (nxc_path_add_arc(&path, (float)center.x + 0.5f, (float)center.y + 0.5f, (float)radius,
+                         start_angle * k, end_angle * k) != NXC_OK) {
+        return true;                       /* logged by NXCanvas */
+    }
+    nxc_stroke_t st = { .width = width, .cap = NXC_CAP_ROUND, .join = NXC_JOIN_ROUND,
+                        .miter_limit = 4.0f };
+    (void)nxc_stroke_path(c, &path, &st, nxgfx__color(color));
+    return true;
+}
+
 /* Draw anti-aliased arc using line segments */
 void nxgfx_draw_arc(nx_context_t* ctx, nx_point_t center, uint32_t radius,
                      float start_angle, float end_angle, nx_color_t color, uint32_t thickness) {
     if (!ctx || radius == 0) return;
     if (thickness == 0) thickness = 2;
+    if (thickness > 256) thickness = 256;
+    if (arc_stroke_nxc(ctx, center, radius, start_angle, end_angle, color, (float)thickness)) return;
     
     /* Convert degrees to radians */
     float start_rad = start_angle * 3.14159265f / 180.0f;
@@ -605,6 +677,8 @@ void nxgfx_draw_thick_arc(nx_context_t* ctx, nx_point_t center, uint32_t radius,
                            float start_angle, float end_angle, nx_color_t color, uint32_t thickness) {
     if (!ctx || radius == 0) return;
     if (thickness < 2) thickness = 2;
+    if (thickness > 256) thickness = 256;
+    if (arc_stroke_nxc(ctx, center, radius, start_angle, end_angle, color, (float)thickness)) return;
     
     /* Draw multiple concentric arcs for thickness */
     uint32_t half_thick = thickness / 2;

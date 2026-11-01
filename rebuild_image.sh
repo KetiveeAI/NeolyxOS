@@ -46,6 +46,20 @@ for prog in ticker fdtest shmtest ipc_test fbtest wintest nxwtest nxuitest; do
     fi
 done
 
+echo "[IMG] Installing system fonts into /System/Fonts..."
+# NxUI apps load their UI face from here at start (NXGFX on NXCanvas);
+# without it they fall back to the bitmap font and log why.
+mmd -i neolyx_new.img ::/System
+mmd -i neolyx_new.img ::/System/Fonts
+for font in NXSans-Text.ttf; do
+    if [ -f "resources/fonts/NXSans/$font" ]; then
+        mcopy -i neolyx_new.img "resources/fonts/NXSans/$font" "::/System/Fonts/$font"
+        echo "  ✓ /System/Fonts/$font"
+    else
+        echo "  ✗ resources/fonts/NXSans/$font missing - NxUI apps will use the bitmap font"
+    fi
+done
+
 echo "[IMG] Creating installation marker..."
 echo "NeolyxOS Installed" | mcopy -i neolyx_new.img - ::/INSTALLED.MRK
 
