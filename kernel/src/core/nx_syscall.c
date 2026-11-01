@@ -11,6 +11,7 @@
 #include "core/syscall.h"
 #include "core/process.h"
 #include "core/nx_ipc.h"
+#include "core/nx_fb.h"
 #include "mm/addrspace.h"
 #include <stdint.h>
 
@@ -26,6 +27,8 @@ static void serial_dec(int64_t val) {
     while (val > 0) { buf[i--] = '0' + (val % 10); val /= 10; }
     serial_puts(&buf[i + 1]);
 }
+
+extern uint64_t g_framebuffer_addr;     /* video/framebuffer.c */
 
 /* Forward declare all syscall handlers */
 #define NX_SYSCALL(num, name, handler, argc, priv, flags) \
@@ -59,6 +62,7 @@ int64_t sys_abi_query_impl(uint64_t info_ptr, uint64_t a2, uint64_t a3,
      * obj.wait and ports do not depend on it and are always present. */
     info.flags = NX_ABI_FLAG_IPC;
     if (addrspace_shared_ok()) info.flags |= NX_ABI_FLAG_SHM;
+    if (g_framebuffer_addr) info.flags |= NX_ABI_FLAG_FB_RECTS;   /* fb.flip_rects (148) */
     info.syscall_count = nx_syscall_count;
     info.reserved[0] = 0;
     info.reserved[1] = 0;

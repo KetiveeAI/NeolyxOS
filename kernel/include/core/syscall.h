@@ -132,7 +132,8 @@
 
 /* ============ Handles, Shared Memory and IPC (ABI v1.1) ============ */
 /* Spec: docs/desktop/proposals/kernel-shm-ipc.md. Types: core/nx_ipc.h.
- * 148 is reserved for fb.flip_rects. */
+ * 148 (fb.flip_rects, ABI v1.2) is in core/nx_fb.h and
+ * docs/desktop/proposals/nxserver-window-protocol.md. */
 #define SYS_HANDLE_CLOSE        140 /* int sys_handle_close(nx_handle_t h) */
 #define SYS_SHM_CREATE          141 /* nx_handle_t sys_shm_create(uint64_t size, uint32_t flags) */
 #define SYS_SHM_MAP             142 /* void *sys_shm_map(nx_handle_t h, uint32_t prot, uint64_t *out_size) */
@@ -141,6 +142,7 @@
 #define SYS_CHAN_SEND           145 /* int sys_chan_send(nx_handle_t h, const nx_chan_msg_t *msg) */
 #define SYS_CHAN_RECV           146 /* int sys_chan_recv(nx_handle_t h, nx_chan_msg_t *msg) */
 #define SYS_OBJ_WAIT            147 /* int sys_obj_wait(nx_wait_item_t *items, uint32_t count, uint64_t timeout_ms) */
+#define SYS_FB_FLIP_RECTS       148 /* int sys_fb_flip_rects(const void *src, const nx_fb_rect_t *rects, uint32_t count) */
 #define SYS_HANDLE_DUP          149 /* nx_handle_t sys_handle_dup(nx_handle_t h, uint32_t rights) */
 #define SYS_PORT_LISTEN         150 /* nx_handle_t sys_port_listen(const char *name, uint32_t flags) */
 #define SYS_PORT_CONNECT        151 /* nx_handle_t sys_port_connect(const char *name, uint32_t flags) */
