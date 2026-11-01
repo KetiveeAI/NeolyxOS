@@ -2,11 +2,12 @@
 # Download the published test vectors used by the nxcrypto host tests.
 #
 # The vectors (NIST CAVP response files, RFC 4231/5869/7748/8032/8439
-# examples, Project Wycheproof edge cases) are data, not code, and are not
+# examples, Project Wycheproof edge cases, x509-limbo path-validation
+# cases) are data, not code, and are not
 # stored in the tree. The NIST and RFC sets come from the
 # "cryptography_vectors" package on PyPI, which collects them in one
-# archive; the Wycheproof files come from its GitHub repository. Both are
-# pinned (by version or commit) and checked by SHA-256 so every run tests
+# archive; the Wycheproof and x509-limbo files come from their GitHub
+# repositories. All are pinned (by version or commit) and checked by SHA-256 so every run tests
 # against identical data; a mismatch stops the script.
 #
 # Usage: tests/host/crypto_fetch_vectors.sh [dest_dir]
@@ -27,6 +28,12 @@ SHA256="51641f03a3eb4edbe9fb68e3a3574d25f86aa502d06391fffa886330d02778a0"
 # crypto_wycheproof_test. Pinned to one commit; every file has a SHA-256.
 WP_COMMIT="d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9"
 WP_URL="https://raw.githubusercontent.com/C2SP/wycheproof/$WP_COMMIT/testvectors_v1"
+# x509-limbo (https://github.com/C2SP/x509-limbo): X.509 path-validation
+# cases with expected results, read by crypto_x509_limbo_test.
+LIMBO_COMMIT="1080e565f26e544bbe9cf99953be8a57c08e7e20"
+LIMBO_URL="https://raw.githubusercontent.com/C2SP/x509-limbo/$LIMBO_COMMIT/limbo.json"
+LIMBO_SHA256="611e337b9fb477b927bae65434650692cb9d2070ff5b05f975d0403510acd4de"
+
 WP_FILES="
 985e5ecc172e181eaf49e89508b9470dcf478002eb7e8559c707eb42dc97dfe7 aes_gcm_test.json
 fe61d25f90e1bde4461d00eafe61049e5f29bd999f36b766df9cda90906ad53d chacha20_poly1305_test.json
@@ -98,6 +105,24 @@ if [ ! -f "$WP_DIR/.ok-$WP_COMMIT" ]; then
         mv "$WP_DIR/$name.part" "$WP_DIR/$name"
     done <<< "$WP_FILES"
     touch "$WP_DIR/.ok-$WP_COMMIT"
+fi
+
+# --- 3. x509-limbo (pinned commit, SHA-256) ---------------------------
+LIMBO_DIR="$VECDIR/x509-limbo"
+if [ ! -f "$LIMBO_DIR/.ok-$LIMBO_COMMIT" ]; then
+    mkdir -p "$LIMBO_DIR"
+    echo "crypto_fetch_vectors: downloading x509-limbo ${LIMBO_COMMIT:0:12}" >&2
+    curl -fsSL -o "$LIMBO_DIR/limbo.json.part" "$LIMBO_URL"
+    GOT="$(sha256sum "$LIMBO_DIR/limbo.json.part" | cut -d' ' -f1)"
+    if [ "$GOT" != "$LIMBO_SHA256" ]; then
+        echo "crypto_fetch_vectors: checksum mismatch for x509-limbo/limbo.json" >&2
+        echo "  expected $LIMBO_SHA256" >&2
+        echo "  got      $GOT" >&2
+        rm -f "$LIMBO_DIR/limbo.json.part"
+        exit 1
+    fi
+    mv "$LIMBO_DIR/limbo.json.part" "$LIMBO_DIR/limbo.json"
+    touch "$LIMBO_DIR/.ok-$LIMBO_COMMIT"
 fi
 
 echo "$VECDIR"
