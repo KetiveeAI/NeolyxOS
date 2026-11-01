@@ -116,7 +116,11 @@ enum {
     REOX_INPUT_NONE = 0,
     REOX_INPUT_MOUSE_MOVE = 1,
     REOX_INPUT_MOUSE_BUTTON = 2,
-    REOX_INPUT_KEY = 3
+    REOX_INPUT_KEY = 3,
+    /* Windowed hosts only (reox_ffi_host_t.windowed) */
+    REOX_INPUT_POINTER_ABS = 4,  /* x, y: content-local position; buttons held */
+    REOX_INPUT_RESIZE = 5,       /* draw into framebuffer (width x height, pitch) from now on */
+    REOX_INPUT_CLOSE = 6         /* the user asked to close the window: the loop ends */
 };
 
 typedef struct reox_ffi_input_event {
@@ -126,12 +130,32 @@ typedef struct reox_ffi_input_event {
     uint32_t keycode;    /* ASCII when printable, else 0 */
     uint32_t scancode;   /* raw scancode */
     bool     pressed;    /* key pressed (true) or released */
+    /* Windowed hosts only */
+    int32_t  x, y;       /* POINTER_ABS: position in the window (may be outside it) */
+    uint32_t width, height, pitch;  /* RESIZE: the new buffer; pitch in bytes */
+    void*    framebuffer;           /* RESIZE: the old buffer must not be touched again */
 } reox_ffi_input_event_t;
+
+/* reox_ffi_host_t.wait_event timeout: wait until an event arrives */
+#define REOX_WAIT_FOREVER 0xFFFFFFFFu
 
 /*
  * Host services for the standalone (own-process) run loop.  Provided by the
  * platform layer (sdk/nxui on NeolyxOS).  map_framebuffer, poll_input,
- * present and sleep_ms are mandatory; set_cursor and log are optional.
+ * present and sleep_ms are mandatory; set_cursor, log and wait_event are
+ * optional.
+ *
+ * Windowed hosts (windowed = true; NeolyxOS apps on the window server):
+ *  - map_framebuffer returns the app's own window content, not the screen.
+ *    The bridge draws no window chrome (the window server does): the window
+ *    is borderless at (0, 0) and fills the buffer.
+ *  - Pointer input comes as REOX_INPUT_POINTER_ABS, size changes as
+ *    REOX_INPUT_RESIZE (with the new buffer) and the close button as
+ *    REOX_INPUT_CLOSE.
+ *  - present returns only once the buffer may be drawn into again.
+ *  - The loop is event-driven: it renders after input or a resize and
+ *    otherwise sleeps in wait_event (or polls with sleep_ms when wait_event
+ *    is NULL), so an idle app draws nothing.
  */
 typedef struct reox_ffi_host {
     void* (*map_framebuffer)(uint32_t* width, uint32_t* height, uint32_t* pitch);
@@ -140,6 +164,9 @@ typedef struct reox_ffi_host {
     void  (*set_cursor)(int32_t x, int32_t y, bool visible);
     void  (*sleep_ms)(uint32_t ms);
     void  (*log)(const char* msg);
+    bool  windowed;
+    /* >0 event, 0 timeout, <0 error; timeout_ms may be REOX_WAIT_FOREVER */
+    int   (*wait_event)(reox_ffi_input_event_t* ev, uint32_t timeout_ms);
 } reox_ffi_host_t;
 
 /* Register the host; returns 0, or -1 if a mandatory callback is missing. */

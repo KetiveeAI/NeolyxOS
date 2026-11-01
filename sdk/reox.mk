@@ -14,7 +14,7 @@
 #   %.c: %.rx / %.reox     reoxc compile --emit c --target neolyx
 #   REOX_CFLAGS            freestanding flags + REOX runtime + NxUI + nxrender includes
 #   REOX_LDLIBS            librx_neolyx.a + libnxrender_neolyx.a
-#   REOX_SUPPORT_OBJS      crt0, memory shims, NxUI, libc stubs, heap (built per app)
+#   REOX_SUPPORT_OBJS      crt0, memory shims, NxUI, libnxwindow, libc stubs, heap (built per app)
 #   REOX_RUNTIME_LIB       path of librx_neolyx.a; REOX_RUNTIME_AVAILABLE is 0/1
 #
 # Contract (docs/NEOLYX_ROADMAP.md, decision 3 and 6): the REOX runtime is
@@ -74,18 +74,22 @@ NXRENDER_NEOLYX_LIB := $(NXRENDER_DIR)/libnxrender_neolyx.a
 
 # NeolyxOS headers come first: the REOX runtime ships its own reox_ffi.h
 # (host SDL bridge) that must not shadow gui/nxrender_c/include/reox_ffi.h.
+# kernel/include/core: nx_ipc.h, nx_fb.h and nx_abi.h, which nxsyscall.h and
+# libnxwindow include.
 REOX_CFLAGS := $(NEOLYX_USER_CFLAGS) \
                -I$(NXRENDER_DIR)/include \
                -I$(REOX_SDK_DIR)/nxui \
+               -I$(REOX_SDK_DIR)/nxwindow \
                -I$(REOX_SDK_DIR)/crt \
                -I$(NEOLYX_ROOT)/desktop/include \
+               -I$(NEOLYX_ROOT)/kernel/include/core \
                $(REOX_RUNTIME_INCLUDES)
 
 REOX_LDLIBS := $(REOX_RUNTIME_LDLIB) $(NXRENDER_NEOLYX_LIB)
 
 # ---- SDK support objects (built into the app's build dir) ------------------
 REOX_BUILD_DIR ?= build
-REOX_SDK_SUPPORT_SRCS := crt/rx_crt0_neolyx.c crt/rx_mem_neolyx.c nxui/nxui.c
+REOX_SDK_SUPPORT_SRCS := crt/rx_crt0_neolyx.c crt/rx_mem_neolyx.c nxui/nxui.c nxwindow/nxwindow.c
 REOX_SYS_SUPPORT_SRCS := libc_stubs.c nx_malloc.c
 
 REOX_SUPPORT_OBJS := $(addprefix $(REOX_BUILD_DIR)/sdk/,$(REOX_SDK_SUPPORT_SRCS:.c=.o)) \
@@ -95,8 +99,16 @@ $(REOX_BUILD_DIR)/sdk/%.o: $(REOX_SDK_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(REOX_CFLAGS) -c $< -o $@
 
+# Rebuild the support objects when the SDK headers they compile against change
+REOX_SUPPORT_HEADERS := $(REOX_SDK_DIR)/nxui/nxui.h $(REOX_SDK_DIR)/nxwindow/nxwindow.h \
+                        $(REOX_SDK_DIR)/nxwindow/nxwin_proto.h $(NXRENDER_DIR)/include/reox_ffi.h \
+                        $(NEOLYX_ROOT)/desktop/include/nxsyscall.h
+$(REOX_SUPPORT_OBJS): $(REOX_SUPPORT_HEADERS)
+
 # Memory shims must not be "optimised" back into calls to themselves.
 $(REOX_BUILD_DIR)/sdk/crt/rx_mem_neolyx.o: REOX_CFLAGS += -fno-builtin -fno-tree-loop-distribute-patterns
+# libnxwindow is self-contained (sdk/nxwindow/Makefile checks it); same flags here
+$(REOX_BUILD_DIR)/sdk/nxwindow/nxwindow.o: REOX_CFLAGS += -fno-builtin -fno-tree-loop-distribute-patterns
 
 $(REOX_BUILD_DIR)/sys/%.o: $(NEOLYX_ROOT)/desktop/lib/%.c
 	@mkdir -p $(dir $@)

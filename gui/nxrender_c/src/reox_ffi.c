@@ -716,18 +716,34 @@ static void handle_host_event(const reox_ffi_input_event_t* in, reox_pointer_t* 
 
     switch (in->type) {
     case REOX_INPUT_MOUSE_MOVE:
-    case REOX_INPUT_MOUSE_BUTTON: {
-        int64_t nx = (int64_t)ptr->x + in->dx;
-        int64_t ny = (int64_t)ptr->y + in->dy;
-        if (nx < 0) nx = 0;
-        if (ny < 0) ny = 0;
-        if (nx >= (int64_t)g_screen_width)  nx = (int64_t)g_screen_width - 1;
-        if (ny >= (int64_t)g_screen_height) ny = (int64_t)g_screen_height - 1;
-        ptr->x = (int32_t)nx;
-        ptr->y = (int32_t)ny;
+    case REOX_INPUT_MOUSE_BUTTON:
+    case REOX_INPUT_POINTER_ABS: {
+        bool moved;
+        if (in->type == REOX_INPUT_POINTER_ABS) {
+            /* Windowed: content-local, and outside the window while a
+             * button is held there, so it is not clamped */
+            if (in->x < -REOX_MAX_DIMENSION || in->x > REOX_MAX_DIMENSION ||
+                in->y < -REOX_MAX_DIMENSION || in->y > REOX_MAX_DIMENSION) {
+                reox_ffi_fail("reox_app_run", "host delivered a pointer position out of range");
+                break;
+            }
+            moved = in->x != ptr->x || in->y != ptr->y;
+            ptr->x = in->x;
+            ptr->y = in->y;
+        } else {
+            int64_t nx = (int64_t)ptr->x + in->dx;
+            int64_t ny = (int64_t)ptr->y + in->dy;
+            if (nx < 0) nx = 0;
+            if (ny < 0) ny = 0;
+            if (nx >= (int64_t)g_screen_width)  nx = (int64_t)g_screen_width - 1;
+            if (ny >= (int64_t)g_screen_height) ny = (int64_t)g_screen_height - 1;
+            ptr->x = (int32_t)nx;
+            ptr->y = (int32_t)ny;
+            moved = in->dx != 0 || in->dy != 0 || in->type == REOX_INPUT_MOUSE_MOVE;
+        }
         ev.pos = nx_point(ptr->x, ptr->y);
 
-        if (in->dx != 0 || in->dy != 0 || in->type == REOX_INPUT_MOUSE_MOVE) {
+        if (moved) {
             ev.type = NX_EVENT_MOUSE_MOVE;
             if (!nx_wm_handle_event(g_wm, &ev)) dispatch_to_focused(&ev);
         }
@@ -764,6 +780,10 @@ static void handle_host_event(const reox_ffi_input_event_t* in, reox_pointer_t* 
             nx_widget_handle_event(g_wm->focused->root_widget, &ev);
         }
         break;
+    case REOX_INPUT_CLOSE:
+        reox_log_raw("[REOX_FFI] window close requested\n");
+        g_quit_requested = true;
+        break;
     default:
         reox_ffi_fail("reox_app_run", "host delivered unknown input event type");
         break;
@@ -777,6 +797,77 @@ static void render_frame(void* framebuffer, reox_pointer_t* ptr) {
     if (g_host.set_cursor) g_host.set_cursor(ptr->x, ptr->y, true);
     if (g_host.present(framebuffer) != 0) {
         reox_ffi_fail("reox_app_run", "host present failed");
+    }
+}
+
+/* Windowed: the window is the whole buffer, without chrome. */
+static void windowed_fit(nx_window_t* win, uint32_t w, uint32_t h) {
+    win->flags |= NX_WINDOW_BORDERLESS;
+    win->flags &= ~(NX_WINDOW_MINIMIZED | NX_WINDOW_MAXIMIZED);
+    win->frame = nx_rect(0, 0, w, h);
+    win->content_rect = win->frame;
+    if (win->root_widget) nx_widget_layout(win->root_widget, win->content_rect);
+    win->dirty = true;
+}
+
+/* Windowed: switch drawing to the buffer a RESIZE event carries.
+ * Returns the new buffer, or NULL (logged; the loop stops). */
+static void* windowed_resize(const reox_ffi_input_event_t* in, nx_window_t* win) {
+    if (!in->framebuffer || !valid_dimension((int)in->width) || !valid_dimension((int)in->height) ||
+        in->pitch < in->width * 4u) {
+        reox_ffi_fail("reox_app_run", "host delivered an invalid RESIZE buffer");
+        return NULL;
+    }
+    nx_context_t* ctx = nxgfx_init(in->framebuffer, in->width, in->height, in->pitch);
+    if (!ctx) {
+        reox_ffi_fail("reox_app_run", "nxgfx_init failed for the resized buffer");
+        return NULL;
+    }
+    nxgfx_destroy(g_ctx);
+    g_ctx = ctx;
+    g_wm->ctx = ctx;
+    g_screen_width = in->width;
+    g_screen_height = in->height;
+    g_wm->screen_width = in->width;
+    g_wm->screen_height = in->height;
+    windowed_fit(win, in->width, in->height);
+    return in->framebuffer;
+}
+
+/* Windowed: render after input or a resize, sleep otherwise. */
+static void windowed_loop(void* fb, nx_window_t* win, reox_pointer_t* ptr) {
+    bool dirty = true;
+    while (!g_quit_requested) {
+        if (dirty) {
+            render_frame(fb, ptr);
+            dirty = false;
+        }
+        reox_ffi_input_event_t ev;
+        memset(&ev, 0, sizeof ev);
+        int got;
+        if (g_host.wait_event) {
+            got = g_host.wait_event(&ev, REOX_WAIT_FOREVER);
+        } else {
+            got = g_host.poll_input(&ev);
+            if (got == 0) g_host.sleep_ms(REOX_FRAME_SLEEP_MS);
+        }
+        uint32_t guard = 0;
+        while (got > 0 && guard++ < 256 && !g_quit_requested) {
+            if (ev.type == REOX_INPUT_RESIZE) {
+                void* nfb = windowed_resize(&ev, win);
+                if (!nfb) { g_quit_requested = true; break; }
+                fb = nfb;
+            } else {
+                handle_host_event(&ev, ptr);
+            }
+            dirty = true;
+            memset(&ev, 0, sizeof ev);
+            got = g_host.poll_input(&ev);
+        }
+        if (got < 0) {
+            reox_ffi_fail("reox_app_run", "host input failed; stopping");
+            break;
+        }
     }
 }
 
@@ -821,18 +912,26 @@ void reox_app_run(reox_window_t main_window) {
     g_wm->screen_width = fb_w;
     g_wm->screen_height = fb_h;
 
-    /* Re-centre now that the real screen size is known. */
-    reox_window_center(win);
+    if (g_host.windowed) {
+        /* The window server draws the chrome; the window fills its buffer */
+        windowed_fit(win, fb_w, fb_h);
+    } else {
+        /* Re-centre now that the real screen size is known. */
+        reox_window_center(win);
+    }
     nx_window_show(win);
     nx_wm_add_window(g_wm, win);
     nx_wm_focus_window(g_wm, win);
 
     reox_pointer_t ptr = { (int32_t)(fb_w / 2), (int32_t)(fb_h / 2), 0 };
+    if (g_host.windowed) { ptr.x = -1; ptr.y = -1; }    /* not over the window yet */
     g_quit_requested = false;
     g_running = true;
-    reox_log_raw("[REOX_FFI] standalone loop start\n");
+    reox_log_raw(g_host.windowed ? "[REOX_FFI] windowed loop start\n" : "[REOX_FFI] standalone loop start\n");
 
-    while (!g_quit_requested) {
+    if (g_host.windowed) windowed_loop(fb, win, &ptr);
+
+    while (!g_host.windowed && !g_quit_requested) {
         reox_ffi_input_event_t ev;
         int polled;
         uint32_t guard = 0;
@@ -847,7 +946,7 @@ void reox_app_run(reox_window_t main_window) {
         g_host.sleep_ms(REOX_FRAME_SLEEP_MS);
     }
 
-    reox_log_raw("[REOX_FFI] standalone loop end\n");
+    reox_log_raw(g_host.windowed ? "[REOX_FFI] windowed loop end\n" : "[REOX_FFI] standalone loop end\n");
     g_running = false;
 
     /* Windows still registered are owned by the caller; detach without destroying. */
