@@ -2,7 +2,9 @@
 
 Status: **approved by the project owner on 2026-11-01 ("approve as
 written").** Changing it needs the owner's sign-off again. Implemented so
-far: step 1, `fb.flip_rects` (148, ABI 1.2).
+far: step 1, `fb.flip_rects` (148, ABI 1.2); step 2, nxserver in the
+desktop (`desktop/shell/nxserver`), the protocol header and
+`tests/userland/wintest`.
 Plan: week 3 of the 1.0 Preview plan ("desktop becomes the nxserver
 compositor, with damage tracking"). Builds on the approved kernel interface in
 `kernel-shm-ipc.md` (ABI 1.1, merged in PRs #22 and #23).

@@ -359,6 +359,54 @@ static inline void nx_debug_print(const char *msg) {
     syscall1(127, (int64_t)msg);
 }
 
+/* ============ Handles, shared memory and IPC (ABI 1.1) ============ */
+/*
+ * Spec: docs/desktop/proposals/kernel-shm-ipc.md. Types and limits come
+ * from the kernel's public header. Every call returns a negative errno on
+ * failure; none of them blocks except nx_obj_wait with a timeout.
+ */
+#include "nx_ipc.h"
+
+#define SYS_HANDLE_CLOSE  140
+#define SYS_SHM_CREATE    141
+#define SYS_SHM_MAP       142
+#define SYS_SHM_UNMAP     143
+#define SYS_CHAN_CREATE   144
+#define SYS_CHAN_SEND     145
+#define SYS_CHAN_RECV     146
+#define SYS_OBJ_WAIT      147
+#define SYS_PORT_LISTEN   150
+#define SYS_PORT_CONNECT  151
+#define SYS_PORT_ACCEPT   152
+
+static inline int nx_handle_close(nx_handle_t h) {
+    return (int)syscall1(SYS_HANDLE_CLOSE, (int64_t)h);
+}
+/* Map a whole shm object; *out_size (may be NULL) receives its size.
+ * Returns the address as a non-negative value, or a negative errno. */
+static inline int64_t nx_shm_map(nx_handle_t h, uint32_t prot, uint64_t *out_size) {
+    return syscall3(SYS_SHM_MAP, (int64_t)h, (int64_t)prot, (int64_t)out_size);
+}
+static inline int nx_shm_unmap(void *addr) {
+    return (int)syscall1(SYS_SHM_UNMAP, (int64_t)addr);
+}
+static inline int nx_chan_send(nx_handle_t h, const nx_chan_msg_t *msg) {
+    return (int)syscall2(SYS_CHAN_SEND, (int64_t)h, (int64_t)msg);
+}
+static inline int nx_chan_recv(nx_handle_t h, nx_chan_msg_t *msg) {
+    return (int)syscall2(SYS_CHAN_RECV, (int64_t)h, (int64_t)msg);
+}
+/* Returns the number of ready items, 0 on timeout, or a negative errno. */
+static inline int nx_obj_wait(nx_wait_item_t *items, uint32_t count, uint64_t timeout_ms) {
+    return (int)syscall3(SYS_OBJ_WAIT, (int64_t)items, (int64_t)count, (int64_t)timeout_ms);
+}
+static inline nx_handle_t nx_port_listen(const char *name) {
+    return (nx_handle_t)syscall2(SYS_PORT_LISTEN, (int64_t)name, 0);
+}
+static inline nx_handle_t nx_port_accept(nx_handle_t port, uint32_t *out_pid) {
+    return (nx_handle_t)syscall2(SYS_PORT_ACCEPT, (int64_t)port, (int64_t)out_pid);
+}
+
 /* ============ RTC (Real-Time Clock) ============ */
 /* Syscall numbers - MUST MATCH kernel */
 #define SYS_RTC_GET     130

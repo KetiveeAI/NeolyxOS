@@ -109,6 +109,10 @@ typedef struct desktop_shell_window {
     
     /* Z-order (higher = on top) */
     uint8_t z_order;
+
+    /* Set for windows the user may not resize (no edge resize, tiling or
+     * zoom); see desktop_set_window_resizable. */
+    uint8_t no_resize;
     
     /* Content render callback */
     void (*render_content)(struct desktop_shell_window *win, void *ctx);
@@ -241,12 +245,50 @@ int desktop_activate_window(uint32_t window_id);
 /* Animated close, as the close button does. Returns 0, or -1 if unknown. */
 int desktop_close_window(uint32_t window_id);
 
+/* ============ Window server support (desktop/shell/nxserver) ============ */
+
+/* Rename a window. Returns 0, or -1 if unknown. */
+int desktop_set_window_title(uint32_t window_id, const char *title);
+
+/* Allow or forbid user resizing (edges, tiling, zoom). Default: allowed. */
+void desktop_set_window_resizable(uint32_t window_id, int resizable);
+
+/* Fit a requested content size the way desktop_create_window will: inside
+ * the work area, at least 120x60. */
+void desktop_fit_window_size(uint32_t *width, uint32_t *height);
+
+typedef struct {
+    uint32_t width, height;         /* content size */
+    int32_t  content_x, content_y;  /* content top-left on screen */
+    uint8_t  focused, minimized, visible;
+    uint8_t  maximized, tiled;
+    uint8_t  settled;               /* no move/resize animation running */
+} desktop_window_info_t;
+
+/* Current geometry and state of a window. Returns 0, or -1 if unknown. */
+int desktop_window_info(uint32_t window_id, desktop_window_info_t *out);
+
+/*
+ * The window whose content area is under the pointer, or 0 (title bar, no
+ * window, or a shell overlay such as the app drawer or a menu is open).
+ * *mx, *my receive the pointer on screen, *lx, *ly the content-local
+ * position (any pointer may be NULL).
+ */
+uint32_t desktop_pointer_window(int32_t *mx, int32_t *my, int32_t *lx, int32_t *ly);
+
+/* Mouse buttons held now (bit 0 left, bit 1 right, bit 2 middle). */
+uint8_t desktop_mouse_buttons(void);
+
 /* ============ Keyboard ============ */
 
 /* The character the input driver decoded for the key being dispatched
  * right now (Shift and Caps Lock applied), or 0 for keys without one.
  * Only meaningful inside a key handler. */
 char desktop_key_ascii(void);
+
+/* Modifiers held now: 0x1 Shift, 0x2 Ctrl, 0x4 Alt, 0x8 NX (the same bits
+ * as NXW_MOD_* in sdk/nxwindow/nxwin_proto.h). */
+uint8_t desktop_key_modifiers(void);
 
 /* ============ Display ============ */
 

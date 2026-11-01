@@ -43,6 +43,7 @@
 #include "../include/switcher.h"
 #include "../lib/nxicons/nxicons_internal.h"
 #include "../include/nxicon_pack.h"
+#include "nxserver/nxserver.h"
 #define nxc_cosf_shell nxc_cosf_pub
 #define nxc_sinf_shell nxc_sinf_pub
 
@@ -1636,6 +1637,17 @@ static void work_area(int32_t *x, int32_t *y, int32_t *w, int32_t *h) {
     *h = (int32_t)g_desktop.height - WM_MENUBAR_H - WM_DOCK_RESERVE;
 }
 
+void desktop_fit_window_size(uint32_t *width, uint32_t *height) {
+    if (!width || !height) return;
+    int32_t ax, ay, aw, ah;
+    work_area(&ax, &ay, &aw, &ah);
+    (void)ax; (void)ay;
+    if (*width > (uint32_t)aw - 16u) *width = (uint32_t)aw - 16u;
+    if (*height > (uint32_t)(ah - WIN_TITLE_H - 8)) *height = (uint32_t)(ah - WIN_TITLE_H - 8);
+    if (*width < 120u) *width = 120u;
+    if (*height < 60u) *height = 60u;
+}
+
 uint32_t desktop_create_window(const char *title, int32_t x, int32_t y,
                                uint32_t width, uint32_t height) {
     if (width == 0 || height == 0) {
@@ -1660,10 +1672,7 @@ uint32_t desktop_create_window(const char *title, int32_t x, int32_t y,
      * the menu bar. */
     int32_t ax, ay, aw, ah;
     work_area(&ax, &ay, &aw, &ah);
-    if (width > (uint32_t)aw - 16u) width = (uint32_t)aw - 16u;
-    if (height > (uint32_t)(ah - WIN_TITLE_H - 8)) height = (uint32_t)(ah - WIN_TITLE_H - 8);
-    if (width < 120u) width = 120u;
-    if (height < 60u) height = 60u;
+    desktop_fit_window_size(&width, &height);
 
     /* Cascade away from a window already sitting at the same spot */
     for (int tries = 0; tries < 12; tries++) {
@@ -1704,6 +1713,7 @@ uint32_t desktop_create_window(const char *title, int32_t x, int32_t y,
     win->focused = 1;
     win->minimized = 0;
     win->dragging = 0;
+    win->no_resize = 0;
     win->render_content = NULL;
     win->render_ctx = NULL;
     win->key_handler = NULL;
@@ -1745,6 +1755,7 @@ uint32_t desktop_create_window(const char *title, int32_t x, int32_t y,
 static void window_destroy_now(desktop_window_t *w) {
     if (!w || w->id == 0) return;
     uint32_t id = w->id;
+    nxserver_window_destroyed(id);   /* a client window: unmap its buffers */
     stage_on_window_destroyed(id);
     overview_on_window_destroyed(id);
     switcher_on_window_destroyed(id);
@@ -1859,6 +1870,8 @@ static int window_close(desktop_window_t *w) {
     if (!w || w->id == 0) return -1;
     win_anim_t *a = anim_of(w);
     if (a && a->phase == WA_CLOSE) return 0;
+    /* A live app window: the app decides (CLOSE_REQUEST), then destroys it */
+    if (nxserver_close_requested(w->id)) return 0;
     if (w->minimized || !w->visible || !a) {
         window_destroy_now(w);
         return 0;
@@ -1888,7 +1901,7 @@ static void remember_user_frame(desktop_window_t *w, wm_window_state_t *ws) {
 }
 
 static void window_tile(desktop_window_t *w, wm_tile_pos_t tile) {
-    if (!w || tile == TILE_NONE) return;
+    if (!w || tile == TILE_NONE || w->no_resize) return;
     wm_window_state_t *ws = wm_get_window_state(w->id);
     if (!ws) return;
     int32_t tx = 0, ty = 0;
@@ -1925,7 +1938,7 @@ static int window_untile(desktop_window_t *w, int animate) {
  * area or go back to the user's frame. */
 static void window_zoom(desktop_window_t *w) {
     wm_window_state_t *ws = w ? wm_get_window_state(w->id) : NULL;
-    if (!ws) return;
+    if (!ws || w->no_resize) return;
     if (ws->is_maximized) window_untile(w, 1);
     else window_tile(w, TILE_MAXIMIZE);
 }
@@ -2177,6 +2190,13 @@ extern int sprefs_get_bool(const char *sec, const char *key, int def);
  * macOS), never to a window hidden behind a shell overlay. A button drag
  * in progress keeps it on the captured window.
  */
+/* A shell overlay covers the windows (pointer input is not theirs). */
+static int shell_overlay_open(void) {
+    return setup_assistant_active() || app_drawer_is_open() || switcher_active() ||
+           overview_active() || menubar_is_open() || anveshan_is_active() ||
+           control_center_is_visible() || notification_center_is_visible();
+}
+
 void desktop_handle_scroll(int32_t notches) {
     if (notches == 0) return;
     static int s_logged;
@@ -2184,11 +2204,7 @@ void desktop_handle_scroll(int32_t notches) {
     if (notches > 127) notches = 127;
     if (notches < -127) notches = -127;
 
-    if (setup_assistant_active() || app_drawer_is_open() || switcher_active() ||
-        overview_active() || menubar_is_open() || anveshan_is_active() ||
-        control_center_is_visible() || notification_center_is_visible()) {
-        return;
-    }
+    if (shell_overlay_open()) return;
 
     if (sprefs_get_bool("mouse", "natural_scrolling", 0)) notches = -notches;
 
@@ -2199,6 +2215,52 @@ void desktop_handle_scroll(int32_t notches) {
     if (g_desktop.mouse_y < w->y + WIN_TITLE_H) return;   /* title bar */
     w->scroll_handler(w, g_desktop.mouse_x - w->x, g_desktop.mouse_y - (w->y + WIN_TITLE_H),
                       notches, w->scroll_ctx);
+}
+
+uint32_t desktop_pointer_window(int32_t *mx, int32_t *my, int32_t *lx, int32_t *ly) {
+    if (mx) *mx = g_desktop.mouse_x;
+    if (my) *my = g_desktop.mouse_y;
+    if (lx) *lx = 0;
+    if (ly) *ly = 0;
+    if (shell_overlay_open()) return 0;
+    desktop_window_t *w = window_at_point(g_desktop.mouse_x, g_desktop.mouse_y);
+    if (!w || g_desktop.mouse_y < w->y + WIN_TITLE_H) return 0;
+    if (lx) *lx = g_desktop.mouse_x - w->x;
+    if (ly) *ly = g_desktop.mouse_y - (w->y + WIN_TITLE_H);
+    return w->id;
+}
+
+uint8_t desktop_mouse_buttons(void) { return g_desktop.mouse_buttons; }
+
+int desktop_window_info(uint32_t window_id, desktop_window_info_t *out) {
+    desktop_window_t *w = window_by_id(window_id);
+    if (!w || !out) return -1;
+    win_anim_t *a = anim_of(w);
+    wm_window_state_t *ws = wm_get_window_state(w->id);
+    out->width = w->width;
+    out->height = w->height;
+    out->content_x = w->x;
+    out->content_y = w->y + WIN_TITLE_H;
+    out->focused = w->focused;
+    out->minimized = w->minimized;
+    out->visible = w->visible;
+    out->maximized = (ws && ws->is_maximized) ? 1 : 0;
+    out->tiled = (ws && ws->is_tiled) ? 1 : 0;
+    out->settled = (!a || !a->geo) && !(g_ges.kind == GES_RESIZE && g_ges.id == w->id);
+    return 0;
+}
+
+int desktop_set_window_title(uint32_t window_id, const char *title) {
+    desktop_window_t *w = window_by_id(window_id);
+    if (!w) return -1;
+    if (title) shell_strcpy(w->title, title, WINDOW_TITLE_MAX);
+    else w->title[0] = '\0';
+    return 0;
+}
+
+void desktop_set_window_resizable(uint32_t window_id, int resizable) {
+    desktop_window_t *w = window_by_id(window_id);
+    if (w) w->no_resize = resizable ? 0 : 1;
 }
 
 /* ============ Window move / resize gestures ============ */
@@ -2236,6 +2298,7 @@ static desktop_window_t *resize_target_at(int32_t x, int32_t y, uint32_t *edges)
         if (ws && ws->mode != WIN_MODE_NORMAL && ws->mode != WIN_MODE_MAXIMIZED) continue;
         int inside = 0;
         uint32_t e = resize_edges_at(w, x, y, &inside);
+        if (e && w->no_resize) return NULL;     /* fixed-size window covers the point */
         if (e) {
             /* Corners and edges over the traffic lights stay with the lights */
             if (traffic_light_at(w, x, y) >= 0) return NULL;
@@ -2603,6 +2666,12 @@ static int g_nx_help_shown = 0;
 static int g_nx_down = 0;         /* NX physically held (chords use this) */
 static int g_shift_down = 0;      /* either Shift held */
 static int g_ctrl_down = 0;       /* either Ctrl held */
+static int g_alt_down = 0;        /* either Alt held */
+
+uint8_t desktop_key_modifiers(void) {
+    return (uint8_t)((g_shift_down ? 0x1u : 0u) | (g_ctrl_down ? 0x2u : 0u) |
+                     (g_alt_down ? 0x4u : 0u) | (g_nx_down ? 0x8u : 0u));
+}
 #define NX_LONGPRESS_MS 500  /* 500ms threshold */
 
 /* Called every frame to check if NX key was held long enough */
@@ -2721,6 +2790,7 @@ void desktop_handle_key(uint8_t scancode, uint8_t pressed) {
     /* Modifier state for window shortcuts */
     if (scancode == 0x2A || scancode == 0x36) g_shift_down = pressed ? 1 : 0;
     if (scancode == 0x1D) g_ctrl_down = pressed ? 1 : 0;
+    if (scancode == 0x38) g_alt_down = pressed ? 1 : 0;
     /* Ctrl+Shift+Esc opens (or focuses) Task Manager */
     if (scancode == 0x01 && pressed && g_ctrl_down && g_shift_down) {
         for (int i = 0; i < MAX_WINDOWS; i++) {
@@ -2993,6 +3063,10 @@ int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pit
 
     /* First-run Setup Assistant (active only until setup completes) */
     setup_assistant_init();
+
+    /* Window server: apps open windows through port "nx.display". A failure
+     * is logged by nxserver_init; the shell keeps running without it. */
+    nxserver_init(g_desktop.width, g_desktop.height);
     
     nx_debug_print("[DESKTOP] All init done! Starting main loop...\n");
     
@@ -3209,11 +3283,15 @@ void desktop_run(void) {
         
         /* Check NX key long-press for help overlay */
         nx_key_tick();
+
+        /* App windows: requests, CONFIGURE, pointer motion (never blocks) */
+        nxserver_poll();
         
         g_pf[PF_INPUT] += rdtsc_now() - pf_in0;
         
         /* Always render every frame */
         render_desktop();
+        nxserver_frame_presented();   /* FRAME_DONE for commits drawn in it */
         g_pf_loop_t = rdtsc_now();
         
         /* Frame pacing: aim at 60 Hz, sleeping only the unused part of

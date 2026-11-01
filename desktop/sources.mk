@@ -81,9 +81,12 @@ AREA_SHELL_SRC    = shell/views/shell_view.c
 
 AREA_NOTES_SRC    = shell/views/notes_view.c
 
+AREA_NXSERVER_SRC = shell/nxserver/nxserver.c shell/nxserver/nxw_check.c
+
 SHELL_SRC += $(AREA_SHARED_SRC) $(AREA_GLASS_SRC) $(AREA_SETTINGS_SRC) $(AREA_FONTS_SRC) \
              $(AREA_SETUP_SRC) $(AREA_DOCK_SRC) $(AREA_NET_SRC) $(AREA_TASKMGR_SRC) \
-             $(AREA_WINDOWS_SRC) $(AREA_PATH_SRC) $(AREA_SHELL_SRC) $(AREA_NOTES_SRC)
+             $(AREA_WINDOWS_SRC) $(AREA_PATH_SRC) $(AREA_SHELL_SRC) $(AREA_NOTES_SRC) \
+             $(AREA_NXSERVER_SRC)
 
 WIDGET_SRC = widgets/widgets.c
 

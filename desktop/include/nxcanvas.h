@@ -302,6 +302,12 @@ nxc_status_t nxc_draw_surface_rrect(nxc_canvas_t *c, const nxc_surface_t *src,
 nxc_status_t nxc_draw_rgba8(nxc_canvas_t *c, const uint8_t *rgba, int32_t w, int32_t h,
                             int32_t stride_bytes, nxc_rect_t dst, uint8_t alpha,
                             nxc_filter_t filter);
+/* Draw opaque 32-bit pixels (0x??RRGGBB, top byte ignored), such as an
+ * app's shared-memory window buffer. px and stride_bytes must be 4-byte
+ * aligned. */
+nxc_status_t nxc_draw_xrgb32(nxc_canvas_t *c, const uint32_t *px, int32_t w, int32_t h,
+                             int32_t stride_bytes, nxc_rect_t dst, uint8_t alpha,
+                             nxc_filter_t filter);
 /* Colorize an 8-bit coverage mask at integer position (x, y). */
 nxc_status_t nxc_draw_mask(nxc_canvas_t *c, const uint8_t *mask, int32_t w, int32_t h,
                            int32_t stride, int32_t x, int32_t y, nxc_color_t color);
