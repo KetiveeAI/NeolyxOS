@@ -104,6 +104,32 @@ static uint64_t as_alloc_frame(void) {
     return phys;
 }
 
+/* Decimal for log lines (no formatted printing in the kernel) */
+static void as_log_dec(uint64_t v) {
+    char buf[21];
+    int i = 20;
+    buf[i] = '\0';
+    if (v == 0) buf[--i] = '0';
+    while (v > 0 && i > 0) { buf[--i] = (char)('0' + v % 10); v /= 10; }
+    serial_puts(&buf[i]);
+}
+
+/*
+ * K0b memory reserve: may a user mapping take one more frame? Logs the
+ * refusal; the caller (brk, spawn, exec) logs which process it was.
+ */
+static int as_reserve_allows(int system_class) {
+    if (pmm_user_alloc_allowed(1, system_class)) return 1;
+    pmm_stats_t st;
+    pmm_get_stats(&st);
+    serial_puts("[MEM] user mapping refused: ");
+    as_log_dec(st.free_pages * PAGE_SIZE / 1024);
+    serial_puts(" KB free, reserve ");
+    as_log_dec(pmm_reserve_pages() * PAGE_SIZE / 1024);
+    serial_puts(system_class ? " KB (system class may use half)\n" : " KB\n");
+    return 0;
+}
+
 static inline int as_va_in_window(uint64_t va) {
     return va >= USER_WINDOW_BASE && va < USER_WINDOW_END;
 }
@@ -369,10 +395,12 @@ int addrspace_map_alloc(addrspace_t *as, uint64_t va, uint64_t size, uint32_t fl
 
     uint64_t leaf = PTE_PRESENT | PTE_USER | ((flags & AS_MAP_WRITE) ? PTE_WRITE : 0);
     uint64_t *pd = (uint64_t *)as->pd_phys;
+    int system_class = (as->reserve_class == AS_CLASS_SYSTEM);
 
     for (uint64_t page = start; page < end; page += AS_PAGE) {
         uint64_t pdi = (page >> 21) & 0x1FF;
         if (!(pd[pdi] & PTE_PRESENT)) {
+            if (!as_reserve_allows(system_class)) return -1;
             uint64_t pt_phys = as_alloc_frame();
             if (!pt_phys) return -1;
             pd[pdi] = pt_phys | PTE_PRESENT | PTE_WRITE | PTE_USER;
@@ -386,6 +414,7 @@ int addrspace_map_alloc(addrspace_t *as, uint64_t va, uint64_t size, uint32_t fl
             continue;
         }
 
+        if (!as_reserve_allows(system_class)) return -1;
         uint64_t frame = as_alloc_frame();
         if (!frame) return -1;
         *pte = frame | leaf;

@@ -8,7 +8,8 @@
  *   - every path releases the lock (a nested acquire is reported);
  *   - double frees, unaligned and out-of-range frees are refused and do
  *     not change the statistics;
- *   - free/used counters stay consistent with the bitmap.
+ *   - free/used counters stay consistent with the bitmap;
+ *   - the K0b memory reserve: size and the normal/system floors.
  *
  * Build and run from the repository root:
  *   gcc -std=c11 -O1 -Wall -Wextra -DPMM_HOST_TEST -Ikernel/include -no-pie \
@@ -143,6 +144,28 @@ int main(void) {
           "counters return to the initial state");
     check(pmm_alloc_page() == 0x200000, "after freeing all, lowest page is the first after the kernel image");
     check(pmm_lock == 0 && g_lock_errors == 0, "lock released at the end");
+
+    /* K0b reserve: 2% of 253 MiB is ~5 MiB, so the 32 MiB minimum applies */
+    uint64_t rsv = pmm_reserve_pages();
+    check(rsv == (32ULL << 20) / PAGE_SIZE, "reserve is the 32 MiB minimum on 256 MiB");
+    {
+        pmm_stats_t rs;
+        pmm_get_stats(&rs);
+        /* Bring free memory down to reserve + 10 pages */
+        uint64_t keep = rsv + 10, held = 0;
+        while (rs.free_pages > keep && pmm_alloc_page() != 0) { held++; rs.free_pages--; }
+        pmm_get_stats(&rs);
+        check(rs.free_pages == keep, "drained to reserve + 10");
+        check(pmm_user_alloc_allowed(10, 0) == 1, "normal may take down to the reserve");
+        check(pmm_user_alloc_allowed(11, 0) == 0, "normal refused inside the reserve");
+        check(pmm_user_alloc_allowed(11, 1) == 1, "system may use the upper half");
+        check(pmm_user_alloc_allowed(10 + rsv / 2, 1) == 1, "system may reach half the reserve");
+        check(pmm_user_alloc_allowed(11 + rsv / 2, 1) == 0, "system refused in the kernel half");
+        check(pmm_user_alloc_allowed(keep + 1, 1) == 0, "more than free refused");
+        check(pmm_user_alloc_allowed(0, 0) == 1, "zero pages allowed above the reserve");
+        check(pmm_lock == 0 && g_lock_errors == 0, "reserve check releases the lock");
+        (void)held;
+    }
 
     /* Exhaustion: allocate every page, then one more fails cleanly */
     uint64_t got_all = 0;

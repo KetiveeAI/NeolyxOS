@@ -79,6 +79,7 @@ obj-y += nx_shm.o
 obj-y += nx_chan.o
 obj-y += nx_fb.o
 obj-y += process.o
+obj-y += sched_queue.o
 obj-y += boot_image.o
 obj-y += elf.o
 obj-y += runtime.o
@@ -298,8 +299,11 @@ nx_syscall.o: src/core/nx_syscall.c include/core/nx_abi.h include/core/syscall.h
 boot_image.o: src/core/boot_image.c include/core/boot_image.h include/mm/addrspace.h
 	$(CC) $(CFLAGS) -c src/core/boot_image.c -o boot_image.o
 
-process.o: src/core/process.c include/core/process.h include/core/kernel.h include/utils/log.h
+process.o: src/core/process.c include/core/process.h include/core/sched_queue.h include/core/kernel.h include/utils/log.h
 	$(CC) $(CFLAGS) -c src/core/process.c -o process.o
+
+sched_queue.o: src/core/sched_queue.c include/core/sched_queue.h include/core/process.h
+	$(CC) $(CFLAGS) -c src/core/sched_queue.c -o sched_queue.o
 
 elf.o: src/core/elf.c include/core/elf.h
 	$(CC) $(CFLAGS) -c src/core/elf.c -o elf.o

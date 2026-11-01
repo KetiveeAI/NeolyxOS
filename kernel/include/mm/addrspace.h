@@ -54,7 +54,12 @@ typedef struct addrspace {
     uint64_t pages_mapped;      /* User frames owned by this space */
     uint64_t shared_pdpt_phys;  /* PDPT for the shared region (0 = none yet) */
     uint64_t shared_pages;      /* Pages currently mapped in the shared region */
+    uint32_t reserve_class;     /* AS_CLASS_*: how deep user mappings may dig into the PMM reserve */
 } addrspace_t;
+
+/* addrspace_t.reserve_class (K0b memory reserve, see pmm_user_alloc_allowed) */
+#define AS_CLASS_NORMAL     0   /* apps: stop at the full reserve */
+#define AS_CLASS_SYSTEM     1   /* PROC_FLAG_SYSTEM: may use the upper half */
 
 /**
  * Reserve the physical range that aliases the user window.
