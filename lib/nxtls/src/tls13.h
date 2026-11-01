@@ -112,4 +112,23 @@ int nxt__rprot_seal(nxt__rprot *p, uint8_t type, const uint8_t *data, size_t len
 int nxt__rprot_open(nxt__rprot *p, uint8_t *rec, size_t rec_len,
                     uint8_t *type, size_t *len);
 
+#ifdef NXT_TESTING
+/*
+ * Host-test hooks, compiled only with -DNXT_TESTING (never into
+ * build/libnxtls.a; `make test` checks that). Call them before
+ * nxt_tls_connect.
+ *  - nxt__tls_test_hello: send this ClientHello message (header
+ *    included) instead of building one, and use priv as the X25519 key.
+ *    Used to replay RFC 8448, whose ClientHello nxtls would not produce.
+ *  - nxt__tls_test_server_key: skip certificate parsing and path
+ *    validation and check CertificateVerify against this key. RFC 8448's
+ *    server certificate is a self-signed RSA-1024 one.
+ */
+#include "nxtls/x509.h"
+int nxt__tls_test_hello(nxt_tls_conn *conn, const uint8_t *hello, size_t len,
+                        const uint8_t priv[32]);
+int nxt__tls_test_server_key(nxt_tls_conn *conn, nxt_key_type_t type, const uint8_t *key,
+                             size_t key_len, const uint8_t *e, size_t e_len);
+#endif
+
 #endif /* NXTLS_SRC_TLS13_H */

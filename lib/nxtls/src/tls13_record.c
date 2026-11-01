@@ -160,6 +160,20 @@ const char *nxt_tls_err_str(int err) {
     case NXT_TLS_ERR_SEQ_EXHAUSTED: return "record sequence number exhausted";
     case NXT_TLS_ERR_UNEXPECTED_MESSAGE: return "unexpected message";
     case NXT_TLS_ERR_CRYPTO: return "internal crypto failure";
+    case NXT_TLS_ERR_IO: return "transport error or timeout";
+    case NXT_TLS_ERR_CLOSED: return "connection closed without close_notify";
+    case NXT_TLS_ERR_DECODE: return "malformed message";
+    case NXT_TLS_ERR_ILLEGAL_PARAMETER: return "illegal parameter";
+    case NXT_TLS_ERR_PROTOCOL_VERSION: return "server does not support TLS 1.3";
+    case NXT_TLS_ERR_HANDSHAKE_FAILURE: return "handshake failure";
+    case NXT_TLS_ERR_CERTIFICATE: return "server certificate refused";
+    case NXT_TLS_ERR_BAD_SIGNATURE: return "bad CertificateVerify signature";
+    case NXT_TLS_ERR_BAD_FINISHED: return "bad server Finished";
+    case NXT_TLS_ERR_ALERT: return "alert from the server";
+    case NXT_TLS_ERR_UNSUPPORTED_EXTENSION: return "extension that was not offered";
+    case NXT_TLS_ERR_MISSING_EXTENSION: return "required extension missing";
+    case NXT_TLS_ERR_RANDOM: return "random source failed";
+    case NXT_TLS_ERR_TOO_LARGE: return "handshake message too large";
     default: return "unknown error";
     }
 }
