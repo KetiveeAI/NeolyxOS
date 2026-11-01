@@ -3,7 +3,10 @@
 Status: **approved by the project owner on 2026-11-01 ("approve as
 written").** Changing it needs the owner's sign-off again. Implemented so
 far: step 1, libnxwindow in C (`sdk/nxwindow/nxwindow.{h,c}`, host test
-`tests/host/nxwindow_test.c`, QEMU test `tests/userland/nxwtest`).
+`tests/host/nxwindow_test.c`, QEMU test `tests/userland/nxwtest`); step 2,
+NxUI on libnxwindow (`reox_ffi` windowed mode, the NxUI host in
+`sdk/nxui/nxui.c`, `nxui_window_set_resizable`, QEMU test
+`tests/userland/nxuitest`).
 Plan: week 4 of the 1.0 Preview plan ("libnxwindow, C and REOX"). Builds on
 the approved window protocol 1.0 (`nxserver-window-protocol.md`, merged in
 PRs #24, #27 and #28) and the kernel IPC interface (`kernel-shm-ipc.md`,

@@ -40,6 +40,9 @@ int64_t nxui_error_count(void);
 nxui_handle_t nxui_window_create(const char* title, int64_t width, int64_t height);
 int64_t nxui_window_set_root(nxui_handle_t window, nxui_handle_t widget);
 int64_t nxui_window_set_background(nxui_handle_t window, int64_t rgb);
+/* Let the user resize (and tile) the window; windows are not resizable by
+ * default. Call before nxui_run. 0, or -1 for a bad handle. */
+int64_t nxui_window_set_resizable(nxui_handle_t window, bool resizable);
 
 /* Containers */
 nxui_handle_t nxui_vstack(int64_t gap);
@@ -65,7 +68,14 @@ int64_t nxui_button_set_action(nxui_handle_t button, int64_t action_id);
 int64_t nxui_button_set_colors(nxui_handle_t button, int64_t bg_rgb, int64_t fg_rgb);
 int64_t nxui_button_set_font_size(nxui_handle_t button, int64_t size);
 
-/* Application */
+/* Application
+ *
+ * nxui_run shows the window in its own window on the desktop's window
+ * server (libnxwindow): the server draws the title bar and close button,
+ * the app's widgets fill the content. It returns when the user closes the
+ * window, after nxui_quit(), or at once (with a logged error) when no window
+ * server is reachable. Returns the number of bridge errors during the run,
+ * or -1 for a bad handle. An idle app draws nothing. */
 int64_t nxui_run(nxui_handle_t window);
 void nxui_quit(void);
 

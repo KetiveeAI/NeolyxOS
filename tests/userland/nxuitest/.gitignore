@@ -1,0 +1,3 @@
+nxuitest
+*.o
+build/

@@ -100,7 +100,7 @@ cd ..
 
 # Step 4b: Build user programs installed on the boot disk (/apps)
 echo "[4b] Building user programs..."
-for prog in ticker fdtest shmtest ipc_test fbtest wintest nxwtest; do
+for prog in ticker fdtest shmtest ipc_test fbtest wintest nxwtest nxuitest; do
     make -C tests/userland/$prog >/dev/null
     if [ ! -f tests/userland/$prog/$prog ]; then
         echo "ERROR: $prog build failed!"
@@ -117,7 +117,7 @@ if mcopy -i neolyx.img -o kernel/kernel.bin ::/EFI/BOOT/kernel.bin 2>/dev/null; 
     mcopy -i neolyx.img -o boot/BOOTX64.EFI ::/EFI/BOOT/BOOTX64.EFI
     echo "      Boot image updated (kernel.bin, desktop.elf, BOOTX64.EFI)"
     mmd -i neolyx.img ::/apps 2>/dev/null || true
-    for prog in ticker fdtest shmtest ipc_test fbtest wintest nxwtest; do
+    for prog in ticker fdtest shmtest ipc_test fbtest wintest nxwtest nxuitest; do
         mcopy -i neolyx.img -o tests/userland/$prog/$prog ::/apps/$prog && echo "      Installed /apps/$prog"
     done
 else

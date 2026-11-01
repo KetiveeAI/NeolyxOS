@@ -26,7 +26,7 @@ app.rx --reoxc--> app.c --gcc (freestanding)--> app.o --ld user.ld--> bin/app
                    ^                                   |
          rx_core.h (REOX repo)             libnxrender_neolyx.a  (gui/nxrender_c)
                                            librx_neolyx.a         (REOX repo, runtime/)
-                                           crt0 + mem shims + NxUI (this sdk)
+                                           crt0 + mem shims + NxUI + libnxwindow (this sdk)
                                            libc_stubs.c + nx_malloc.c (desktop/lib)
 ```
 
@@ -69,9 +69,9 @@ bin/app: $(APP_OBJS) $(REOX_SUPPORT_OBJS) $(REOX_LDLIBS)
 | Variable | Meaning |
 |---|---|
 | `REOXC` | compiler front end (default: `tools/reoxc-neolyx`) |
-| `REOX_CFLAGS` | freestanding flags + nxrender, NxUI, desktop and REOX runtime include paths |
+| `REOX_CFLAGS` | freestanding flags + nxrender, NxUI, libnxwindow, desktop, kernel core and REOX runtime include paths |
 | `REOX_LDLIBS` | `librx_neolyx.a` + `libnxrender_neolyx.a` |
-| `REOX_SUPPORT_OBJS` | crt0, memory shims, NxUI, `libc_stubs.o`, `nx_malloc.o`, built under `build/` |
+| `REOX_SUPPORT_OBJS` | crt0, memory shims, NxUI, libnxwindow, `libc_stubs.o`, `nx_malloc.o`, built under `build/` |
 | `REOX_RUNTIME_LIB` | expected path of `librx_neolyx.a`; override on the command line |
 | `REOX_RUNTIME_AVAILABLE` | `1` when that archive exists, else `0` |
 | `NEOLYX_USER_LDFLAGS` | `-nostdlib -T desktop/user.ld` |
@@ -130,11 +130,25 @@ extern fn nxui_button_set_action(button: int, act: int) -> int;
 extern fn nxui_run(window: int) -> int;
 ```
 
-`nxui_run` installs the NeolyxOS platform host (framebuffer via
-`SYS_FB_MAP`, input via `SYS_INPUT_POLL`, flip, sleep) into the FFI bridge
-and runs the window until `nxui_quit()` or the window close control.  When
-the same binary is linked into the desktop shell and the shell has called
-`reox_ffi_init()`, `nxui_run` only registers the window and returns.
+`nxui_run` connects to the desktop's window server through libnxwindow
+(`nxwindow/nxwindow.h`), opens the NxUI window as a real window with the
+server's title bar and close button, and runs it until `nxui_quit()` or the
+close button; it then closes the connection.  The window is the size given to
+`nxui_window_create`; the app draws into the window's shared buffer and the
+loop sleeps until an event arrives, so an idle app costs nothing.  Clicks
+and pointer motion arrive in window coordinates.  There is no
+full-screen framebuffer fallback: if the window server is not running,
+`nxui_run` logs the error and returns.  When the same binary is linked into
+the desktop shell and the shell has called `reox_ffi_init()`, `nxui_run`
+only registers the window and returns.
+
+```reox
+extern fn nxui_window_set_resizable(window: int, on: bool) -> int;
+```
+
+lets the user tile and resize the window (before `nxui_run`; default off).
+On a resize the layout is redone at the new size; the app needs no code
+for it.  Titles longer than 63 bytes are cut at a UTF-8 boundary (logged).
 
 Formatting helpers (`nxui_format_number`, `nxui_format_input`,
 `nxui_concat`) predate REOX string operations; new code can use string
@@ -185,4 +199,5 @@ returns the number of bridge errors raised during the run.
 | `librx_neolyx.a` | built by `make reox-runtime` (REOX `reox-lang/runtime`, `make neolyx`); linked by every app |
 | `reoxc --target neolyx` | done in REOX; the wrapper detects it and calls reoxc natively |
 | Calculator host engine test | `make -C desktop/apps/Calculator.app test` (needs `librx_linux.a`: `make -C $REOX_ROOT/reox-lang/runtime linux`) |
-| Launch from the desktop in QEMU | blocked: the desktop shell has no process launcher yet (`desktop/shell/app_drawer.c`, `app_drawer_launch_app` is a TODO) and the boot image carries only the kernel with the desktop ELF embedded |
+| NxUI app in its own window | done: `tests/userland/nxuitest` (NxUI C API, no reoxc needed) runs as a window in QEMU; clicks, keys, resize and close work |
+| Launch from the desktop in QEMU | the app drawer launches programs in `/apps`; Calculator.app is not on the image yet (it needs reoxc to build) |
