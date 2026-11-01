@@ -30,6 +30,8 @@
 
 /* ============ Syscall Numbers ============ */
 /* STABLE: Once published, these numbers NEVER change */
+/* Allocation: docs/kernel/syscall-registry.md is the only place numbers are
+ * allocated. Add defines only inside your stream's block, in number order. */
 
 /* Process Control */
 #define SYS_EXIT        1   /* void sys_exit(int code) */
@@ -44,12 +46,15 @@
 
 /* Memory Management */
 #define SYS_BRK         10  /* void* sys_brk(void* addr) */
+/* --- S3: Kernel process, file and terminal (11-12) --- */
 #define SYS_MMAP        11  /* void* sys_mmap(void* addr, size_t len, int prot, int flags) */
 #define SYS_MUNMAP      12  /* int sys_munmap(void* addr, size_t len) */
 #define SYS_SPAWN       13  /* int32_t sys_spawn(const char* path, char** argv, uint32_t flags) */
 
 /* sys_spawn flags */
 #define SPAWN_WAITABLE  0x1 /* Keep the child for sys_wait(); default is detached */
+
+/* --- S3: Kernel process, file and terminal (14-19: dup, dup2, pipe, spawn_ex) --- */
 
 /* File I/O (VFS-backed) */
 #define SYS_OPEN        20  /* int sys_open(const char* path, int flags, int mode) */
@@ -58,6 +63,7 @@
 #define SYS_WRITE       23  /* ssize_t sys_write(int fd, const void* buf, size_t count) */
 #define SYS_SEEK        24  /* off_t sys_seek(int fd, off_t offset, int whence) */
 #define SYS_STAT        25  /* int sys_stat(const char* path, struct stat* st) */
+/* --- S3: Kernel process, file and terminal (26-29: fstat, unlink, ftruncate) --- */
 #define SYS_FSTAT       26  /* int sys_fstat(int fd, struct stat* st) */
 
 /* Directory Operations */
@@ -67,6 +73,8 @@
 #define SYS_CHDIR       33  /* int sys_chdir(const char* path) */
 #define SYS_GETCWD      34  /* int sys_getcwd(char* buf, size_t size) */
 #define SYS_RENAME      35  /* int sys_rename(const char* old_path, const char* new_path) */
+
+/* --- S3: Kernel process, file and terminal (36-39: fsync, statfs) --- */
 
 /* Networking / Sockets */
 #define SYS_SOCKET      40  /* int sys_socket(int type, int protocol) */
@@ -78,9 +86,16 @@
 #define SYS_RECV        46  /* ssize_t sys_recv(int fd, void* buf, size_t len) */
 #define SYS_CLOSESOCK   47  /* int sys_closesock(int fd) */
 
+/* --- N: Networking (48-49: socket options or poll) --- */
+
 /* System Information */
 #define SYS_INFO        50  /* int sys_info(struct sysinfo* info) */
+/* --- S3: Kernel process, file and terminal (51-56: uname, proc.list, sys.stats, proc.kill, proc.setprio) --- */
 #define SYS_UNAME       51  /* int sys_uname(struct utsname* buf) */
+
+/* --- S6: Crypto, TLS and HTTP (57: random.get) --- */
+
+/* --- S3: Kernel process, file and terminal (58-69: spares, PTY 60-67) --- */
 
 /* Pseudo-Terminal (PTY) for Terminal.app */
 #define SYS_PTY_OPEN    60  /* int sys_pty_open(int* master_fd, int* slave_fd) */
@@ -92,9 +107,14 @@
 #define SYS_SPAWN_SHELL 66  /* int sys_spawn_shell(int pty_slave_fd, const char* shell) */
 #define SYS_PTY_POLL    67  /* int sys_pty_poll(int fd, int timeout_ms) */
 
+/* 70-89: unallocated (threads and later work, not in the beta) */
+
+/* --- S3: Kernel process, file and terminal (90-99: process capabilities) --- */
+
 /* System Control (requires SYS privilege) */
 #define SYS_REBOOT      100 /* int sys_reboot(int cmd) - SYS ONLY */
 #define SYS_SHUTDOWN    101 /* int sys_shutdown(void) - SYS ONLY */
+/* --- S9: Platform and boot (102-109: mount, umount, power, boot volume) --- */
 #define SYS_MOUNT       102 /* int sys_mount(...) - SYS ONLY */
 #define SYS_UMOUNT      103 /* int sys_umount(const char* path) - SYS ONLY */
 
@@ -119,11 +139,15 @@
 #define SYS_INPUT_POLL          123 /* int sys_input_poll(input_event_t* events, int max) */
 #define SYS_INPUT_REGISTER      124 /* int sys_input_register(uint32_t types) */
 
+/* --- S1: Window server, input and display security (125-126) --- */
+
 /* ============ Debug Syscalls ============ */
 #define SYS_DEBUG_PRINT         127 /* void sys_debug_print(const char* msg) - Print to serial */
 
 /* ============ Cursor Syscalls (kernel cursor compositor) ============ */
 #define SYS_CURSOR_SET          128 /* int sys_cursor_set(int x, int y, int visible) */
+
+/* --- S1: Window server, input and display security (129) --- */
 
 /* ============ RTC Syscalls (Real-Time Clock) ============ */
 #define SYS_RTC_GET             130 /* int sys_rtc_get(rtc_time_t* time) - Get real time */
@@ -158,8 +182,14 @@
 #define SYS_MEM_PRESSURE_READ   155 /* int sys_mem_pressure_read(nx_handle_t h) */
 #define SYS_MEM_STATS           156 /* int sys_mem_stats(nx_mem_stats_t *buf, uint32_t size) */
 
+/* --- S1: Window server, input and display security (157-167) --- */
+
+/* --- S9: Platform and boot (168-175: display backend, GPU) --- */
+
+/* 176-255: unallocated; ask S10 (docs/kernel/syscall-registry.md) */
+
 /* Maximum syscall number */
-#define SYS_MAX         160
+#define SYS_MAX         256 /* must equal NX_SYSCALL_MAX in core/nx_abi.h */
 
 /* ============ Error Codes ============ */
 /* POSIX-compatible */
