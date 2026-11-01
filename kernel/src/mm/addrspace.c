@@ -24,6 +24,7 @@
 #include "mm/addrspace.h"
 #include "mm/pmm.h"
 #include "mm/kheap.h"
+#include "core/nx_handle.h"     /* nx_mem_reclaim_for_system (K2 part 3) */
 
 extern void serial_puts(const char *s);
 extern void serial_putc(char c);
@@ -139,6 +140,12 @@ static const char *as_class_name(uint32_t cls) {
 
 static int as_reserve_allows(uint32_t cls) {
     if (pmm_user_alloc_allowed(1, cls)) return 1;
+    /* K2 part 3: the desktop at its floor ends the largest background app
+     * (at most one every 2 s) and tries again */
+    if (cls == AS_CLASS_SYSTEM && nx_mem_reclaim_for_system() &&
+        pmm_user_alloc_allowed(1, cls)) {
+        return 1;
+    }
     as_refusals++;
     pmm_stats_t st;
     pmm_get_stats(&st);

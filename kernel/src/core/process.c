@@ -900,6 +900,18 @@ int process_kill(uint32_t pid, int signal) {
     return 0;
 }
 
+int process_end(process_t *proc, int exit_code) {
+    if (!proc || proc == idle_process || proc == current_process) return -1;
+    if (proc->state == PROC_STATE_ZOMBIE || proc->state == PROC_STATE_DEAD) return -1;
+    if (proc->flags & (PROC_FLAG_SYSTEM | PROC_FLAG_KERNEL)) return -1;
+    if (!(proc->flags & PROC_FLAG_USER)) return -1;
+
+    uint64_t flags = irq_save();
+    terminate(proc, exit_code);
+    irq_restore(flags);
+    return 0;
+}
+
 /* ============ Blocking ============ */
 
 void process_yield(void) {
@@ -1035,6 +1047,9 @@ void scheduler_tick_irq(int from_user) {
 
     wake_sleepers();
     nx_mem_tick();      /* memory pressure change: log, wake waiters (K1) */
+    /* K2 part 3: the kernel took memory below R/2. Only when the tick
+     * interrupted user mode, so no kernel work is cut in half. */
+    if (from_user) nx_mem_reclaim_tick();
 
     if (current_process == idle_process) {
         if (sq_any(&run_queues)) schedule();

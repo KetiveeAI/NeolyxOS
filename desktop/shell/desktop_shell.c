@@ -3191,7 +3191,61 @@ static void desktop_menu_action(int menu, int action) {
     }
 }
 
+#ifdef DESKTOP_MEM_SELFTEST
+/*
+ * Test build only (EXTRA_CFLAGS=-DDESKTOP_MEM_SELFTEST): F12 makes the
+ * desktop take up to DESKTOP_MEM_SELFTEST_MB of heap, 1 MiB at a time,
+ * touching every page, then give it all back. Used in QEMU to run the
+ * desktop short of memory and check K2 part 3 (the kernel ends the largest
+ * background app). Never built into release images.
+ */
+#define DESKTOP_MEM_SELFTEST_MB 32
+
+static void dmst_log(const char *what, uint64_t v, const char *tail) {
+    char buf[128];
+    int pos = 0;
+    while (*what && pos < 100) buf[pos++] = *what++;
+    char d[21];
+    int n = 0;
+    do { d[n++] = (char)('0' + v % 10); v /= 10; } while (v && n < 20);
+    while (n > 0 && pos < 120) buf[pos++] = d[--n];
+    while (*tail && pos < 126) buf[pos++] = *tail++;
+    buf[pos] = '\0';
+    nx_debug_print(buf);
+}
+
+static void desktop_mem_selftest(void) {
+    void *chunks[DESKTOP_MEM_SELFTEST_MB];
+    nx_mem_stats_t st;
+    st.free_bytes = 0;
+    int got = 0;
+    if (nx_mem_stats(&st) == 0) dmst_log("[DESKTOP] mem selftest: start, free MB ", st.free_bytes >> 20, "\n");
+    for (int i = 0; i < DESKTOP_MEM_SELFTEST_MB; i++) {
+        uint8_t *p = (uint8_t *)nx_malloc(1024 * 1024);
+        if (!p) break;
+        for (uint32_t off = 0; off < 1024 * 1024; off += 4096) p[off] = (uint8_t)(i + 1);
+        chunks[got++] = p;
+    }
+    int bad = 0;
+    for (int i = 0; i < got; i++) {
+        const uint8_t *p = (const uint8_t *)chunks[i];
+        for (uint32_t off = 0; off < 1024 * 1024; off += 4096) if (p[off] != (uint8_t)(i + 1)) bad = 1;
+    }
+    if (nx_mem_stats(&st) == 0) dmst_log("[DESKTOP] mem selftest: holding MB ", (uint64_t)got, "");
+    dmst_log(", free MB ", st.free_bytes >> 20, bad ? ", FAIL: content mismatch\n" : "\n");
+    for (int i = got - 1; i >= 0; i--) nx_mfree(chunks[i]);
+    uint64_t back = nx_malloc_trim();
+    dmst_log("[DESKTOP] mem selftest: released, trim returned KB ", back / 1024, "\n");
+}
+#endif
+
 void desktop_handle_key(uint8_t scancode, uint8_t pressed) {
+#ifdef DESKTOP_MEM_SELFTEST
+    if (scancode == 0x58 && pressed) {         /* F12 */
+        desktop_mem_selftest();
+        return;
+    }
+#endif
     /* First-run Setup Assistant owns all input while active */
     if (setup_assistant_active()) {
         setup_assistant_handle_key(scancode, pressed, g_key_ascii);

@@ -8,7 +8,7 @@ K2 is what the kernel and the app libraries do when memory gets short. It builds
 | 2 | Background apps hit the memory limit first | none |
 | 3 | When even the desktop is short, the largest background app is ended | new exit code constant only |
 
-Parts 1 and 2 are in the tree.
+All three parts are in the tree.
 
 ## Part 1: freed memory goes back to the system
 
@@ -87,4 +87,45 @@ On the 2 GiB QEMU setup R is 35 MB, so background apps stop at 53 MB free. The a
 ```
 
   The background children were refused at the 1.5R line. The foreground child still got 15 MB below it, and was refused at R. The nxuitest window kept working during the run. Regressions: fdtest, shmtest, ipc_test and classtest print `RESULT: PASS`. wintest: 39 PASS.
+
+## Part 3: reclaim when even the desktop is short
+
+The owner chose option A: when the desktop or the kernel would take free memory below R/2, the kernel ends the BACKGROUND app holding the most private pages.
+
+- **Who can be ended.** Only live BACKGROUND apps that are not running at that moment. FOREGROUND apps, the desktop and kernel threads are never chosen. The app with the most private pages goes first. On a tie, the lowest PID goes first, so the choice is deterministic.
+- **How often.** At most one app every 2 s (`NX_RECLAIM_INTERVAL_MS`), so one spike cannot wipe out every app. The rule is the same whatever caused the shortage.
+- **When it runs.**
+  - *Desktop.* If a desktop mapping is refused at its floor (R/2), the kernel ends one app right there, inside the desktop's own system call, and tries the mapping again. If that frees enough, the desktop's request succeeds.
+  - *Kernel.* If the kernel itself used memory below R/2, the timer tick ends one app. This runs only when the tick interrupted user mode, so no kernel work is cut in half.
+- **What the app sees.** Nothing: it is ended like a killed process. Its files are closed and its handles, shared memory and address space are released. Its windows close because its window server connection goes away. Its parent sees exit status `NX_EXIT_RECLAIMED` (251, in `nx_mem.h`).
+- **Log.**
+
+```
+[MEM] reclaimed PID 31 (memstress): 64 MB, free was 17 MB (desktop short)
+```
+
+  When memory is short but no background app can be ended, this is logged instead, at most once every 2 s:
+  `[MEM] desktop short of memory (17 MB free) and no background app to reclaim`.
+- **Code.** The policy is in `kernel/include/core/mem_reclaim.h`. The process scan and logging are in `kernel/src/core/nx_mem.c`, and ending the process is `process_end()` in `process.c`. The hooks are in `as_reserve_allows()` (`addrspace.c`) and `scheduler_tick_irq()`.
+- **ABI.** The only addition is the `NX_EXIT_RECLAIMED` constant. There is no new call and no layout change, so the ABI version stays 1.3.
+- **Not in part 3.** Option C, warning an app and giving it time to save before ending it, needs a "please exit" signal. That belongs with Task Manager's `proc.kill` TERM work.
+
+### Tests
+
+- **Host:** `tests/host/mem_reclaim_test.c` (21 checks). It covers the choice (largest eligible app, never an ineligible one even if larger, ties to the lowest PID), the 2 s limit (to the millisecond, and when the clock goes back), and 20 simulated seconds of shortage ending at most one app per interval, largest first. If ties go to the last candidate instead, a check fails.
+- **QEMU.** The desktop cannot be made short on demand in a normal build, so a test build adds an F12 key. It is compiled only with `EXTRA_CFLAGS=-DDESKTOP_MEM_SELFTEST ./build_all.sh` and never in release images. F12 makes the desktop take up to 32 MB, touching every page, and then free it.
+  1. Open nxuitest, then start memstress. Wait for its class run line `foreground child PID n: ... refused at 35 MB free`. Memory is now at R, with about 29 background apps holding 64 MB each.
+  2. Press F12. Result:
+
+```
+[DESKTOP] mem selftest: start, free MB 35
+[MEM] reclaimed PID 31 (memstress): 64 MB, free was 17 MB (desktop short)
+[DESKTOP] mem selftest: holding MB 30, free MB 70
+[MEMSTRESS] class run: PID 31 (background) was reclaimed by the kernel
+[MEMSTRESS] class run: 1 background app(s) reclaimed
+[MEMSTRESS] PASS
+```
+
+  The desktop took 18 MB down to R/2. The kernel then ended one background app and the desktop got 12 MB more, stopping only at its own 64 MB heap limit. Only one app was ended, and nxuitest (FOREGROUND) kept working.
+  - **Release build.** No reclaim happens in the normal memstress run, because the desktop never runs short. F12 does nothing. memstress, fdtest, shmtest, ipc_test and classtest print PASS. wintest: 39 PASS.
 

@@ -35,6 +35,13 @@
  * MS_FREE_CODE + the free MB they saw when refused (1 heap limit, 2 bad
  * memory, 3 could not change class).
  *
+ * K2 part 3: a background child the kernel ends to free memory exits with
+ * NX_EXIT_RECLAIMED; the class run counts these and reports them. It is
+ * never a failure for a background child, and always one for anyone else.
+ * (To make the desktop run short during the class run, build it with
+ * EXTRA_CFLAGS=-DDESKTOP_MEM_SELFTEST and press F12: see
+ * docs/kernel/memory-policy.md.)
+ *
  * Copyright (c) 2025 KetiveeAI
  * SPDX-License-Identifier: MIT
  */
@@ -346,12 +353,21 @@ static int check_classes(void) {
         sc1(SYS_SLEEP, MS_CLASS_GAP_MS);
     }
 
-    int bg_refused = 0, bg_wrong = 0, fg_ok = 0;
+    int bg_refused = 0, bg_wrong = 0, fg_ok = 0, reclaimed = 0;
     uint64_t bg_min = ~0ULL, bg_max = 0, fg_mb = 0;
     for (int i = 0; i < n; i++) {
         int status = -1;
         int is_fg = (i == nbg);
         if (sc2(SYS_WAIT, kids[i], (int64_t)&status) < 0) { failed++; continue; }
+        if (status == NX_EXIT_RECLAIMED) {
+            /* Ended by the kernel to free memory: only background apps may be */
+            out_str("[MEMSTRESS] class run: PID "); out_dec(kids[i]);
+            out_str(is_fg ? " (foreground) was reclaimed (FAIL)\n" : " (background) was reclaimed by the kernel\n");
+            flush();
+            if (is_fg) failed++;
+            else reclaimed++;
+            continue;
+        }
         if (status >= MS_FREE_CODE) {
             uint64_t mb = (uint64_t)(status - MS_FREE_CODE);
             if (is_fg) {
@@ -369,6 +385,11 @@ static int check_classes(void) {
     }
 
     int ok = failed == 0 && bg_refused > 0 && bg_wrong == 0 && fg_ok;
+    if (reclaimed) {
+        out_str("[MEMSTRESS] class run: "); out_dec(reclaimed);
+        out_str(" background app(s) reclaimed\n");
+        flush();
+    }
     out_str("[MEMSTRESS] class run: "); out_dec(bg_refused);
     out_str(" background refused at ");
     if (bg_refused) { out_dec((int64_t)bg_min); out_str("-"); out_dec((int64_t)bg_max); }

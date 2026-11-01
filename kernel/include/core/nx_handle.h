@@ -156,6 +156,16 @@ uint32_t nx_mem_pressure_signals(nx_object_t *obj);
  *  obj.wait waiters. Cheap when nothing changed. */
 void nx_mem_tick(void);
 
+/** K2 part 3: the desktop's mapping was refused at its floor (R/2). Ends
+ *  the largest BACKGROUND app if one may be ended now. Syscall context.
+ *  @return 1 if an app was ended (retry the mapping), 0 otherwise */
+int nx_mem_reclaim_for_system(void);
+
+/** K2 part 3 timer hook: when free memory is below R/2 (the kernel used
+ *  it), end the largest BACKGROUND app. Call only when the tick
+ *  interrupted user mode. */
+void nx_mem_reclaim_tick(void);
+
 /* ============ Channels and ports (nx_chan.c) ============ */
 
 /** Stop charging proc for messages it sent that are still queued. */
