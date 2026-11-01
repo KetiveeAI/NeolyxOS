@@ -19,27 +19,48 @@
             <h1>🚀 NeolyxOS Documentation</h1>
             <p class="subtitle">Custom 64-bit Operating System - Developer Reference</p>
             <div class="quick-links">
-                <a href="project_status.html">📊 Project Status</a>
-                <a href="phases.html">🚀 Phases</a>
+                <a href="tracker.html">📈 Beta Tracker</a>
+                <a href="STATUS.md">📊 Status</a>
                 <a href="reox/index.html">📝 REOX Language</a>
                 <a href="architecture/overview.html">📐 Architecture</a>
                 <a href="drivers/gpu_3d.html">🎮 GPU & 3D</a>
                 <a href="drivers/kdrv.html">🔧 Drivers</a>
-                <a href="kernel/syscalls.html">📞 Syscalls</a>
+                <a href="tracker.html#syscalls">📞 Syscalls</a>
                 <a href="security/security_hardening.html">🔒 Security</a>
             </div>
         </header>
 
-        <h3 class="section-title">📊 Project Status</h3>
+        <h3 class="section-title">📈 Public Beta: Live Tracking</h3>
         <div class="grid">
             <div class="card">
-                <h2><a href="project_status.html">Complete Project Audit</a> <span class="status complete">New</span>
-                </h2>
-                <p>What's implemented, partial, stub, or missing</p>
+                <h2><a href="tracker.html">Beta Tracker</a> <span class="status complete">Generated</span></h2>
+                <p>Streams, what is missing, milestones, system status, every syscall and ABI flag, recently merged PRs. Rebuilt from the repo by <code>scripts/gen_tracker.py</code>.</p>
             </div>
             <div class="card">
-                <h2><a href="boot_roadmap.html">Boot Roadmap</a> <span class="status complete">New</span></h2>
-                <p>8-phase plan to boot NeolyxOS with GUI</p>
+                <h2><a href="STATUS.md">Status (source of truth)</a></h2>
+                <p>What works per area, checked against the code: Real, Partial, Mock, Missing</p>
+            </div>
+            <div class="card">
+                <h2><a href="beta/workstreams.md">Workstreams</a></h2>
+                <p>Who is doing what for the beta; each stream updates its own row</p>
+            </div>
+            <div class="card">
+                <h2><a href="kernel/syscall-registry.md">Syscall Registry</a></h2>
+                <p>The only place syscall numbers and ABI flags are allocated</p>
+            </div>
+        </div>
+
+        <h3 class="section-title">📊 Project Status (historical)</h3>
+        <p style="color:#8b949e">These pages predate the beta plan and are kept for history. Use the Beta Tracker above for current state.</p>
+        <div class="grid">
+            <div class="card">
+                <h2><a href="project_status.html">Complete Project Audit</a> <span class="status">Historical</span>
+                </h2>
+                <p>Older audit; superseded by STATUS.md</p>
+            </div>
+            <div class="card">
+                <h2><a href="boot_roadmap.html">Boot Roadmap</a> <span class="status">Historical</span></h2>
+                <p>Older 8-phase plan to boot NeolyxOS with GUI</p>
             </div>
             <div class="card">
                 <h2><a href="stability/nxgame_bridge.html">NXGame Bridge</a> <span class="status complete">Phase
@@ -52,9 +73,8 @@
                 <p>Protect system files from modification</p>
             </div>
             <div class="card">
-                <h2><a href="kernel/syscalls.html">Syscalls Reference</a> <span class="status complete">24
-                        Syscalls</span></h2>
-                <p>Complete syscall list with NXGame Bridge</p>
+                <h2><a href="tracker.html#syscalls">Syscalls Reference</a> <span class="status complete">Generated</span></h2>
+                <p>Every registered and declared syscall, read from syscall_table.def</p>
             </div>
         </div>
 

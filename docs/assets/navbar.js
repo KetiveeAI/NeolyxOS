@@ -20,7 +20,9 @@
     // Documentation search index
     // Documentation search index
     const docs = [
-        { title: "Project Status", desc: "What's implemented, partial, stub, or missing", url: base + "project_status.html" },
+        { title: "Beta Tracker", desc: "Streams, missing work, status, syscalls, ABI flags, merged PRs", url: base + "tracker.html" },
+        { title: "Syscall Registry", desc: "Syscall number and ABI flag allocation", url: base + "kernel/syscall-registry.md" },
+        { title: "Project Status (historical)", desc: "What's implemented, partial, stub, or missing", url: base + "project_status.html" },
         { title: "Boot Roadmap", desc: "8-phase plan to boot NeolyxOS with GUI", url: base + "boot_roadmap.html" },
         { title: "NXGame Bridge", desc: "Direct hardware access for games/creative apps", url: base + "stability/nxgame_bridge.html" },
         { title: "System Integrity Protection", desc: "Protect system files from modification", url: base + "security/sip.html" },
@@ -61,6 +63,7 @@
         nav.innerHTML = `
             <a href="${base}index.html" class="nx-navbar-brand">🚀 NeolyxOS Docs</a>
             <ul class="nx-navbar-links">
+                <li><a href="${base}tracker.html">Beta Tracker</a></li>
                 <li><a href="${base}architecture/overview.html">Architecture</a></li>
                 <li><a href="${base}kernel/syscalls.html">Kernel</a></li>
                 <li><a href="${base}drivers/kdrv.html">Drivers</a></li>
