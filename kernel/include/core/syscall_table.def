@@ -94,6 +94,10 @@ NX_SYSCALL(130, "rtc.get",  sys_rtc_get_impl,  1, PRIV_USER, 0)
 NX_SYSCALL(131, "rtc.set",  sys_rtc_set_impl,  1, PRIV_SYSTEM, NX_FLAG_AUDIT)
 NX_SYSCALL(132, "rtc.unix", sys_rtc_unix_impl, 0, PRIV_USER, 0)
 
+/* --- N: Networking (133-139) --- */
+/* Network status (133) - ABI v1.4, core/nx_net.h. Read-only. */
+NX_SYSCALL(133, "net.if_list", sys_net_if_list_impl, 3, PRIV_USER, 0)
+
 /* Handles, Shared Memory and IPC (140-147, 149-152) - ABI v1.1, core/nx_ipc.h
  * 148 fb.flip_rects - ABI v1.2, core/nx_fb.h. Privilege (system processes
  * only) is checked in the handler, which logs refusals rate-limited. */
@@ -118,5 +122,3 @@ NX_SYSCALL(154, "mem.pressure_open", sys_mem_pressure_open_impl, 1, PRIV_USER, 0
 NX_SYSCALL(155, "mem.pressure_read", sys_mem_pressure_read_impl, 1, PRIV_USER, 0)
 NX_SYSCALL(156, "mem.stats",         sys_mem_stats_impl,         2, PRIV_USER, 0)
 
-/* Network status (157) - ABI v1.4, core/nx_net.h. Read-only. */
-NX_SYSCALL(157, "net.if_list",       sys_net_if_list_impl,       3, PRIV_USER, 0)

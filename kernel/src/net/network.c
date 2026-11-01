@@ -831,7 +831,7 @@ int network_service_start(void) {
     return netd_pid;
 }
 
-/* ============ net.if_list (syscall 157, ABI 1.4) ============ */
+/* ============ net.if_list (syscall 133, ABI 1.4) ============ */
 
 #define NET_IF_LIST_MAX_CAP     64u
 #define NET_IF_LIST_MAX_ELEM    1024u

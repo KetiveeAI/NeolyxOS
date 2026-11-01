@@ -43,8 +43,8 @@ syscall that exposes this state:
 
 ## Proposed syscalls
 
-> **Status:** `net.if_list` is implemented as syscall **157** (ABI 1.4,
-> capability flag `NX_ABI_FLAG_NET`). The final signature differs from the
+> **Status:** `net.if_list` is implemented as syscall **133** (ABI 1.4,
+> capability flag `NX_ABI_FLAG_NET`, 0x0020). The final signature differs from the
 > draft below: it is `net.if_list(buf, cap, elem_size)` and returns the total
 > number of interfaces. See `kernel/include/core/nx_net.h` and
 > `docs/network/wired-networking.md`. The other calls are still proposals.
