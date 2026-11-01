@@ -246,30 +246,57 @@ static int ahci_issue_command(int port_num, uint64_t lba, uint32_t count,
 int ahci_init(void) {
     serial_puts("[AHCI] Scanning for controllers...\n");
     
-    /* Scan PCI for AHCI controller (class 01, subclass 06) */
+    /* Scan PCI for an AHCI controller (class 01, subclass 06, prog-if 01).
+     * Every function of a multi-function device is checked: chipset SATA
+     * controllers are usually not function 0 (q35/ICH9: 00:1f.2). */
     for (int bus = 0; bus < 256; bus++) {
         for (int slot = 0; slot < 32; slot++) {
-            uint32_t vendor = pci_read(bus, slot, 0, 0);
-            if ((vendor & 0xFFFF) == 0xFFFF) continue;
-            
-            uint32_t class_info = pci_read(bus, slot, 0, 8);
-            uint8_t base_class = (class_info >> 24) & 0xFF;
-            uint8_t sub_class = (class_info >> 16) & 0xFF;
-            
-            if (base_class == 0x01 && sub_class == 0x06) {
-                /* Found AHCI controller */
-                uint32_t bar5 = pci_read(bus, slot, 0, 0x24);
-                ahci_base = (hba_mem_t *)(uint64_t)(bar5 & ~0xF);
-                
+            uint32_t vendor0 = pci_read((uint8_t)bus, (uint8_t)slot, 0, 0);
+            if ((vendor0 & 0xFFFF) == 0xFFFF) continue;
+            uint8_t header = (uint8_t)((pci_read((uint8_t)bus, (uint8_t)slot, 0, 0x0C) >> 16) & 0xFF);
+            int nfunc = (header & 0x80) ? 8 : 1;
+
+            for (int func = 0; func < nfunc; func++) {
+                uint8_t b = (uint8_t)bus, d = (uint8_t)slot, f = (uint8_t)func;
+                uint32_t vendor = pci_read(b, d, f, 0);
+                if ((vendor & 0xFFFF) == 0xFFFF) continue;
+
+                uint32_t class_info = pci_read(b, d, f, 8);
+                uint8_t base_class = (class_info >> 24) & 0xFF;
+                uint8_t sub_class = (class_info >> 16) & 0xFF;
+                uint8_t prog_if = (class_info >> 8) & 0xFF;
+                if (base_class != 0x01 || sub_class != 0x06 || prog_if != 0x01) continue;
+
+                /* ABAR (BAR5): a memory BAR the kernel identity map covers */
+                uint32_t bar5 = pci_read(b, d, f, 0x24);
+                uint64_t abar = (uint64_t)(bar5 & ~0xFu);
+                if ((bar5 & 0x1) || abar == 0) {
+                    serial_puts("[AHCI] WARNING: controller with no usable ABAR, skipping\n");
+                    continue;
+                }
+                if (((bar5 >> 1) & 0x3) == 0x2 && pci_read(b, d, f, 0x28) != 0) {
+                    serial_puts("[AHCI] WARNING: ABAR above 4 GB, skipping controller\n");
+                    continue;
+                }
+                ahci_base = (hba_mem_t *)abar;
+
                 serial_puts("[AHCI] Found controller at ");
-                serial_hex((uint32_t)(uint64_t)ahci_base);
-                serial_puts("\n");
-                
-                /* Enable bus mastering */
-                uint32_t cmd = pci_read(bus, slot, 0, 4);
+                serial_hex((uint32_t)abar);
+                serial_puts(" (PCI ");
+                serial_putc("0123456789ABCDEF"[(b >> 4) & 0xF]);
+                serial_putc("0123456789ABCDEF"[b & 0xF]);
+                serial_putc(':');
+                serial_putc("0123456789ABCDEF"[(d >> 4) & 0xF]);
+                serial_putc("0123456789ABCDEF"[d & 0xF]);
+                serial_putc('.');
+                serial_putc((char)('0' + f));
+                serial_puts(")\n");
+
+                /* Enable memory decoding and bus mastering */
+                uint32_t cmd = pci_read(b, d, f, 4);
                 cmd |= (1 << 2) | (1 << 1);
-                pci_write(bus, slot, 0, 4, cmd);
-                
+                pci_write(b, d, f, 4, cmd);
+
                 goto found;
             }
         }
