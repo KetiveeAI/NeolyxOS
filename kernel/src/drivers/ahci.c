@@ -7,6 +7,7 @@
  */
 
 #include "drivers/ahci.h"
+#include "storage/write_guard.h"
 #include "mm/kheap.h"
 #include "mm/pmm.h"
 
@@ -176,6 +177,7 @@ static int ahci_find_slot(hba_port_t *port) {
 
 static int ahci_issue_command(int port_num, uint64_t lba, uint32_t count, 
                               void *buffer, int write) {
+    if (write && !storage_write_allowed("AHCI", lba, count)) return -1;
     hba_port_t *port = ahci_ports[port_num];
     
     port->is = (uint32_t)-1;  /* Clear interrupts */

@@ -20,6 +20,8 @@
 #include "include/utils/nucleus.h"
 #include "include/ui/nxfont.h"
 #include "include/video/splash.h"
+#include "include/video/bootlog.h"
+#include "include/storage/write_guard.h"
 #include "include/ui/vector_icons_v2.h"
 #include "fs/vfs.h"
 #include "fs/nxfs.h"
@@ -89,6 +91,7 @@ static void serial_init(void) {
 }
 
 static void serial_putc(char c) {
+    bootlog_putc(c);   /* kept for the on-screen boot log and crash screen */
     while ((inb(COM1_PORT + 5) & 0x20) == 0);
     outb(COM1_PORT, c);
 }
@@ -513,7 +516,16 @@ static void mouse_cmd(uint8_t cmd) {
     inb(MOUSE_DATA_PORT); /* ACK */
 }
 
+extern int ps2_controller_present(void);   /* src/drivers/input/mouse.c */
+
 static void mouse_init(void) {
+    /* No 8042 (status reads 0xFF): its ports would return garbage packets */
+    if (!ps2_controller_present()) {
+        mouse_initialized = 0;
+        serial_puts("[BOOT] No PS/2 controller: boot manager mouse disabled\n");
+        return;
+    }
+    
     /* Enable auxiliary device */
     mouse_wait_write();
     outb(MOUSE_CMD_PORT, 0xA8);
@@ -576,6 +588,7 @@ static void cursor_draw(void) {
 }
 
 static int mouse_poll(int8_t *dx, int8_t *dy, uint8_t *buttons) {
+    if (!mouse_initialized) return 0;
     /* Check if mouse data available (bit 0 = data ready, bit 5 = from mouse) */
     uint8_t status = inb(MOUSE_STATUS_PORT);
     if (!(status & 0x01)) return 0;  /* No data */
@@ -787,6 +800,7 @@ static void draw_boot_manager(int selected, int in_sidebar) {
 
 /* Check for KEYBOARD key (non-blocking) - ignores mouse data */
 static int key_available(void) {
+    if (!ps2_controller_present()) return 0;
     uint8_t status = inb(KEYBOARD_STATUS_PORT);
     /* Bit 0 = data ready, Bit 5 = 1 means from mouse (skip mouse data) */
     return (status & 0x01) && !(status & 0x20);
@@ -1192,6 +1206,55 @@ static void draw_install_progress(void) {
     }
 }
 
+/* ============ Loader Boot Flags ============ */
+
+static void boot_log_hex(uint64_t v) {
+    static const char hex[] = "0123456789ABCDEF";
+    serial_puts("0x");
+    for (int i = 60; i >= 0; i -= 4) serial_putc(hex[(v >> i) & 0xF]);
+}
+
+/*
+ * Apply the loader's boot flags word (NeolyxBootInfo.reserved[4], format in
+ * include/video/bootlog.h): attach the boot log to the framebuffer, start the
+ * live on-screen log if asked, and turn on disk write protection if asked.
+ * A loader that predates the word passes 0, which means no flags.
+ */
+static void boot_apply_loader_flags(const NeolyxBootInfo *info) {
+    uint32_t flags = 0, pixfmt = NEOLYX_PIXFMT_BGRX8;
+    int valid = bootlog_boot_flags(info->reserved[4], &flags, &pixfmt);
+    
+    serial_puts("[BOOT] Framebuffer ");
+    boot_log_hex(info->framebuffer_addr);
+    serial_puts(" pitch ");
+    boot_log_hex(info->framebuffer_pitch);
+    serial_puts(valid ? ", loader flags present\n" : ", no loader flags (older loader)\n");
+    
+    int rc = bootlog_attach_fb(info->framebuffer_addr, info->framebuffer_width,
+                               info->framebuffer_height, info->framebuffer_pitch);
+    if (rc == -2) {
+        serial_puts("[BOOT] WARNING: framebuffer is above 4 GB; the kernel maps only 0-4 GB, "
+                    "so no on-screen log or crash screen\n");
+    } else if (rc != 0) {
+        serial_puts("[BOOT] WARNING: framebuffer unusable for the boot log\n");
+    }
+    
+    if (pixfmt == NEOLYX_PIXFMT_RGBX8) {
+        serial_puts("[BOOT] WARNING: GOP pixel format is RGB; the desktop draws BGR, "
+                    "so red and blue will be swapped\n");
+    } else if (pixfmt != NEOLYX_PIXFMT_BGRX8) {
+        serial_puts("[BOOT] WARNING: GOP pixel format is not 32-bit BGR/RGB; colors may be wrong\n");
+    }
+    
+    if (flags & NEOLYX_BOOT_FLAG_WRITE_PROTECT) {
+        storage_write_guard_enable();
+    }
+    if (flags & NEOLYX_BOOT_FLAG_VERBOSE) {
+        bootlog_set_mirror(1);
+        serial_puts("[BOOT] Verbose boot: log shown on screen until the desktop starts\n");
+    }
+}
+
 void kernel_main(NeolyxBootInfo *boot_info) {
 
     serial_init();
@@ -1240,6 +1303,10 @@ void kernel_main(NeolyxBootInfo *boot_info) {
         boot_fb_pitch = fb_pitch;
         
         serial_puts("[OK] Framebuffer initialized\n");
+        
+        /* Boot log on screen: always for crash screens; live when the
+         * loader asked for verbose diagnostics (hardware smoke tests). */
+        boot_apply_loader_flags(boot_info);
         
         /* Detect VM vs physical hardware for optimization */
         detect_platform();
@@ -1452,10 +1519,13 @@ void kernel_main(NeolyxBootInfo *boot_info) {
             if (is_installed) {
                 serial_puts("[BOOT] NeolyxOS detected - Press F2 for boot menu...\n");
                 
-                /* Boot splash: logo, progress bar and the F2 hint */
-                splash_init((uint64_t)(uintptr_t)framebuffer, fb_width, fb_height, fb_pitch);
-                splash_show();
-                splash_update(0, "Press F2 for boot options");
+                /* Boot splash: logo, progress bar and the F2 hint. In
+                 * verbose mode the boot log owns the screen instead. */
+                if (!bootlog_mirror_active()) {
+                    splash_init((uint64_t)(uintptr_t)framebuffer, fb_width, fb_height, fb_pitch);
+                    splash_show();
+                    splash_update(0, "Press F2 for boot options");
+                }
                 
                 /* Check for F2 key (scancode 0x3C) with ~500ms timeout */
                 for (int i = 0; i < 5000000 && !f2_pressed; i++) {

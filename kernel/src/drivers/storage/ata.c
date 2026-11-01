@@ -1,5 +1,6 @@
 #include <core/kernel.h>
 #include <drivers/ata.h>
+#include <storage/write_guard.h>
 #include "../../include/drivers/drivers.h"
 #include <io/io.h>
 #include <utils/log.h>
@@ -215,6 +216,7 @@ int ata_read_sectors(int drive, uint64_t lba, uint32_t count, void* buffer) {
 // Write sectors to drive (exported for nxstor_kdrv)
 int ata_write_sectors(int drive, uint64_t lba, uint32_t count, const void* buffer) {
     if (!buffer || count == 0 || drive < 0 || drive >= 4) return -1;
+    if (!storage_write_allowed("ATA", lba, count)) return -1;
     
     ata_drive_info_t* info = &ata_data.drives[drive];
     if (!info->is_initialized) return -1;

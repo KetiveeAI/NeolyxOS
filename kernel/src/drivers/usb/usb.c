@@ -117,6 +117,81 @@ static int xhci_reset(xhci_controller_t *ctrl) {
     return -2;
 }
 
+/* ============ Safety Checks ============ */
+
+#define XHCI_XECP_LEGACY       1          /* USB Legacy Support capability ID */
+#define XHCI_LEGSUP_BIOS_OWNED (1u << 16)
+#define XHCI_XECP_MAX          64         /* bound on the capability walk */
+
+/*
+ * BAR0 of an xHCI controller is usually 64-bit. The PCI layer keeps only the
+ * low 32 bits of a BAR, so a BAR placed above 4 GB would be accessed at a
+ * wrong (truncated) address. Read the upper half from config space.
+ */
+static int xhci_bar0_below_4gb(pci_device_t *pci_dev) {
+    uint32_t bar0 = pci_read_config32(pci_dev->bus, pci_dev->device, pci_dev->function, 0x10);
+    if ((bar0 & 0x1) == 0 && ((bar0 >> 1) & 0x3) == 0x2) {
+        uint32_t upper = pci_read_config32(pci_dev->bus, pci_dev->device, pci_dev->function, 0x14);
+        if (upper != 0) return 0;
+    }
+    return 1;
+}
+
+static void xhci_log_dec(uint32_t v) {
+    char buf[11];
+    int i = 10;
+    buf[i] = '\0';
+    if (v == 0) buf[--i] = '0';
+    while (v > 0 && i > 0) { buf[--i] = (char)('0' + v % 10); v /= 10; }
+    serial_puts(&buf[i]);
+}
+
+/*
+ * Decide whether this driver may reset and run the controller. It may not
+ * when:
+ *  - the firmware still owns it (USB Legacy Support "BIOS Owned"): the
+ *    firmware is then typically emulating a PS/2 keyboard from a USB one,
+ *    and resetting the controller would end that emulation. This driver has
+ *    no USB HID support to replace it, so taking the controller would only
+ *    lose input.
+ *  - it needs scratchpad buffers (HCSPARAMS2): the xHCI specification
+ *    requires software to provide them before the controller runs, and this
+ *    driver does not allocate them yet. Running without them is undefined.
+ * Returns 1 if safe, 0 if the controller must be left alone (logged).
+ */
+static int xhci_safe_to_take(xhci_controller_t *ctrl, uint32_t bar_size) {
+    volatile uint8_t *base = (volatile uint8_t *)ctrl->cap_regs;
+    uint32_t hccparams1 = mmio_read32((volatile uint32_t *)(base + XHCI_CAP_HCCPARAMS1));
+    uint32_t xecp = (hccparams1 >> 16) & 0xFFFF;   /* in 32-bit words */
+    
+    uint32_t off = xecp * 4;
+    for (int n = 0; xecp != 0 && n < XHCI_XECP_MAX; n++) {
+        if (bar_size != 0 && off + 4 > bar_size) break;
+        uint32_t cap = mmio_read32((volatile uint32_t *)(base + off));
+        if ((cap & 0xFF) == XHCI_XECP_LEGACY) {
+            if (cap & XHCI_LEGSUP_BIOS_OWNED) {
+                serial_puts("[USB] Firmware owns this xHCI controller (legacy USB keyboard/mouse emulation); "
+                            "left alone until NeolyxOS has USB HID\r\n");
+                return 0;
+            }
+            break;
+        }
+        uint32_t next = (cap >> 8) & 0xFF;
+        if (next == 0) break;
+        off += next * 4;
+    }
+    
+    uint32_t hcsparams2 = mmio_read32((volatile uint32_t *)(base + XHCI_CAP_HCSPARAMS2));
+    uint32_t scratch = (((hcsparams2 >> 21) & 0x1F) << 5) | ((hcsparams2 >> 27) & 0x1F);
+    if (scratch != 0) {
+        serial_puts("[USB] Controller needs ");
+        xhci_log_dec(scratch);
+        serial_puts(" scratchpad buffers, which this driver does not provide yet; left alone\r\n");
+        return 0;
+    }
+    return 1;
+}
+
 /* ============ Controller Initialization ============ */
 
 static int xhci_init_controller(pci_device_t *pci_dev) {
@@ -133,11 +208,26 @@ static int xhci_init_controller(pci_device_t *pci_dev) {
         return -2;
     }
     
+    /*
+     * Safety checks before touching the controller. Each failure leaves the
+     * controller exactly as the firmware set it up (see xhci_safe_to_take).
+     */
+    if (!xhci_bar0_below_4gb(pci_dev)) {
+        serial_puts("[USB] xHCI registers are above 4 GB (not mapped by the kernel): controller left alone\r\n");
+        return -2;
+    }
+    
     ctrl->cap_regs = (volatile uint32_t*)(uintptr_t)pci_dev->bars[0].base;
     
-    /* Enable bus mastering and memory */
-    pci_enable_bus_master(pci_dev);
+    /* Memory decoding is needed to read the capability registers */
     pci_enable_memory(pci_dev);
+    
+    if (!xhci_safe_to_take(ctrl, pci_dev->bars[0].size)) {
+        return -5;
+    }
+    
+    /* Enable bus mastering */
+    pci_enable_bus_master(pci_dev);
     
     serial_puts("[USB] Initializing XHCI controller...\r\n");
     
