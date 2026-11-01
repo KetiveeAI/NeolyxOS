@@ -19,7 +19,8 @@ HOSTCC  ?= gcc
 
 SRCS = src/util.c src/sha256.c src/sha512.c src/hash.c src/hmac.c \
        src/fe25519.c src/x25519.c src/ed25519.c \
-       src/chacha20.c src/poly1305.c src/chachapoly.c src/aes.c src/gcm.c
+       src/chacha20.c src/poly1305.c src/chachapoly.c src/aes.c src/gcm.c \
+       src/bn.c src/ecdsa.c src/rsa.c
 
 STRICT  = -Werror=implicit-function-declaration -Werror=implicit-int \
           -Werror=int-conversion -Werror=incompatible-pointer-types
@@ -35,13 +36,13 @@ OBJS    = $(SRCS:src/%.c=$(OBJDIR)/%.o)
 LIB     = $(OBJDIR)/libnxcrypto.a
 
 TESTDIR = ../../tests/host
-TESTS   = crypto_sha2_test crypto_curve25519_test crypto_aead_test
+TESTS   = crypto_sha2_test crypto_curve25519_test crypto_aead_test crypto_pubkey_test
 
 .PHONY: all test clean vectors ct-test
 
 all: $(LIB)
 
-$(OBJDIR)/%.o: src/%.c include/nxcrypto.h include/nxcrypto/*.h src/internal.h src/fe25519.h
+$(OBJDIR)/%.o: src/%.c include/nxcrypto.h include/nxcrypto/*.h src/internal.h src/fe25519.h src/bn.h
 	@mkdir -p $(OBJDIR)
 	$(CC) $(CFLAGS_TARGET) -c $< -o $@
 
@@ -49,7 +50,7 @@ $(LIB): $(OBJS)
 	$(AR) rcs $@ $^
 	@echo "Built: $@"
 
-$(OBJDIR)/host/%: $(TESTDIR)/%.c $(SRCS) $(TESTDIR)/crypto_vec.h include/nxcrypto.h include/nxcrypto/*.h src/internal.h src/fe25519.h
+$(OBJDIR)/host/%: $(TESTDIR)/%.c $(SRCS) $(TESTDIR)/crypto_vec.h include/nxcrypto.h include/nxcrypto/*.h src/internal.h src/fe25519.h src/bn.h
 	@mkdir -p $(OBJDIR)/host
 	$(HOSTCC) $(CFLAGS_HOST) -o $@ $< $(SRCS)
 

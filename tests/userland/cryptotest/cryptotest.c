@@ -14,8 +14,12 @@
  *   ChaCha20-Poly1305 RFC 8439 section 2.8.2, AES-128-GCM (NIST CAVP
  *   gcmEncryptExtIV128, PTlen 408 / AADlen 160 / Taglen 128, Count 0),
  *   and rejection of a flipped tag bit for both
+ *   ECDSA P-256/SHA-256, ECDSA P-384/SHA-384, RSA-2048 PKCS#1 v1.5 and
+ *   PSS verify (Project Wycheproof valid cases), and rejection of a
+ *   tampered hash or signature
  *
- * It also times Ed25519, X25519 and the two ciphers in the VM.
+ * It also times Ed25519, X25519, the two ciphers and signature
+ * verification in the VM.
  * Results go to the serial log as "[CRYPTOTEST] PASS/FAIL ..." ending
  * with "[CRYPTOTEST] RESULT: PASS" or "[CRYPTOTEST] RESULT: FAIL".
  * Exit code 0 on PASS, 1 on FAIL.
@@ -260,6 +264,100 @@ static void test_aead(void) {
     nxc_gcm_wipe(&g);
 }
 
+/* Print "[CRYPTOTEST] time <name>: <ms> ms". */
+static void report_time(const char *name, uint64_t ms) {
+    out_str("[CRYPTOTEST] time ");
+    out_str(name);
+    out_str(": ");
+    out_dec(ms);
+    out_str(" ms");
+    flush();
+}
+
+/*
+ * Signature verification with valid cases from Project Wycheproof
+ * (testvectors_v1, tcId 2 of each file): ECDSA P-256/SHA-256 and
+ * P-384/SHA-384 over "Msg", and RSA-2048 PKCS#1 v1.5 and PSS (SHA-256,
+ * MGF1, 32-byte salt) over 20 zero bytes, all with the same key.
+ */
+static void test_pubkey(void) {
+    static uint8_t pub[97], sig[256], n[256];
+    static const uint8_t e[3] = { 0x01, 0x00, 0x01 };
+    uint8_t h[48], msg[20] = { 0 };
+    const uint8_t ecmsg[3] = { 'M', 's', 'g' };
+
+    int ok = unhex("0404aaec73635726f213fb8a9e64da3b8632e41495a944d0045b522eba7240fa"
+                    "d587d9315798aaa3a5ba01775787ced05eaaf7b4e09fc81d6d1aa546e8365d52"
+                    "5d", pub, 65) == 0 &&
+             unhex("30450220530bd6b0c9af2d69ba897f6b5fb59695cfbf33afe66dbadcf5b8d2a2"
+                    "a6538e23022100d85e489cb7a161fd55ededcedbf4cc0c0987e3e3f0f242cae9"
+                    "34c72caa3f43e9", sig, 71) == 0 &&
+             nxc_sha256(ecmsg, 3, h) == NXC_OK;
+    uint64_t t0 = now_ms();
+    int rc = ok ? nxc_ecdsa_verify_der(NXC_EC_P256, pub, 65, h, 32, sig, 71) : NXC_ERR_ARG;
+    uint64_t t1 = now_ms();
+    report("ECDSA P-256 SHA-256 verify", rc == NXC_OK);
+    h[0] ^= 1;
+    report("ECDSA P-256 tampered hash refused",
+           nxc_ecdsa_verify_der(NXC_EC_P256, pub, 65, h, 32, sig, 71) == NXC_ERR_VERIFY);
+    report_time("ECDSA P-256 verify", t1 - t0);
+
+    ok = unhex("0429bdb76d5fa741bfd70233cb3a66cc7d44beb3b0663d92a8136650478bcefb"
+                "61ef182e155a54345a5e8e5e88f064e5bc9a525ab7f764dad3dae1468c2b419f"
+                "3b62b9ba917d5e8c4fb1ec47404a3fc76474b2713081be9db4c00e043ada9fc4"
+                "a3", pub, 97) == 0 &&
+         unhex("3066023100d7143a836608b25599a7f28dec6635494c2992ad1e2bbeecb7ef60"
+                "1a9c01746e710ce0d9c48accb38a79ede5b9638f3402310080f9e165e8c61035"
+                "bf8aa7b5533960e46dd0e211c904a064edb6de41f797c0eae4e327612ee3f816"
+                "f4157272bb4fabc9", sig, 104) == 0 &&
+         nxc_sha384(ecmsg, 3, h) == NXC_OK;
+    t0 = now_ms();
+    rc = ok ? nxc_ecdsa_verify_der(NXC_EC_P384, pub, 97, h, 48, sig, 104) : NXC_ERR_ARG;
+    t1 = now_ms();
+    report("ECDSA P-384 SHA-384 verify", rc == NXC_OK);
+    report_time("ECDSA P-384 verify", t1 - t0);
+
+    ok = unhex("a2b451a07d0aa5f96e455671513550514a8a5b462ebef717094fa1fee82224e6"
+                "37f9746d3f7cafd31878d80325b6ef5a1700f65903b469429e89d6eac8845097"
+                "b5ab393189db92512ed8a7711a1253facd20f79c15e8247f3d3e42e46e48c98e"
+                "254a2fe9765313a03eff8f17e1a029397a1fa26a8dce26f490ed81299615d981"
+                "4c22da610428e09c7d9658594266f5c021d0fceca08d945a12be82de4d1ece6b"
+                "4c03145b5d3495d4ed5411eb878daf05fd7afc3e09ada0f1126422f590975a19"
+                "69816f48698bcbba1b4d9cae79d460d8f9f85e7975005d9bc22c4e5ac0f7c1a4"
+                "5d12569a62807d3b9a02e5a530e773066f453d1f5b4c2e9cf7820283f742b9d5", n, 256) == 0 &&
+         unhex("8a1b220cb2ab415dc760eb7f5bb10335a3cca269d7dbbf7d0962ba79f9cf7b43"
+                "a5fc09c99a1584f07403473d6c189a836897a5b6f8ea9fa22d601e6ba5f7411f"
+                "e27c638b81b1a22363583a80fce8c7df3e40fb51bd0e60d0a6653f79f3bcb7ec"
+                "3e9dc14cfb5b31ab1735bca692d50ac03f979dda92747c6430f8045efa3513ba"
+                "6e0ce3e9e35570e1c30c8ebe589b44192e1344ca83dfa576fc6fdc7bf1cd7cee"
+                "875b001c8c02ce8d602769e4bd9d241c4857182a0089a8b67644e73eef105c55"
+                "0efa47a40874289395ac0c4e02fd4ba98e130a4c2d1b95521c6af4a002ac3bdc"
+                "6e52122ae4c08cc3da1c896e059acbddec574ac0432f6103dd97273d8803c102", sig, 256) == 0 &&
+         nxc_sha256(msg, 20, h) == NXC_OK;
+    t0 = now_ms();
+    rc = ok ? nxc_rsa_verify_pkcs1v15(n, 256, e, 3, NXC_HASH_SHA256, h, 32, sig, 256) : NXC_ERR_ARG;
+    t1 = now_ms();
+    report("RSA-2048 PKCS#1 v1.5 SHA-256 verify", rc == NXC_OK);
+    sig[100] ^= 0x10;
+    report("RSA-2048 PKCS#1 v1.5 tampered signature refused",
+           nxc_rsa_verify_pkcs1v15(n, 256, e, 3, NXC_HASH_SHA256, h, 32, sig, 256) == NXC_ERR_VERIFY);
+    report_time("RSA-2048 verify", t1 - t0);
+
+    ok = unhex("0658c68fe0895646056d9bca422a64fe48813b4e14f0c8c4122e56d345b6813d"
+                "c6286ffde014617e351c7af0a0d2c0f285def79cb734e1e055a25fa6fddc1c07"
+                "da17b4b235c637413b1849c24311fa72331f4c0458c364a4916de8619b884d7e"
+                "37288fad12926fc091f4851686a04fd0a504dbce3db370663a6ea6128fea86c2"
+                "ca94c63e0d34d7f2c845b5d71d9a5e544451f524a451acb85c49bba7864e0a34"
+                "a48613a819caf3dfd0d510c940f1df21c3373915be1f3509a557fa4d5a4e9f27"
+                "3e85467961133e2482c0907386454228fb0246638616fc31bbb6fa7c2361b803"
+                "5994eec69a923f4c0bb0ba8696dfe8b1400c2398d7b343fdf498b1116c8de602", sig, 256) == 0;
+    rc = ok ? nxc_rsa_verify_pss(n, 256, e, 3, NXC_HASH_SHA256, h, 32, 32, sig, 256) : NXC_ERR_ARG;
+    report("RSA-2048 PSS SHA-256 verify", rc == NXC_OK);
+    h[31] ^= 1;
+    report("RSA-2048 PSS tampered hash refused",
+           nxc_rsa_verify_pss(n, 256, e, 3, NXC_HASH_SHA256, h, 32, 32, sig, 256) == NXC_ERR_VERIFY);
+}
+
 void _start(void) {
     out_str("[CRYPTOTEST] start (lib/nxcrypto known-answer tests)");
     flush();
@@ -267,6 +365,7 @@ void _start(void) {
     test_x25519();
     test_ed25519();
     test_aead();
+    test_pubkey();
     out_str(g_fail ? "[CRYPTOTEST] RESULT: FAIL" : "[CRYPTOTEST] RESULT: PASS");
     flush();
     sc1(SYS_EXIT, g_fail ? 1 : 0);
