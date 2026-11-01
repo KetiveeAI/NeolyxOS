@@ -87,6 +87,7 @@ static const struct {
     { "Settings",       "/Applications/Settings.app",       APP_CAT_SYSTEM },
     { "Path",           "/Applications/Path.app",           APP_CAT_SYSTEM },
     { "Shell",          "/Applications/Shell.app",          APP_CAT_SYSTEM },
+    { "Notes",          "/Applications/Notes.app",          APP_CAT_PRODUCTIVITY },
     { "FontManager",    "/Applications/FontManager.app",    APP_CAT_SYSTEM },
     { "Calculator",     "/Applications/Calculator.app",     APP_CAT_UTILITIES },
     { "Calendar",       "/Applications/Calendar.app",       APP_CAT_UTILITIES },

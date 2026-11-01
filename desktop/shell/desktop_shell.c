@@ -2612,6 +2612,8 @@ static void desktop_on_app_launched(const nx_event_t *event, void *userdata) {
 /* ASCII of the key being dispatched (set by the event loop before desktop_handle_key). */
 static char g_key_ascii = 0;
 
+char desktop_key_ascii(void) { return g_key_ascii; }
+
 /* Menu bar actions (menubar.c publishes them; the shell decides). */
 static desktop_window_t *focused_window(void) {
     for (int i = 0; i < MAX_WINDOWS; i++) {

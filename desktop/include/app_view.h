@@ -88,4 +88,13 @@ void shell_view_render(desktop_window_t *win, void *ctx);
 void shell_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ctx);
 void shell_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t b, uint8_t pb, void *ctx);
 
+/* shell/views/notes_view.c  (Notes: the plain-text note editor; notes live in ~/Documents/Notes) */
+int  notes_view_open(uint32_t win_id);
+void notes_view_render(desktop_window_t *win, void *ctx);
+void notes_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ctx);
+void notes_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t b, uint8_t pb, void *ctx);
+/* Open a text file (full path) in Notes, launching or focusing the window.
+ * The open note is saved first; returns -1 if that save fails. */
+int  notes_view_open_file(const char *path);
+
 #endif /* APP_VIEW_H */
