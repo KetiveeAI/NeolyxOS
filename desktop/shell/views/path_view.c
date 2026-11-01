@@ -22,6 +22,7 @@
 
 #include "app_view.h"
 #include "nxpath_relay.h"
+#include "nxframe.h"
 #include "nxui.h"
 #include "nxicons.h"
 #include "nxicon_pack.h"
@@ -33,7 +34,7 @@ extern int desktop_launch_app(const char *name);
 
 #define PV_TOOLBAR_H   44.0f
 #define PV_SIDEBAR_W  184.0f
-#define PV_STATUS_H    26.0f
+#define PV_STATUS_H    NXFRAME_STRIP_H
 #define PV_HEADER_H    26.0f
 #define PV_ROW_H       28.0f
 #define PV_SIDE_ROW_H  28.0f
@@ -194,10 +195,12 @@ static pv_layout_t pv_layout(const desktop_window_t *win) {
     L.up     = nxc_rect(bx + 64.0f, by, 28.0f, 28.0f);
     L.reload = nxc_rect(r.x + r.w - 38.0f, by, 28.0f, 28.0f);   /* reserved (F5 reloads) */
     L.crumb  = nxc_rect(bx + 100.0f, by, L.reload.x - (bx + 100.0f) - 8.0f, 28.0f);
-    L.sidebar = nxc_rect(r.x, r.y + PV_TOOLBAR_H, PV_SIDEBAR_W, r.h - PV_TOOLBAR_H);
-    L.main    = nxc_rect(r.x + PV_SIDEBAR_W, r.y + PV_TOOLBAR_H, r.w - PV_SIDEBAR_W, r.h - PV_TOOLBAR_H);
+    /* Neolyx frame: the status strip spans the whole window bottom */
+    L.status  = nxc_rect(r.x, r.y + r.h - PV_STATUS_H, r.w, PV_STATUS_H);
+    L.sidebar = nxc_rect(r.x, r.y + PV_TOOLBAR_H, PV_SIDEBAR_W, r.h - PV_TOOLBAR_H - PV_STATUS_H);
+    L.main    = nxc_rect(r.x + PV_SIDEBAR_W, r.y + PV_TOOLBAR_H, r.w - PV_SIDEBAR_W,
+                         r.h - PV_TOOLBAR_H - PV_STATUS_H);
     L.header  = nxc_rect(L.main.x, L.main.y, L.main.w, PV_HEADER_H);
-    L.status  = nxc_rect(L.main.x, L.main.y + L.main.h - PV_STATUS_H, L.main.w, PV_STATUS_H);
     L.list    = nxc_rect(L.main.x, L.header.y + PV_HEADER_H, L.main.w,
                          L.status.y - (L.header.y + PV_HEADER_H));
     L.rows_visible = L.list.h > 0.0f ? (int)(L.list.h / PV_ROW_H) : 0;
@@ -305,32 +308,28 @@ void path_view_render(desktop_window_t *win, void *ctx) {
     const nxrelay_listing_t *l = pv_listing();
     P.gen_seen = l->generation;
 
-    /* Sidebar */
-    nxc_color_t side_bg = th->window_titlebar;
-    nxc_fill_rect(c, L.sidebar, side_bg);
-    nxc_fill_rect(c, nxc_rect(L.sidebar.x, L.toolbar.y, L.sidebar.w, PV_TOOLBAR_H), side_bg);
-    nxc_fill_rect(c, nxc_rect(L.sidebar.x + L.sidebar.w - 1.0f, L.toolbar.y, 1.0f,
-                              L.sidebar.h + PV_TOOLBAR_H), th->separator);
-    nxui_text(c, NXUI_TEXT_SUBHEADLINE, L.sidebar.x + 16.0f, L.sidebar.y + 20.0f, "Places", th->text_tertiary, 0);
-    nxui_text(c, NXUI_TEXT_SUBHEADLINE, L.sidebar.x + 16.0f, pv_side_y(&L, PV_NPLACES) - 10.0f,
-              "Locations", th->text_tertiary, 0);
+    /* Rail (runs up through the toolbar band) */
+    nxframe_rail(c, nxc_rect(L.sidebar.x, L.toolbar.y, L.sidebar.w, L.sidebar.h + PV_TOOLBAR_H));
+    nxframe_rail_group(c, L.sidebar.x + 22.0f, L.sidebar.y + 2.0f, L.sidebar.w - 30.0f, "Places");
+    nxframe_rail_group(c, L.sidebar.x + 22.0f, pv_side_y(&L, PV_NPLACES) - NXFRAME_RAIL_GROUP_H,
+                       L.sidebar.w - 30.0f, "Locations");
     for (int s = 0; s < PV_NPLACES + PV_NLOCS; s++) {
         nxrelay_loc_t loc = pv_side_loc(s);
         char lp[NXRELAY_PATH_MAX];
         if (nxrelay_location(loc, lp, (int)sizeof(lp)) != NXRELAY_OK) continue;
         float ry = pv_side_y(&L, s);
-        nxc_rect_t row = nxc_rect(L.sidebar.x + 8.0f, ry, L.sidebar.w - 16.0f, PV_SIDE_ROW_H - 2.0f);
+        nxc_rect_t row = nxc_rect(L.sidebar.x + NXFRAME_RAIL_PAD, ry, L.sidebar.w - 2.0f * NXFRAME_RAIL_PAD,
+                                  PV_SIDE_ROW_H - 2.0f);
         int on = pv_streq(lp, P.path);
-        if (on) nxc_fill_rrect(c, row, 7.0f, th->selection);
-        else if (P.hover_side == s) nxc_fill_rrect(c, row, 7.0f, th->control_fill_hover);
+        nxframe_rail_item(c, row, NXFRAME_SYM_SLOT, nxrelay_location_name(loc), NULL,
+                          on ? NXFRAME_SELECTED : (P.hover_side == s ? NXFRAME_HOVER : 0u));
         const char *icon = loc == NXRELAY_LOC_ROOT ? "device-computer" :
                            loc == NXRELAY_LOC_VOLUMES ? "device-disk" :
                            loc == NXRELAY_LOC_HOME ? "folder-user" :
                            loc == NXRELAY_LOC_APPLICATIONS ? "app-launcher" : nxicon_pack_folder_name(lp);
-        if (nxicon_pack_draw(c, icon, row.x + 6.0f, ry + 4.0f, 18.0f, 255) != NXC_OK)
-            nxsym_draw(c, NXSYM_FOLDER, row.x + 15.0f, ry + 13.0f, 15.0f, th->accent, 0.0f);
-        nxui_text_in_rect(c, NXUI_TEXT_BODY, nxc_rect(row.x + 32.0f, ry, row.w - 36.0f, PV_SIDE_ROW_H - 2.0f),
-                          nxrelay_location_name(loc), th->text_primary, NXC_ALIGN_LEFT);
+        float gx = row.x + NXFRAME_GLYPH_CX, gy = row.y + row.h * 0.5f;
+        if (nxicon_pack_draw(c, icon, gx - 8.0f, gy - 8.0f, 16.0f, 255) != NXC_OK)
+            nxsym_draw(c, NXSYM_FOLDER, gx, gy, 15.0f, on ? th->accent : th->text_secondary, 0.0f);
     }
 
     /* Toolbar */
@@ -351,10 +350,9 @@ void path_view_render(desktop_window_t *win, void *ctx) {
 
     /* Column header */
     float name_x = L.main.x + 16.0f, kind_x = L.main.x + L.main.w * 0.58f, size_x = L.main.x + L.main.w - 16.0f;
-    nxui_text(c, NXUI_TEXT_FOOTNOTE, name_x + 28.0f, L.header.y + 17.0f, "Name", th->text_tertiary, 0);
-    nxui_text(c, NXUI_TEXT_FOOTNOTE, kind_x, L.header.y + 17.0f, "Kind", th->text_tertiary, 0);
-    nxui_text_in_rect(c, NXUI_TEXT_FOOTNOTE, nxc_rect(size_x - 90.0f, L.header.y, 90.0f, PV_HEADER_H), "Size",
-                      th->text_tertiary, NXC_ALIGN_RIGHT);
+    nxframe_caps(c, name_x + 28.0f, L.header.y + 17.0f, "Name", th->text_tertiary);
+    nxframe_caps(c, kind_x, L.header.y + 17.0f, "Kind", th->text_tertiary);
+    nxframe_caps(c, size_x - nxframe_caps(NULL, 0.0f, 0.0f, "Size", 0), L.header.y + 17.0f, "Size", th->text_tertiary);
     nxc_fill_rect(c, nxc_rect(L.main.x, L.header.y + PV_HEADER_H - 1.0f, L.main.w, 1.0f), th->separator);
 
     /* Rows / empty and error states */
@@ -383,11 +381,16 @@ void path_view_render(desktop_window_t *win, void *ctx) {
             float ry = L.list.y + (float)i * PV_ROW_H;
             nxc_rect_t row = nxc_rect(L.main.x + 6.0f, ry + 1.0f, L.main.w - 12.0f, PV_ROW_H - 2.0f);
             int sel = idx == P.selected;
-            if (sel) nxc_fill_rrect(c, row, 6.0f, th->accent);
-            else if (idx == P.hover_row) nxc_fill_rrect(c, row, 6.0f, th->control_fill_hover);
-            else if (idx & 1) nxc_fill_rrect(c, row, 6.0f, NXC_WITH_ALPHA(th->control_fill, 28));
-            nxc_color_t ink = sel ? th->text_on_accent : th->text_primary;
-            nxc_color_t ink2 = sel ? th->text_on_accent : th->text_secondary;
+            /* Neolyx selection: accent wash + accent bar, ink stays readable */
+            if (sel) {
+                nxc_fill_rrect(c, row, 5.0f, NXC_WITH_ALPHA(th->accent, 44));
+                nxc_fill_rrect(c, nxc_rect(row.x, row.y + 5.0f, 3.0f, row.h - 10.0f), 1.5f, th->accent);
+            } else if (idx == P.hover_row) {
+                nxframe_row_wash(c, row, NXFRAME_HOVER);
+            }
+            if (!sel) nxframe_rule(c, row.x + 28.0f, ry + PV_ROW_H - 1.0f, row.w - 28.0f);
+            nxc_color_t ink = th->text_primary;
+            nxc_color_t ink2 = th->text_secondary;
             pv_icon(c, P.path, e, name_x, ry + 4.0f, 20.0f);
             nxui_text_in_rect(c, NXUI_TEXT_BODY, nxc_rect(name_x + 28.0f, ry, kind_x - name_x - 36.0f, PV_ROW_H),
                               e->name, ink, NXC_ALIGN_LEFT);
@@ -410,8 +413,7 @@ void path_view_render(desktop_window_t *win, void *ctx) {
         }
     }
 
-    /* Status bar */
-    nxc_fill_rect(c, nxc_rect(L.status.x, L.status.y, L.status.w, 1.0f), th->separator);
+    /* Status strip */
     char st[96];
     int o = 0;
     uint32_t n = l->status == NXRELAY_OK ? l->count : 0;
@@ -425,8 +427,8 @@ void path_view_render(desktop_window_t *win, void *ctx) {
     if (l->truncated) for (const char *s = " (first 256 shown)"; *s; s++) st[o++] = *s;
     if (l->synthesized) for (const char *s = " - standard folders"; *s; s++) st[o++] = *s;
     st[o] = '\0';
-    nxui_text_in_rect(c, NXUI_TEXT_FOOTNOTE, nxc_rect(L.status.x + 16.0f, L.status.y, L.status.w - 32.0f, PV_STATUS_H),
-                      l->status == NXRELAY_OK ? st : nxrelay_strerror(l->status), th->text_tertiary, NXC_ALIGN_CENTER);
+    nxframe_strip(c, L.status, l->status == NXRELAY_OK ? st : nxrelay_strerror(l->status));
+    desktop_set_window_place(win->id, title);
 }
 
 /* ============ Input ============ */
@@ -469,6 +471,17 @@ void path_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ctx
         default:
             break;
     }
+}
+
+/* Scroll wheel: three rows per notch over the file list; the render pass
+ * clamps P.scroll to the listing. */
+void path_view_scroll(desktop_window_t *win, int32_t lx, int32_t ly, int32_t notches, void *ctx) {
+    (void)ctx;
+    if (!win || notches == 0) return;
+    pv_layout_t L = pv_layout(win);
+    if (!pv_in(L.list, (float)win->x + (float)lx, (float)win->y + (float)APP_VIEW_TITLE_H + (float)ly)) return;
+    P.scroll += notches * 3;
+    if (P.scroll < 0) P.scroll = 0;
 }
 
 void path_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t b, uint8_t pb, void *ctx) {

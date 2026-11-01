@@ -88,10 +88,14 @@ typedef struct {
 
 #define MAX_WINDOWS 16
 #define WINDOW_TITLE_MAX 64
+#define WINDOW_PLACE_MAX 48
 
 typedef struct desktop_shell_window {
     uint32_t id;
     char title[WINDOW_TITLE_MAX];
+    /* Where the app is ("Network", "Documents"); shown after the title as
+     * "App / Place" by the Neolyx frame. Empty when the app sets none. */
+    char place[WINDOW_PLACE_MAX];
     
     /* Bounds */
     int32_t x, y;
@@ -120,6 +124,13 @@ typedef struct desktop_shell_window {
     void (*mouse_handler)(struct desktop_shell_window *win, int32_t lx, int32_t ly,
                           uint8_t buttons, uint8_t prev_buttons, void *ctx);
     void *mouse_ctx;
+
+    /* Content scroll-wheel handler (optional). (lx, ly) is the pointer in
+     * content-local coordinates; notches > 0 scrolls the content down
+     * (toward its end), already adjusted for the natural-scrolling pref. */
+    void (*scroll_handler)(struct desktop_shell_window *win, int32_t lx, int32_t ly,
+                           int32_t notches, void *ctx);
+    void *scroll_ctx;
 } desktop_window_t;
 
 /* ============ Desktop API ============ */
@@ -173,6 +184,15 @@ int desktop_destroy_window(uint32_t window_id);
 void desktop_focus_window(uint32_t window_id);
 
 /**
+ * desktop_set_window_place - Set the place shown after the window title
+ *
+ * @window_id: Window ID
+ * @place: Short place name (copied, truncated to WINDOW_PLACE_MAX - 1),
+ *         or NULL / "" to show the app name alone
+ */
+void desktop_set_window_place(uint32_t window_id, const char *place);
+
+/**
  * desktop_set_window_render - Set window content render callback
  */
 void desktop_set_window_render(uint32_t window_id, 
@@ -199,6 +219,16 @@ void desktop_set_window_mouse_handler(uint32_t window_id,
                                                       uint8_t prev_buttons,
                                                       void *ctx),
                                       void *ctx);
+
+/**
+ * desktop_set_window_scroll_handler - Set content-area scroll-wheel handler
+ */
+void desktop_set_window_scroll_handler(uint32_t window_id,
+                                       void (*handler)(desktop_window_t *win,
+                                                       int32_t lx, int32_t ly,
+                                                       int32_t notches,
+                                                       void *ctx),
+                                       void *ctx);
 
 /* ============ Window queries (for dock, task manager, Stage) ============ */
 
@@ -252,6 +282,14 @@ void desktop_draw_cursor(int32_t x, int32_t y);
  * desktop_handle_mouse - Handle mouse input event
  */
 void desktop_handle_mouse(int32_t dx, int32_t dy, uint8_t buttons);
+
+/**
+ * desktop_handle_scroll - Handle a scroll-wheel event
+ *
+ * @notches: wheel notches from the input event; > 0 = wheel turned toward
+ *           the user. Delivered to the window under the pointer.
+ */
+void desktop_handle_scroll(int32_t notches);
 
 /**
  * desktop_handle_key - Handle keyboard input event

@@ -14,6 +14,7 @@
  *   Ctrl Z / Shift Ctrl Z / Y  undo / redo
  *   Ctrl X / C / V / A         cut / copy / paste / select all
  *   click, drag, double-click  place the caret, select, select a word
+ *   scroll wheel               scroll the note or the list
  *
  * Storage and safety:
  *   - Notes are plain UTF-8 text files with '\n' line ends, one per note.
@@ -44,6 +45,7 @@
 #include "nxicons.h"
 #include "nxsyscall.h"
 #include "menubar.h"
+#include "nxframe.h"
 
 extern int desktop_launch_app(const char *name);
 
@@ -1246,9 +1248,9 @@ static void nv_button(nxc_canvas_t *c, nxc_rect_t r, nxsym_t sym, int hover, int
 
 static void nv_draw_sidebar(nxc_canvas_t *c, const nv_layout_t *L) {
     const nxui_theme_t *th = nxui_theme();
-    nxc_fill_rect(c, L->sidebar, th->window_titlebar);
-    nxc_fill_rect(c, nxc_rect(L->sidebar.x + L->sidebar.w - 1.0f, L->sidebar.y, 1.0f, L->sidebar.h), th->separator);
-    nxui_text(c, NXUI_TEXT_TITLE3, L->side_head.x + 16.0f, L->side_head.y + 28.0f, "Notes", th->text_primary, 0);
+    nxframe_rail(c, L->sidebar);
+    nxframe_rail_group(c, L->side_head.x + 22.0f, L->side_head.y + (NV_TOOLBAR_H - NXFRAME_RAIL_GROUP_H) * 0.5f + 4.0f,
+                       L->side_head.w - 70.0f, "Notes");
     nv_button(c, L->plus, NXSYM_PLUS, N.hover_btn == 1, 1);
 
     int rows = nv_row_count();
@@ -1276,8 +1278,8 @@ static void nv_draw_sidebar(nxc_canvas_t *c, const nv_layout_t *L) {
         float ry = L->list.y + (float)i * NV_ROW_H;
         nxc_rect_t box = nxc_rect(L->list.x + 8.0f, ry + 2.0f, L->list.w - 16.0f, NV_ROW_H - 4.0f);
         int sel = row == cur;
-        if (sel) nxc_fill_rrect(c, box, 8.0f, th->selection);
-        else if (row == N.hover_row) nxc_fill_rrect(c, box, 8.0f, th->control_fill_hover);
+        if (sel) nxframe_selection(c, box);
+        else if (row == N.hover_row) nxframe_row_wash(c, box, NXFRAME_HOVER);
         char title[NV_TITLE_MAX + 1], prev[NV_PREVIEW_MAX];
         if (sel) {
             nv_title_of(N.text, N.len, title, (int)sizeof(title));
@@ -1292,9 +1294,7 @@ static void nv_draw_sidebar(nxc_canvas_t *c, const nv_layout_t *L) {
                           title, th->text_primary, NXC_ALIGN_LEFT);
         nxui_text_in_rect(c, NXUI_TEXT_FOOTNOTE, nxc_rect(box.x + 12.0f, box.y + 26.0f, box.w - 24.0f, 18.0f),
                           prev, th->text_secondary, NXC_ALIGN_LEFT);
-        if (!sel && row + 1 != cur && row + 1 < rows)
-            nxc_fill_rect(c, nxc_rect(box.x + 12.0f, ry + NV_ROW_H - 0.5f, box.w - 24.0f, 1.0f),
-                          NXC_WITH_ALPHA(th->separator, 120));
+        if (!sel && row + 1 != cur && row + 1 < rows) nxframe_rule(c, box.x + 12.0f, ry + NV_ROW_H - 1.0f, box.w - 24.0f);
     }
     nxc_restore(c);
 
@@ -1303,7 +1303,9 @@ static void nv_draw_sidebar(nxc_canvas_t *c, const nv_layout_t *L) {
     nv_strcpy(foot, num, (int)sizeof(foot));
     nv_strcat(foot, rows == 1 ? " note" : " notes", (int)sizeof(foot));
     if (N.list_truncated) nv_strcat(foot, " (first 128)", (int)sizeof(foot));
-    nxui_text_in_rect(c, NXUI_TEXT_FOOTNOTE, L->side_foot, foot, th->text_tertiary, NXC_ALIGN_CENTER);
+    nxframe_strip(c, L->side_foot, NULL);
+    nxui_text_in_rect(c, NXUI_TEXT_FOOTNOTE, nxc_rect(L->side_foot.x + 22.0f, L->side_foot.y, L->side_foot.w - 30.0f,
+                      L->side_foot.h), foot, th->text_tertiary, NXC_ALIGN_LEFT);
 }
 
 static void nv_draw_toolbar(nxc_canvas_t *c, const nv_layout_t *L) {
@@ -1435,8 +1437,7 @@ static void nv_draw_editor(nxc_canvas_t *c, const nv_layout_t *L, int focused) {
 
 static void nv_draw_status(nxc_canvas_t *c, const nv_layout_t *L) {
     const nxui_theme_t *th = nxui_theme();
-    nxc_fill_rect(c, L->status, th->window_bg);
-    nxc_fill_rect(c, nxc_rect(L->status.x, L->status.y, L->status.w, 1.0f), th->separator);
+    nxframe_strip(c, L->status, NULL);
     /* Ln / Col */
     uint32_t ln = 1, col = 1;
     for (uint32_t i = 0; i < N.cur && i < N.len; i++) {
@@ -1487,6 +1488,25 @@ void notes_view_render(desktop_window_t *win, void *ctx) {
     nv_draw_toolbar(c, &L);
     nv_draw_editor(c, &L, win->focused);
     nv_draw_status(c, &L);
+
+    /* Title bar: "Notes / <note title>" */
+    char place[NV_TITLE_MAX + 1];
+    nv_title_of(N.text, N.len, place, (int)sizeof(place));
+    desktop_set_window_place(win->id, place[0] ? place : "New Note");
+}
+
+void notes_view_scroll(desktop_window_t *win, int32_t lx, int32_t ly, int32_t notches, void *ctx) {
+    (void)ctx;
+    if (!win || notches == 0) return;
+    nv_layout_t L = nv_rects(win);
+    float x = (float)win->x + (float)lx, y = (float)win->y + (float)APP_VIEW_TITLE_H + (float)ly;
+    if (nv_in(L.list, x, y)) {
+        N.list_scroll += notches;               /* clamped when drawn */
+        if (N.list_scroll < 0) N.list_scroll = 0;
+    } else if (nv_in(L.editor, x, y)) {
+        N.scroll += (float)notches * 3.0f * nv_lh(0);   /* clamped when drawn */
+        if (N.scroll < 0.0f) N.scroll = 0.0f;
+    }
 }
 
 /* ============ Input ============ */

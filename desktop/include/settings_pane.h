@@ -26,6 +26,9 @@ typedef struct {
     int  (*key)(uint8_t scancode, uint8_t pressed, char ascii);
     /* Called when the pane becomes visible. May be NULL. */
     void (*on_show)(void);
+    /* Scroll wheel over the pane, pane-LOCAL pointer; notches > 0 scrolls
+     * toward the end. Return 1 if handled. May be NULL (no scrolling). */
+    int  (*scroll)(int32_t lx, int32_t ly, int32_t notches);
 } settings_pane_t;
 
 /* Panes provided outside settings_view.c */

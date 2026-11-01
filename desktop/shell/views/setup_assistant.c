@@ -20,6 +20,7 @@
  */
 
 #include "setup_internal.h"
+#include "nxframe.h"
 
 /* PS/2 set-1 scancodes */
 #define SC_ESC        0x01
@@ -372,6 +373,7 @@ void setup_assistant_render(nxc_canvas_t *c) {
     int still = lift < 0.5f;
     if (still) cr = card;
     nxglass_panel(c, cr, 22.0f, NXGLASS_THICK, 4, !still);
+    nxframe_crest(c, nxc_rect(cr.x + 22.0f, cr.y, cr.w - 44.0f, NXFRAME_CREST_H));   /* Neolyx crest */
 
     /* Hits are collected only for a settled, fully visible page. */
     g_sa.nhits = 0;

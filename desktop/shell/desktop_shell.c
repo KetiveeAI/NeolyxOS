@@ -33,6 +33,7 @@
 #include "../include/network_indicator.h"
 #include "../include/nxui.h"
 #include "../include/nxglass.h"
+#include "../include/nxframe.h"
 #include "../include/desktop_items.h"
 #include "../include/menubar.h"
 #include "../include/app_view.h"
@@ -1101,6 +1102,7 @@ static void draw_window_body(desktop_window_t *win, int shadow, int hover_ok) {
                   focused ? th->window_titlebar : th->window_titlebar_inactive);
     nxc_fill_rect(c, nxc_rect(frame.x, frame.y + WIN_TITLE_H - 1.0f, frame.w, 1.0f), th->separator);
     nxc_fill_rect(c, nxc_rect(frame.x, frame.y, frame.w, 1.0f), th->highlight);   /* top sheen */
+    if (focused && !g_snapshot_pass) nxframe_crest(c, frame);                     /* focus crest */
     nxc_restore(c);
 
     if (win->width > 60 && win->height > 6) {
@@ -1110,11 +1112,9 @@ static void draw_window_body(desktop_window_t *win, int shadow, int hover_ok) {
         if (hover_ok && !g_snapshot_pass) hover = traffic_light_at(win, g_desktop.mouse_x, g_desktop.mouse_y);
         int pressed = g_light_press_id == win->id ? g_light_press_idx : -1;
         nxglass_winctl_draw(c, tb, focused || hover >= 0, pressed, hover);
-        float m = NXGLASS_WINCTL_GROUP_W + NXGLASS_WINCTL_MARGIN + 8.0f;
-        if (frame.w > 2.0f * m + 24.0f)
-            nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM,
-                              nxc_rect(frame.x + m, frame.y, frame.w - 2.0f * m, WIN_TITLE_H),
-                              win->title, focused ? th->text_primary : th->text_tertiary, NXC_ALIGN_CENTER);
+        /* Neolyx frame: "App / Place" anchored left, controls on the right */
+        nxframe_title(c, tb, win->title, win->place,
+                      NXGLASS_WINCTL_GROUP_W + NXGLASS_WINCTL_MARGIN + 8.0f, focused);
     }
 
     /* Content callback: draws in absolute coordinates inside the content rect */
@@ -1695,6 +1695,7 @@ uint32_t desktop_create_window(const char *title, int32_t x, int32_t y,
     } else {
         win->title[0] = '\0';  /* Empty title if NULL passed */
     }
+    win->place[0] = '\0';
     win->x = x;
     win->y = y;
     win->width = width;
@@ -1709,6 +1710,8 @@ uint32_t desktop_create_window(const char *title, int32_t x, int32_t y,
     win->key_ctx = NULL;
     win->mouse_handler = NULL;
     win->mouse_ctx = NULL;
+    win->scroll_handler = NULL;
+    win->scroll_ctx = NULL;
 
     g_desktop.window_count++;
 
@@ -2000,6 +2003,13 @@ int wm_shell_minimize(uint32_t window_id) {
     return window_minimize(window_by_id(window_id));
 }
 
+void desktop_set_window_place(uint32_t window_id, const char *place) {
+    desktop_window_t *w = window_by_id(window_id);
+    if (!w) return;
+    if (place) shell_strcpy(w->place, place, WINDOW_PLACE_MAX);
+    else w->place[0] = '\0';
+}
+
 void desktop_set_window_render(uint32_t window_id,
                                void (*callback)(desktop_window_t *win, void *ctx),
                                void *ctx) {
@@ -2022,6 +2032,21 @@ void desktop_set_window_key_handler(uint32_t window_id,
         if (g_windows[i].id == window_id) {
             g_windows[i].key_handler = handler;
             g_windows[i].key_ctx = ctx;
+            break;
+        }
+    }
+}
+
+void desktop_set_window_scroll_handler(uint32_t window_id,
+                                       void (*handler)(desktop_window_t *win,
+                                                       int32_t lx, int32_t ly,
+                                                       int32_t notches,
+                                                       void *ctx),
+                                       void *ctx) {
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (g_windows[i].id == window_id) {
+            g_windows[i].scroll_handler = handler;
+            g_windows[i].scroll_ctx = ctx;
             break;
         }
     }
@@ -2141,6 +2166,39 @@ static int route_content_mouse(uint8_t buttons, uint8_t prev_buttons) {
     }
     if (w->focused) deliver_content_mouse(w, buttons, prev_buttons);   /* hover */
     return 0;
+}
+
+/* ============ Scroll wheel ============ */
+
+extern int sprefs_get_bool(const char *sec, const char *key, int def);
+
+/*
+ * Scroll goes to the window under the pointer, focused or not (as on
+ * macOS), never to a window hidden behind a shell overlay. A button drag
+ * in progress keeps it on the captured window.
+ */
+void desktop_handle_scroll(int32_t notches) {
+    if (notches == 0) return;
+    static int s_logged;
+    if (!s_logged) { s_logged = 1; serial_puts("[DESKTOP] Scroll wheel input received\n"); }
+    if (notches > 127) notches = 127;
+    if (notches < -127) notches = -127;
+
+    if (setup_assistant_active() || app_drawer_is_open() || switcher_active() ||
+        overview_active() || menubar_is_open() || anveshan_is_active() ||
+        control_center_is_visible() || notification_center_is_visible()) {
+        return;
+    }
+
+    if (sprefs_get_bool("mouse", "natural_scrolling", 0)) notches = -notches;
+
+    desktop_window_t *w = window_by_id(g_mouse_capture_id);
+    if (!w || w->minimized || !w->visible)
+        w = window_at_point(g_desktop.mouse_x, g_desktop.mouse_y);
+    if (!w || !w->scroll_handler) return;
+    if (g_desktop.mouse_y < w->y + WIN_TITLE_H) return;   /* title bar */
+    w->scroll_handler(w, g_desktop.mouse_x - w->x, g_desktop.mouse_y - (w->y + WIN_TITLE_H),
+                      notches, w->scroll_ctx);
 }
 
 /* ============ Window move / resize gestures ============ */
@@ -3055,6 +3113,7 @@ int desktop_launch_app(const char *name) {
         desktop_set_window_render(win_id, view->render, NULL);
         if (view->key) desktop_set_window_key_handler(win_id, view->key, NULL);
         if (view->mouse) desktop_set_window_mouse_handler(win_id, view->mouse, NULL);
+        if (view->scroll) desktop_set_window_scroll_handler(win_id, view->scroll, NULL);
         return 0;
     }
     for (int i = 0; g_startup_apps[i].name != NULL; i++) {
@@ -3123,6 +3182,7 @@ void desktop_run(void) {
             if (event.type == INPUT_TYPE_MOUSE_MOVE || event.type == INPUT_TYPE_MOUSE_BUTTON) {
                 /* Mouse event */
                 desktop_handle_mouse(event.mouse.dx, event.mouse.dy, event.mouse.buttons);
+                if (event.mouse.wheel != 0) desktop_handle_scroll(event.mouse.wheel);
                 mouse_moved = 1;
                 
                 /* Debug: log first 10 mouse events */

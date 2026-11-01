@@ -12,6 +12,8 @@
  *   <frame> down | up         press / release the left button
  *   <frame> rdown | rup       press / release the right button
  *   <frame> key <hex> [up]    PS/2 set-1 scancode press (or release)
+ *   <frame> wheel <n>         turn the scroll wheel n notches (> 0 = toward
+ *                             the user, i.e. scroll down)
  *   <frame> launch <App_Name> open a startup app window (desktop_launch_app;
  *                             underscores become spaces)
  *   <frame> call <function>   call a global void(void) shell function by name
@@ -32,7 +34,7 @@
 extern int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pitch);
 extern int desktop_launch_app(const char *name);
 
-typedef enum { ACT_MOVE, ACT_DOWN, ACT_UP, ACT_RDOWN, ACT_RUP, ACT_KEY, ACT_CALL, ACT_LAUNCH, ACT_SHOT, ACT_END } act_type_t;
+typedef enum { ACT_MOVE, ACT_DOWN, ACT_UP, ACT_RDOWN, ACT_RUP, ACT_KEY, ACT_WHEEL, ACT_CALL, ACT_LAUNCH, ACT_SHOT, ACT_END } act_type_t;
 
 typedef struct {
     uint32_t   frame;
@@ -175,6 +177,15 @@ static void run_action(const action_t *a) {
         case ACT_UP:    g_buttons &= ~1; emit_mouse(0, 0, INPUT_TYPE_MOUSE_BUTTON); break;
         case ACT_RDOWN: g_buttons |= 2;  emit_mouse(0, 0, INPUT_TYPE_MOUSE_BUTTON); break;
         case ACT_RUP:   g_buttons &= ~2; emit_mouse(0, 0, INPUT_TYPE_MOUSE_BUTTON); break;
+        case ACT_WHEEL: {
+            input_event_t ev;
+            memset(&ev, 0, sizeof(ev));
+            ev.type = INPUT_TYPE_MOUSE_MOVE;
+            ev.mouse.buttons = g_buttons;
+            ev.mouse.wheel = (int8_t)(a->x > 127 ? 127 : (a->x < -127 ? -127 : a->x));
+            push(ev);
+            break;
+        }
         case ACT_KEY: {
             input_event_t ev;
             memset(&ev, 0, sizeof(ev));
@@ -273,6 +284,8 @@ static int load_script(const char *path) {
         else if (!strcmp(cmd, "rup")) a->type = ACT_RUP;
         else if (!strcmp(cmd, "key") && n >= 3) {
             a->type = ACT_KEY; a->key = (uint32_t)strtoul(arg1, NULL, 16); a->key_up = !strcmp(arg2, "up");
+        } else if (!strcmp(cmd, "wheel") && n >= 3) {
+            a->type = ACT_WHEEL; a->x = atoi(arg1);
         } else if (!strcmp(cmd, "call") && n >= 3) {
             a->type = ACT_CALL; snprintf(a->path, sizeof(a->path), "%s", arg1);
         } else if (!strcmp(cmd, "launch") && n >= 3) {

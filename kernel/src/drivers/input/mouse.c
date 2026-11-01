@@ -191,6 +191,25 @@ static uint8_t detect_mouse_type(void) {
 
 /* ============ Packet Processing ============ */
 
+/**
+ * mouse_packet_wheel - Decode the wheel delta of a 4-byte packet.
+ *
+ * ID 3 (IntelliMouse): byte 3 is a signed 8-bit Z count.
+ * ID 4 (IntelliMouse Explorer): bits 0-3 are a signed 4-bit Z count,
+ * bits 4-5 carry buttons 4 and 5.
+ * Positive = wheel rotated toward the user (scroll down).
+ * Callers must only pass packets of packet_size >= 4.
+ */
+static int8_t mouse_packet_wheel(const uint8_t *p) {
+    if (!p) return 0;
+    if (g_mouse.mouse_id == 4) {
+        int8_t z = (int8_t)(p[3] & 0x0F);
+        if (z & 0x08) z = (int8_t)(z | 0xF0);  /* Sign extend 4 -> 8 bits */
+        return z;
+    }
+    return (int8_t)p[3];
+}
+
 static void process_packet(void) {
     uint8_t *p = g_mouse.packet_buf;
     
@@ -210,8 +229,7 @@ static void process_packet(void) {
     
     /* Handle 4-byte Intellimouse packet */
     if (g_mouse.packet_size >= 4) {
-        dz = (int8_t)(p[3] & 0x0F);
-        if (dz & 0x08) dz |= 0xF0;  /* Sign extend */
+        dz = mouse_packet_wheel(p);
         
         if (g_mouse.mouse_id == 4) {
             if (p[3] & 0x10) buttons |= 0x08;
@@ -610,8 +628,13 @@ int mouse_driver_deinit(void *drv) {
  * Returns 0 if event/data available, -1 if no movement
  */
 static uint32_t mouse_poll_count = 0;
-int mouse_get_event(int16_t *dx, int16_t *dy, uint8_t *buttons) {
+int mouse_get_event(int16_t *dx, int16_t *dy, int8_t *dz, uint8_t *buttons) {
     mouse_poll_count++;
+    
+    if (!dx || !dy || !dz || !buttons) {
+        return -1;
+    }
+    *dz = 0;
     
     if (!g_mouse.initialized) {
         return -1;
@@ -662,6 +685,8 @@ int mouse_get_event(int16_t *dx, int16_t *dy, uint8_t *buttons) {
                         
                         g_mouse.delta_x += pdx;
                         g_mouse.delta_y += pdy;
+                        if (g_mouse.packet_size >= 4)
+                            g_mouse.delta_z += mouse_packet_wheel(p);
                         g_mouse.buttons = p[0] & 0x07;
                         g_mouse.buttons_latched |= g_mouse.buttons;
                         g_mouse.packet_idx = 0;
@@ -687,7 +712,7 @@ int mouse_get_event(int16_t *dx, int16_t *dy, uint8_t *buttons) {
     
     /* Report movement, or a button change on its own (a click without
      * moving the mouse must still reach userspace). */
-    if (g_mouse.delta_x == 0 && g_mouse.delta_y == 0 &&
+    if (g_mouse.delta_x == 0 && g_mouse.delta_y == 0 && g_mouse.delta_z == 0 &&
         report == g_mouse.buttons_reported) {
         *dx = 0;
         *dy = 0;
@@ -695,11 +720,19 @@ int mouse_get_event(int16_t *dx, int16_t *dy, uint8_t *buttons) {
         return -1;  /* No event */
     }
     
+    /* Wheel: hand out at most one int8 worth per event; any remainder
+     * stays queued for the next poll so fast spins are not lost. */
+    int32_t z = g_mouse.delta_z;
+    if (z > 127) z = 127;
+    if (z < -127) z = -127;
+    
     *dx = (int16_t)g_mouse.delta_x;
     *dy = (int16_t)g_mouse.delta_y;
+    *dz = (int8_t)z;
     *buttons = report;
     g_mouse.delta_x = 0;
     g_mouse.delta_y = 0;
+    g_mouse.delta_z -= z;
     g_mouse.buttons_reported = report;
     
     return 0;  /* Event available */

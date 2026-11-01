@@ -72,6 +72,11 @@ typedef struct {
 /* Draw an icon tile (rounded square, white glyph) centered at cx, cy. */
 void settings_draw_tile(nxc_canvas_t *c, const settings_tile_t *t, float cx, float cy, float size);
 
+/* Draw only the glyph of a tile (no tile fill) in color, centered at cx, cy;
+ * size is the tile size the glyph is proportioned to (rails use this). */
+void settings_draw_glyph(nxc_canvas_t *c, const settings_tile_t *t, float cx, float cy, float size,
+                         nxc_color_t color);
+
 /* Tile of a pane by id (never NULL; a neutral tile if unknown). */
 const settings_tile_t *settings_tile_for(const char *pane_id);
 
@@ -115,6 +120,7 @@ typedef void (*sui_build_fn)(sui_t *ui);
 void sui_pane_render(sui_build_fn fn, nxc_canvas_t *c, nxc_rect_t area);
 int  sui_pane_mouse(sui_build_fn fn, int32_t lx, int32_t ly, uint8_t b, uint8_t pb);
 int  sui_pane_key(sui_build_fn fn, uint8_t sc, uint8_t pressed, char ascii);
+int  sui_pane_scroll(int32_t lx, int32_t ly, int32_t notches);   /* scroll wheel */
 void sui_pane_reset(void);              /* scroll to top, clear interaction */
 float sui_scroll_offset(void);          /* current scroll (px) of the visible sui pane */
 void sui_pointer_left(void);            /* pointer moved out of the pane: drop hover */
@@ -124,7 +130,8 @@ void sui_pointer_left(void);            /* pointer moved out of the pane: drop h
     static int  sym_##_mouse(int32_t x, int32_t y, uint8_t b, uint8_t pb) {              \
         return sui_pane_mouse(build_, x, y, b, pb); }                                    \
     static int  sym_##_key(uint8_t sc, uint8_t p, char ch) { return sui_pane_key(build_, sc, p, ch); } \
-    const settings_pane_t sym_ = { id_, title_, sym_##_render, sym_##_mouse, sym_##_key, sui_pane_reset }
+    const settings_pane_t sym_ = { id_, title_, sym_##_render, sym_##_mouse, sym_##_key, sui_pane_reset, \
+                                   sui_pane_scroll }
 
 /* Layout */
 void sui_header(sui_t *ui, const char *pane_id, const char *title, const char *subtitle);

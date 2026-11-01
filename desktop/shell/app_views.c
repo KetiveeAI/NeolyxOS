@@ -7,12 +7,12 @@
 #include "app_view.h"
 
 static const app_view_t g_views[] = {
-    { "System Settings", 860, 560, settings_view_open, settings_view_render, settings_view_key, settings_view_mouse },
-    { "Font Manager",    760, 500, fonts_view_open,    fonts_view_render,    fonts_view_key,    fonts_view_mouse },
-    { "Task Manager",    780, 520, taskmgr_view_open,  taskmgr_view_render,  taskmgr_view_key,  taskmgr_view_mouse },
-    { "Path",            860, 540, path_view_open,     path_view_render,     path_view_key,     path_view_mouse },
-    { "Shell",           720, 440, shell_view_open,    shell_view_render,    shell_view_key,    shell_view_mouse },
-    { "Notes",           820, 520, notes_view_open,    notes_view_render,    notes_view_key,    notes_view_mouse },
+    { "System Settings", 860, 560, settings_view_open, settings_view_render, settings_view_key, settings_view_mouse, settings_view_scroll },
+    { "Font Manager",    760, 500, fonts_view_open,    fonts_view_render,    fonts_view_key,    fonts_view_mouse,    0 },
+    { "Task Manager",    780, 520, taskmgr_view_open,  taskmgr_view_render,  taskmgr_view_key,  taskmgr_view_mouse,  taskmgr_view_scroll },
+    { "Path",            860, 540, path_view_open,     path_view_render,     path_view_key,     path_view_mouse,     path_view_scroll },
+    { "Shell",           720, 440, shell_view_open,    shell_view_render,    shell_view_key,    shell_view_mouse,    shell_view_scroll },
+    { "Notes",           820, 520, notes_view_open,    notes_view_render,    notes_view_key,    notes_view_mouse,    notes_view_scroll },
 };
 
 static int view_streq_ci(const char *a, const char *b) {

@@ -46,16 +46,25 @@ cd ../boot
 # Keep the committed BOOTX64.EFI as a fallback: some gnu-efi/binutils
 # combinations cannot link it (e.g. "bootloader.so: file format not
 # recognized"), and that must not stop the kernel and image steps.
+# A failed objcopy deletes BOOTX64.EFI, so an earlier failed run can leave
+# the working copy without it: restore it from git before building.
+if [ ! -s BOOTX64.EFI ] && git cat-file -e HEAD:boot/BOOTX64.EFI 2>/dev/null; then
+    git checkout -- BOOTX64.EFI
+    echo "      Restored boot/BOOTX64.EFI from git"
+fi
 BOOT_FALLBACK=$(mktemp)
-[ -f BOOTX64.EFI ] && cp BOOTX64.EFI "$BOOT_FALLBACK"
+# -p keeps the executable mode so the restored file does not show as modified.
+[ -f BOOTX64.EFI ] && cp -p BOOTX64.EFI "$BOOT_FALLBACK"
 if [ -f /usr/include/efi/efi.h ]; then
     rm -f ./*.o ./*.so
     if make >/dev/null 2>&1 && [ -s BOOTX64.EFI ] && [ BOOTX64.EFI -nt main.c ]; then
         echo "      Bootloader built: boot/BOOTX64.EFI"
     elif [ -s "$BOOT_FALLBACK" ]; then
-        cp "$BOOT_FALLBACK" BOOTX64.EFI
+        cp -p "$BOOT_FALLBACK" BOOTX64.EFI
         echo "      WARNING: bootloader build failed (run 'make' in boot/ for details);"
         echo "               using the committed boot/BOOTX64.EFI"
+    else
+        echo "      ERROR: bootloader build failed and no committed BOOTX64.EFI to fall back to"
     fi
 else
     echo "      gnu-efi not installed; using the committed boot/BOOTX64.EFI"

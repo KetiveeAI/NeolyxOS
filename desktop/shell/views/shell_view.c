@@ -26,6 +26,7 @@
 #include "app_view.h"
 #include "nxui.h"
 #include "nxglass.h"
+#include "nxframe.h"
 #include "nxicons.h"
 #include "nxsyscall.h"
 #include "nxproc.h"
@@ -1838,9 +1839,9 @@ static void draw_segment(nxc_canvas_t *c, float x0, float base, const char *text
 
 static void draw_tabs(nxc_canvas_t *c, nxc_rect_t content) {
     const nxui_theme_t *th = nxui_theme();
-    nxc_color_t chip = V.light ? NXC_RGB(0xE6, 0xE7, 0xEE) : NXC_RGB(0x22, 0x25, 0x2F);
-    nxc_color_t chip_on = V.light ? NXC_RGB(0xFF, 0xFF, 0xFF) : NXC_RGB(0x2E, 0x32, 0x3F);
-    nxc_color_t edge = V.light ? NXC_ARGB(40, 0, 0, 0) : NXC_ARGB(50, 0xFF, 0xFF, 0xFF);
+    /* Neolyx tab strip: rail tone band, flat tabs, saffron underline on
+     * the current one; close glyph shows on the current or hovered tab. */
+    nxc_fill_rect(c, nxc_rect(content.x, content.y, content.w, SH_TABBAR_H), nxframe_rail_tone());
     int slot = 0;
     for (int i = 0; i < SH_MAX_TABS; i++) {
         if (!V.tabs[i].used) continue;
@@ -1848,23 +1849,23 @@ static void draw_tabs(nxc_canvas_t *c, nxc_rect_t content) {
         if (r.x + r.w > content.x + content.w - 40.0f) break;
         int on = i == V.cur;
         int hover = V.pointer_in && nxglass_hit(nxc_rect(r.x - content.x, r.y - content.y, r.w, r.h), V.mx, V.my);
-        nxc_fill_rrect(c, r, 7.0f, on ? chip_on : (hover ? nxc_color_lerp(chip, chip_on, 0.5f) : chip));
-        nxc_stroke_rrect(c, r, 7.0f, 1.0f, on ? NXC_WITH_ALPHA(th->accent, 160) : edge);
+        if (on) nxc_fill_rrect(c, r, 5.0f, sh_bg());
+        else if (hover) nxframe_row_wash(c, r, NXFRAME_HOVER);
+        if (on) nxc_fill_rrect(c, nxc_rect(r.x + 8.0f, r.y + r.h - 3.0f, r.w - 16.0f, 3.0f), 1.5f, th->accent);
         char title[SH_NAME_MAX * 2];
         tab_title(&V.tabs[i], title, (int)sizeof(title));
-        nxui_text_in_rect(c, NXUI_TEXT_FOOTNOTE, nxc_rect(r.x + 10.0f, r.y, r.w - 38.0f, r.h), title,
+        nxui_text_in_rect(c, on ? NXUI_TEXT_BODY_SEMIBOLD : NXUI_TEXT_FOOTNOTE,
+                          nxc_rect(r.x + 10.0f, r.y, r.w - 38.0f, r.h - 2.0f), title,
                           on ? sh_color(C_TEXT) : sh_color(C_DIM), NXC_ALIGN_LEFT);
-        nxc_rect_t x = tab_close_rect(r);
-        nxc_fill_rrect(c, x, 4.0f, NXC_RGB(0xE5, 0x3E, 0x3E));
-        nxsym_draw(c, NXSYM_CLOSE, x.x + x.w * 0.5f, x.y + x.h * 0.5f, 7.0f, NXC_RGB(0xFF, 0xFF, 0xFF), 0.0f);
+        if (on || hover) {
+            nxc_rect_t x = tab_close_rect(r);
+            nxsym_draw(c, NXSYM_CLOSE, x.x + x.w * 0.5f, x.y + x.h * 0.5f, 8.0f, sh_color(C_DIM), 0.0f);
+        }
     }
     nxc_rect_t p = plus_rect(content, slot);
-    if (p.x + p.w <= content.x + content.w - 8.0f && tab_count() < SH_MAX_TABS) {
-        nxc_fill_rrect(c, p, 7.0f, chip);
-        nxui_text_in_rect(c, NXUI_TEXT_BODY_MEDIUM, p, "+", sh_color(C_DIM), NXC_ALIGN_CENTER);
-    }
-    nxc_fill_rect(c, nxc_rect(content.x, content.y + SH_TABBAR_H - 1.0f, content.w, 1.0f),
-                  V.light ? NXC_ARGB(24, 0, 0, 0) : NXC_ARGB(28, 0xFF, 0xFF, 0xFF));
+    if (p.x + p.w <= content.x + content.w - 8.0f && tab_count() < SH_MAX_TABS)
+        nxsym_draw(c, NXSYM_PLUS, p.x + p.w * 0.5f, p.y + p.h * 0.5f, 11.0f, sh_color(C_DIM), 0.0f);
+    nxc_fill_rect(c, nxc_rect(content.x, content.y + SH_TABBAR_H - 1.0f, content.w, 1.0f), th->separator);
 }
 
 void shell_view_render(desktop_window_t *win, void *ctx) {
@@ -1887,6 +1888,11 @@ void shell_view_render(desktop_window_t *win, void *ctx) {
 
     sh_tab_t *t = cur_tab();
     if (!t) return;
+    {
+        char place[SH_NAME_MAX * 2];
+        tab_title(t, place, (int)sizeof(place));
+        desktop_set_window_place(win->id, place);
+    }
     nxc_rect_t tr = text_rect(content);
     int cols = (int)(tr.w / g_cw), rows = (int)(tr.h / g_lh);
     if (cols < 8) cols = 8;
@@ -2042,6 +2048,15 @@ void shell_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ct
     }
     char ch = sc_ascii(sc, V.shift);
     if (ch) { insert_char(t, ch); t->scroll = 0; }
+}
+
+/* Scroll wheel: three rows per notch through the scrollback (wheel
+ * toward the user moves toward the live prompt). */
+void shell_view_scroll(desktop_window_t *win, int32_t lx, int32_t ly, int32_t notches, void *ctx) {
+    (void)ctx; (void)lx; (void)ly;
+    if (!win || notches == 0) return;
+    sh_tab_t *t = cur_tab();
+    if (t) scroll_by(t, -notches * 3);
 }
 
 void shell_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t b, uint8_t pb, void *ctx) {

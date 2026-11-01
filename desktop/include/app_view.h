@@ -40,6 +40,9 @@ typedef struct {
     void (*key)(desktop_window_t *win, uint8_t scancode, uint8_t pressed, void *ctx);
     void (*mouse)(desktop_window_t *win, int32_t lx, int32_t ly,
                   uint8_t buttons, uint8_t prev_buttons, void *ctx);
+    /* Scroll wheel while the pointer is over the content area (focused or
+     * not). LOCAL coordinates; notches > 0 scrolls toward the end. May be NULL. */
+    void (*scroll)(desktop_window_t *win, int32_t lx, int32_t ly, int32_t notches, void *ctx);
 } app_view_t;
 
 /* Find a view by window/launch name (case-insensitive). NULL if none. */
@@ -58,6 +61,7 @@ int  settings_view_open(uint32_t win_id);
 void settings_view_render(desktop_window_t *win, void *ctx);
 void settings_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ctx);
 void settings_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t b, uint8_t pb, void *ctx);
+void settings_view_scroll(desktop_window_t *win, int32_t lx, int32_t ly, int32_t notches, void *ctx);
 /* Open Settings on a pane by id (e.g. "network", "appearance"). Launches
  * or focuses the window. Returns 0 on success. */
 int  settings_view_show_pane(const char *pane_id);
@@ -73,12 +77,14 @@ int  taskmgr_view_open(uint32_t win_id);
 void taskmgr_view_render(desktop_window_t *win, void *ctx);
 void taskmgr_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ctx);
 void taskmgr_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t b, uint8_t pb, void *ctx);
+void taskmgr_view_scroll(desktop_window_t *win, int32_t lx, int32_t ly, int32_t notches, void *ctx);
 
 /* shell/views/path_view.c  (Path, the file browser; reads through nxpath_relay.h) */
 int  path_view_open(uint32_t win_id);
 void path_view_render(desktop_window_t *win, void *ctx);
 void path_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ctx);
 void path_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t b, uint8_t pb, void *ctx);
+void path_view_scroll(desktop_window_t *win, int32_t lx, int32_t ly, int32_t notches, void *ctx);
 /* Open Path at a folder (launches or focuses the window). 0 on success. */
 int  path_view_open_at(const char *path);
 
@@ -87,12 +93,14 @@ int  shell_view_open(uint32_t win_id);
 void shell_view_render(desktop_window_t *win, void *ctx);
 void shell_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ctx);
 void shell_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t b, uint8_t pb, void *ctx);
+void shell_view_scroll(desktop_window_t *win, int32_t lx, int32_t ly, int32_t notches, void *ctx);
 
 /* shell/views/notes_view.c  (Notes: the plain-text note editor; notes live in ~/Documents/Notes) */
 int  notes_view_open(uint32_t win_id);
 void notes_view_render(desktop_window_t *win, void *ctx);
 void notes_view_key(desktop_window_t *win, uint8_t sc, uint8_t pressed, void *ctx);
 void notes_view_mouse(desktop_window_t *win, int32_t lx, int32_t ly, uint8_t b, uint8_t pb, void *ctx);
+void notes_view_scroll(desktop_window_t *win, int32_t lx, int32_t ly, int32_t notches, void *ctx);
 /* Open a text file (full path) in Notes, launching or focusing the window.
  * The open note is saved first; returns -1 if that save fails. */
 int  notes_view_open_file(const char *path);

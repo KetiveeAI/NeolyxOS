@@ -51,7 +51,7 @@ SHELL_SRC = shell/desktop_shell.c \
 # its own new files to its own line only.
 AREA_SHARED_SRC   = shell/app_views.c
 
-AREA_GLASS_SRC    = lib/nxglass.c
+AREA_GLASS_SRC    = lib/nxglass.c lib/nxframe.c
 
 AREA_SETTINGS_SRC = shell/views/settings_view.c \
                     shell/views/settings_ui.c \

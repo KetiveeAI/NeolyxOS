@@ -20,6 +20,7 @@
 #include "settings_pane.h"
 #include "network_indicator.h"
 #include "nxglass.h"
+#include "nxframe.h"
 #include "nxicons.h"
 #include "nxnet.h"
 #include "nxui.h"
@@ -354,28 +355,28 @@ static void np_symbol_tile(nxc_canvas_t *c, float x, float y, float size, nxsym_
 static void np_draw_title(nxc_canvas_t *c, const np_layout_t *L) {
     const nxui_theme_t *th = nxui_theme();
     nxui_text(c, NXUI_TEXT_TITLE1, L->title.x, L->title.y + 24.0f, "Network", th->text_primary, 0);
+    nxc_fill_rrect(c, nxc_rect(L->title.x, L->title.y + 34.0f, 22.0f, 3.0f), 1.5f, th->accent);   /* Neolyx tick */
 }
 
 static void np_draw_interfaces(nxc_canvas_t *c, const np_layout_t *L) {
     const nxui_theme_t *th = nxui_theme();
-    nxglass_card(c, L->if_card, 10.0f);
+    nxframe_panel(c, L->if_card);
     for (uint32_t i = 0; i < g_np.nif; i++) {
         const nxnet_interface_t *f = &g_np.ifs[i];
         nxc_rect_t r = np_if_row(L, i);
         int sel = (int)i == g_np.sel;
-        if (sel) nxc_fill_rrect(c, r, 8.0f, th->selection);
+        if (sel) nxframe_selection(c, r);
         else if (g_np.hover == NP_HIT_IF_BASE + (int)i) nxc_fill_rrect(c, r, 8.0f, th->control_fill_hover);
-        np_symbol_tile_ex(c, r.x + 8.0f, r.y + 9.0f, 32.0f, np_if_symbol(f), f->state == NXNET_IF_CONNECTED, sel);
+        np_symbol_tile_ex(c, r.x + 8.0f, r.y + 9.0f, 32.0f, np_if_symbol(f), f->state == NXNET_IF_CONNECTED, 0);
         float tx = r.x + 50.0f, tw = r.w - 58.0f;
         nxc_text_opts_t o = { 0.0f, NXC_ALIGN_LEFT, tw, 0 };
         nxui_text(c, NXUI_TEXT_BODY_MEDIUM, tx, r.y + 21.0f, nxnet_if_kind_str(f->kind),
-                  sel ? th->text_on_accent : th->text_primary, &o);
+                  th->text_primary, &o);
         char buf[48];
-        nxc_fill_circle(c, tx + 3.5f, r.y + 34.0f, 3.5f, sel ? NXC_ARGB(255, 0xFF, 0xFF, 0xFF) : np_state_color(f->state));
-        if (sel) nxc_fill_circle(c, tx + 3.5f, r.y + 34.0f, 2.5f, np_state_color(f->state));
+        nxc_fill_circle(c, tx + 3.5f, r.y + 34.0f, 3.5f, np_state_color(f->state));
         o.max_width = tw - 12.0f;
         nxui_text(c, NXUI_TEXT_CAPTION, tx + 12.0f, r.y + 38.0f, np_if_status_line(f, buf, sizeof(buf)),
-                  sel ? NXC_WITH_ALPHA(th->text_on_accent, 210) : th->text_secondary, &o);
+                  th->text_secondary, &o);
     }
     if (g_np.nif == 0) {
         nxui_text_in_rect(c, NXUI_TEXT_FOOTNOTE, L->if_card, "No network hardware", th->text_secondary, NXC_ALIGN_CENTER);
@@ -396,7 +397,7 @@ static void np_detail_cell(nxc_canvas_t *c, float x, float y, float w, const cha
 
 static void np_draw_header(nxc_canvas_t *c, const np_layout_t *L, const nxnet_interface_t *f) {
     const nxui_theme_t *th = nxui_theme();
-    nxglass_card(c, L->header, 10.0f);
+    nxframe_panel(c, L->header);
     np_symbol_tile(c, L->header.x + 14.0f, L->header.y + 12.0f, 40.0f, np_if_symbol(f), f->state == NXNET_IF_CONNECTED);
     float tx = L->header.x + 66.0f;
     nxui_text(c, NXUI_TEXT_TITLE3, tx, L->header.y + 28.0f, nxnet_if_kind_str(f->kind), th->text_primary, 0);
@@ -431,7 +432,7 @@ static void np_draw_header(nxc_canvas_t *c, const np_layout_t *L, const nxnet_in
 }
 
 static void np_draw_details(nxc_canvas_t *c, const np_layout_t *L, const nxnet_interface_t *f) {
-    nxglass_card(c, L->details, 10.0f);
+    nxframe_panel(c, L->details);
     float cw = (L->details.w - 32.0f) * 0.5f;
     float x0 = L->details.x + 16.0f, x1 = x0 + cw + 8.0f, y = L->details.y + 6.0f;
     char ip[NXNET_IPV4_STR_MAX], mask[NXNET_IPV4_STR_MAX], gw[NXNET_IPV4_STR_MAX];
@@ -470,11 +471,11 @@ static void np_signal_bars(nxc_canvas_t *c, float x, float base_y, uint8_t bars,
 
 static void np_draw_networks(nxc_canvas_t *c, const np_layout_t *L) {
     const nxui_theme_t *th = nxui_theme();
-    nxui_text(c, NXUI_TEXT_HEADLINE, L->list_label.x + 2.0f, L->list_label.y + 14.0f,
-              g_np.wifi.state == NXNET_WIFI_OFF ? "Wi-Fi" : "Networks", th->text_primary, 0);
+    nxframe_caps(c, L->list_label.x + 2.0f, L->list_label.y + 14.0f,
+                 g_np.wifi.state == NXNET_WIFI_OFF ? "Wi-Fi" : "Networks", th->text_secondary);
     if (g_np.wifi.state != NXNET_WIFI_OFF)
         nxglass_button(c, L->scan_btn, "Scan", NXGLASS_BUTTON_PLAIN, g_np.hover == NP_HIT_SCAN ? NXGLASS_HOVER : 0);
-    nxglass_card(c, L->list, 10.0f);
+    nxframe_panel(c, L->list);
     if (g_np.wifi.state == NXNET_WIFI_OFF) {
         nxui_text_in_rect(c, NXUI_TEXT_BODY, L->list, "Wi-Fi is turned off", th->text_secondary, NXC_ALIGN_CENTER);
         return;
@@ -514,9 +515,9 @@ static void np_draw_networks(nxc_canvas_t *c, const np_layout_t *L) {
 
 static void np_draw_ethernet_traffic(nxc_canvas_t *c, const np_layout_t *L, const nxnet_interface_t *f) {
     const nxui_theme_t *th = nxui_theme();
-    nxui_text(c, NXUI_TEXT_HEADLINE, L->list_label.x + 2.0f, L->list_label.y + 14.0f, "Traffic", th->text_primary, 0);
+    nxframe_caps(c, L->list_label.x + 2.0f, L->list_label.y + 14.0f, "Traffic", th->text_secondary);
     nxc_rect_t card = nxc_rect(L->list.x, L->list.y, L->list.w, 2.0f * NP_DET_ROW + 12.0f);
-    nxglass_card(c, card, 10.0f);
+    nxframe_panel(c, card);
     float cw = (card.w - 32.0f) * 0.5f;
     char a[32], b[32];
     np_fmt_bytes(a, sizeof(a), f->counters.rx_bytes);
@@ -537,7 +538,7 @@ static void np_draw_unavailable(nxc_canvas_t *c, nxc_rect_t a) {
     float w = a.w - 2.0f * NP_PAD;
     if (w > 440.0f) w = 440.0f;
     nxc_rect_t card = nxc_rect(a.x + (a.w - w) * 0.5f, a.y + 110.0f, w, 236.0f);
-    nxglass_card(c, card, 14.0f);
+    nxframe_panel(c, card);
     float cx = card.x + card.w * 0.5f;
     nxc_fill_circle(c, cx, card.y + 52.0f, 28.0f, NXC_WITH_ALPHA(th->warning, 40));
     nxsym_draw(c, NXSYM_WIFI_OFF, cx, card.y + 52.0f, 28.0f, th->warning, 0.0f);
@@ -1003,7 +1004,8 @@ static void network_pane_on_show(void) {
 }
 
 const settings_pane_t settings_pane_network = {
-    "network", "Network", network_pane_render, network_pane_mouse, network_pane_key, network_pane_on_show
+    "network", "Network", network_pane_render, network_pane_mouse, network_pane_key, network_pane_on_show,
+    0   /* no scrolling: the pane fits its area */
 };
 
 /* ============ Entry points for other shell modules ============ */

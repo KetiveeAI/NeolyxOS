@@ -237,7 +237,10 @@ typedef struct {
             int16_t dx;         /* Delta X movement */
             int16_t dy;         /* Delta Y movement */
             uint8_t buttons;    /* Button state bitmap */
-            uint8_t _pad[3];
+            int8_t  wheel;      /* Vertical wheel notches since the last
+                                 * event; > 0 = toward the user (scroll
+                                 * down). Was padding: older readers see 0. */
+            uint8_t _pad[2];
         } mouse;
     };
 } input_event_t;

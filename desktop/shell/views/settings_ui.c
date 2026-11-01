@@ -11,6 +11,7 @@
  */
 
 #include "settings_internal.h"
+#include "nxframe.h"
 
 extern void serial_puts(const char *s);
 
@@ -113,7 +114,13 @@ void settings_draw_tile(nxc_canvas_t *c, const settings_tile_t *t, float cx, flo
                                      t->color);
     nxc_fill_rrect_paint(c, r, rad, &p);
     nxc_stroke_rrect(c, r, rad, 0.75f, NXC_ARGB(40, 0, 0, 0));
-    nxc_color_t white = NXC_RGB(0xFF, 0xFF, 0xFF);
+    settings_draw_glyph(c, t, cx, cy, size, NXC_RGB(0xFF, 0xFF, 0xFF));
+}
+
+void settings_draw_glyph(nxc_canvas_t *c, const settings_tile_t *t, float cx, float cy, float size,
+                         nxc_color_t white) {
+    if (!c || !t || size < 4.0f) return;
+    nxc_rect_t r = nxc_rect(cx - size * 0.5f, cy - size * 0.5f, size, size);
     switch (t->kind) {
         case STILE_SYM:
             if (t->sym >= 0 && t->sym < (int)NXSYM_COUNT)
@@ -191,10 +198,10 @@ float sui_wrap_text(nxc_canvas_t *c, nxui_text_style_t style, float x, float y, 
 #define SUI_PAD_TOP    18.0f
 #define SUI_PAD_BOTTOM 28.0f
 #define SUI_MAX_W      640.0f
-#define SUI_ROW_H      40.0f
+#define SUI_ROW_H      38.0f
 #define SUI_ROW_H2     54.0f
-#define SUI_INSET      14.0f
-#define SUI_CARD_GAP   20.0f
+#define SUI_INSET      4.0f    /* ledger rows sit on the page, no card inset */
+#define SUI_CARD_GAP   18.0f
 #define SUI_MAX_CTL    96
 
 static struct {
@@ -310,48 +317,36 @@ static uint32_t sui_state(const sui_t *ui, int id, nxc_rect_t r) {
 void sui_space(sui_t *ui, float h) { if (ui && h > 0.0f) ui->y += h; }
 
 void sui_header(sui_t *ui, const char *pane_id, const char *title, const char *subtitle) {
+    (void)pane_id;
     if (!ui || !title) return;
-    const nxui_theme_t *th = nxui_theme();
-    float tile = 44.0f;
-    float tx = ui->x + tile + 14.0f;
-    float tw = ui->w - tile - 14.0f;
-    float sub_h = subtitle ? sui_wrap_text(ui->c, NXUI_TEXT_FOOTNOTE, tx, 0.0f, tw, subtitle, 0, 0) : 0.0f;
-    float title_h = nxui_text_ascent(NXUI_TEXT_TITLE1) + nxui_text_descent(NXUI_TEXT_TITLE1);
-    float block = title_h + (sub_h > 0.0f ? sub_h + 4.0f : 0.0f);
-    float h = block > tile ? block : tile;
-    if (ui->pass == SUI_DRAW) {
-        settings_draw_tile(ui->c, settings_tile_for(pane_id), ui->x + tile * 0.5f, ui->y + h * 0.5f, tile);
-        float ty = ui->y + (h - block) * 0.5f;
-        nxui_text(ui->c, NXUI_TEXT_TITLE1, tx, ty + nxui_text_ascent(NXUI_TEXT_TITLE1), title,
-                  th->text_primary, NULL);
-        if (subtitle)
-            sui_wrap_text(ui->c, NXUI_TEXT_FOOTNOTE, tx, ty + title_h + 4.0f, tw, subtitle,
-                          th->text_secondary, 1);
-    }
-    ui->y += h + 22.0f;
+    /* Neolyx page title: large title, accent tick, subtitle (no icon tile) */
+    float h = nxframe_page_title(ui->pass == SUI_DRAW ? ui->c : NULL, ui->x + SUI_INSET, ui->y,
+                                 ui->w - 2.0f * SUI_INSET, title, subtitle);
+    ui->y += h + 18.0f;
 }
 
 void sui_section(sui_t *ui, const char *title) {
     if (!ui || !title) return;
     if (ui->pass == SUI_DRAW)
-        nxui_text_in_rect(ui->c, NXUI_TEXT_HEADLINE, nxc_rect(ui->x + 4.0f, ui->y, ui->w - 8.0f, 18.0f),
-                          title, nxui_theme()->text_primary, NXC_ALIGN_LEFT);
-    ui->y += 26.0f;
+        nxframe_section(ui->c, ui->x + SUI_INSET, ui->y, ui->w - 2.0f * SUI_INSET, title);
+    ui->y += NXFRAME_SECTION_H;
 }
 
+/* Cards are ledger groups: no surface of their own, rows sit on the page
+ * and are divided by hairlines; the group closes with a rule. */
 void sui_card_begin(sui_t *ui) {
     if (!ui || ui->in_card) return;
     ui->in_card = 1;
     ui->row_in_card = 0;
     ui->card_y = ui->y;
-    if (ui->pass == SUI_DRAW && ui->card < SUI_MAX_CARDS && S.card_h[ui->card] > 0.0f)
-        nxglass_card(ui->c, nxc_rect(ui->x, ui->y, ui->w, S.card_h[ui->card]), 10.0f);
 }
 
 void sui_card_end(sui_t *ui) {
     if (!ui || !ui->in_card) return;
     if (ui->pass == SUI_MEASURE && ui->card < SUI_MAX_CARDS)
         S.card_h[ui->card] = ui->y - ui->card_y;
+    if (ui->pass == SUI_DRAW && ui->row_in_card > 0)
+        nxframe_rule(ui->c, ui->x + SUI_INSET, ui->y - 1.0f, ui->w - 2.0f * SUI_INSET);
     ui->card++;
     ui->in_card = 0;
     ui->y += SUI_CARD_GAP;
@@ -360,8 +355,8 @@ void sui_card_end(sui_t *ui) {
 void sui_note(sui_t *ui, const char *text) {
     if (!ui || !text) return;
     ui->y -= SUI_CARD_GAP - 6.0f;
-    float h = sui_wrap_text(ui->c, NXUI_TEXT_FOOTNOTE, ui->x + 6.0f, ui->y, ui->w - 12.0f, text,
-                            nxui_theme()->text_secondary, ui->pass == SUI_DRAW);
+    float h = sui_wrap_text(ui->c, NXUI_TEXT_FOOTNOTE, ui->x + SUI_INSET, ui->y, ui->w - 2.0f * SUI_INSET, text,
+                            nxui_theme()->text_tertiary, ui->pass == SUI_DRAW);
     ui->y += h + SUI_CARD_GAP - 2.0f;
 }
 
@@ -369,7 +364,7 @@ void sui_note(sui_t *ui, const char *text) {
 static nxc_rect_t sui_row(sui_t *ui, float h) {
     nxc_rect_t r = nxc_rect(ui->x, ui->y, ui->w, h);
     if (ui->pass == SUI_DRAW && ui->in_card && ui->row_in_card > 0)
-        nxglass_separator(ui->c, ui->x + SUI_INSET, ui->y, ui->w - 2.0f * SUI_INSET);
+        nxframe_rule(ui->c, ui->x + SUI_INSET, ui->y, ui->w - 2.0f * SUI_INSET);
     ui->row_in_card++;
     ui->y += h;
     return r;
@@ -402,12 +397,8 @@ nxc_rect_t sui_block(sui_t *ui, float h) {
 void sui_info(sui_t *ui, const char *label, const char *value) {
     if (!ui) return;
     nxc_rect_t r = sui_row(ui, SUI_ROW_H);
-    float vw = value ? nxui_text_width(NXUI_TEXT_BODY, value) + 8.0f : 0.0f;
-    if (vw > r.w * 0.62f) vw = r.w * 0.62f;
-    sui_label(ui, r, label, NULL, vw);
-    if (ui->pass == SUI_DRAW && value)
-        nxui_text_in_rect(ui->c, NXUI_TEXT_BODY, nxc_rect(r.x + r.w - SUI_INSET - vw, r.y, vw, r.h),
-                          value, nxui_theme()->text_secondary, NXC_ALIGN_RIGHT);
+    if (ui->pass == SUI_DRAW)
+        nxframe_ledger_row(ui->c, nxc_rect(r.x + SUI_INSET, r.y, r.w - 2.0f * SUI_INSET, r.h), label, value);
 }
 
 void sui_status(sui_t *ui, const char *label, const char *badge, nxc_color_t color) {
@@ -780,6 +771,20 @@ int sui_pane_mouse(sui_build_fn fn, int32_t lx, int32_t ly, uint8_t b, uint8_t p
         settings_navigate(target);   /* resets this state via on_show */
     }
     return inside || press || release || held;
+}
+
+/* One wheel notch scrolls the same distance as the Up/Down keys. */
+#define SUI_WHEEL_PX 48.0f
+
+int sui_pane_scroll(int32_t lx, int32_t ly, int32_t notches) {
+    (void)lx; (void)ly;
+    if (!S.have_area || notches == 0) return 0;
+    if (S.sb_drag || S.active >= 0) return 1;   /* a thumb or slider drag owns the pane */
+    if (sui_max_scroll() <= 0.0f) return 0;
+    S.scroll += (float)notches * SUI_WHEEL_PX;
+    sui_clamp_scroll();
+    S.pressed = -1;                              /* a pending click no longer lines up */
+    return 1;
 }
 
 int sui_pane_key(sui_build_fn fn, uint8_t sc, uint8_t pressed, char ascii) {
