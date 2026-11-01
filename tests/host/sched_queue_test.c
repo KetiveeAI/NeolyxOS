@@ -11,7 +11,12 @@
  *   - no starvation in either direction over a long simulated run that
  *     re-queues each picked process like schedule() does;
  *   - the turn counter resets when no NORMAL work waits, so a desktop
- *     that ran alone does not owe NORMAL turns later.
+ *     that ran alone does not owe NORMAL turns later;
+ *   - K1: FOREGROUND/BACKGROUND app classes (process_t.sched_class):
+ *     9:2:1 SYSTEM:FOREGROUND:BACKGROUND under full load, 2:1 between apps
+ *     with no SYSTEM work, BACKGROUND never starves, and a class change
+ *     done as remove/change/add (process_set_class) keeps the queues sane.
+ * ("NORMAL" below means any app: FOREGROUND by default.)
  *
  * Build and run from the repository root:
  *   gcc -std=c11 -O1 -Wall -Wextra -Ikernel/include \
@@ -25,6 +30,7 @@
 #include <string.h>
 
 #include "../../kernel/src/core/sched_queue.c"
+#include "../../kernel/include/core/nx_mem.h"
 
 static int g_fail, g_checks;
 
@@ -58,14 +64,14 @@ static void test_class(void) {
     process_t p;
     memset(&p, 0, sizeof(p));
     p.flags = PROC_FLAG_USER;
-    CHECK(sq_class_of(&p) == SQ_CLASS_NORMAL, "user process should be NORMAL");
+    CHECK(sq_class_of(&p) == SQ_CLASS_FOREGROUND, "user process should default to FOREGROUND");
     p.flags = PROC_FLAG_USER | PROC_FLAG_SYSTEM;
     CHECK(sq_class_of(&p) == SQ_CLASS_SYSTEM, "PROC_FLAG_SYSTEM should be SYSTEM");
     p.flags = PROC_FLAG_KERNEL;
     CHECK(sq_class_of(&p) == SQ_CLASS_SYSTEM, "kernel thread should be SYSTEM");
     p.flags = PROC_FLAG_USER | PROC_FLAG_DETACHED;
-    CHECK(sq_class_of(&p) == SQ_CLASS_NORMAL, "detached user process should be NORMAL");
-    CHECK(sq_class_of(NULL) == SQ_CLASS_NORMAL, "NULL should not crash");
+    CHECK(sq_class_of(&p) == SQ_CLASS_FOREGROUND, "detached user process should be FOREGROUND");
+    CHECK(sq_class_of(NULL) == SQ_CLASS_FOREGROUND, "NULL should not crash");
 }
 
 static void test_add_remove(void) {
@@ -85,7 +91,7 @@ static void test_add_remove(void) {
     CHECK(sq_add(&q, &procs[0]) == 0, "double add of head accepted");
     CHECK(sq_add(&q, &procs[2]) == 0, "double add of middle accepted");
     CHECK(sq_add(&q, &procs[3]) == 0, "double add of tail accepted");
-    CHECK(queue_pids(&q, SQ_CLASS_NORMAL, pids, NPROC) == 4, "4 queued");
+    CHECK(queue_pids(&q, SQ_CLASS_FOREGROUND, pids, NPROC) == 4, "4 queued");
     CHECK(pids[0] == 0 && pids[1] == 1 && pids[2] == 2 && pids[3] == 3, "FIFO order");
     CHECK(q.head[SQ_CLASS_SYSTEM] == NULL, "NORMAL process landed in SYSTEM");
 
@@ -94,12 +100,12 @@ static void test_add_remove(void) {
     sq_remove(&q, &procs[1]);                      /* again: no-op */
     sq_remove(&q, &procs[0]);                      /* head */
     sq_remove(&q, &procs[3]);                      /* tail */
-    int n = queue_pids(&q, SQ_CLASS_NORMAL, pids, NPROC);
+    int n = queue_pids(&q, SQ_CLASS_FOREGROUND, pids, NPROC);
     CHECK(n == 1 && pids[0] == 2, "after removals only pid 2 remains (n=%d)", n);
-    CHECK(q.tail[SQ_CLASS_NORMAL] == &procs[2], "tail not fixed up");
+    CHECK(q.tail[SQ_CLASS_FOREGROUND] == &procs[2], "tail not fixed up");
     sq_remove(&q, &procs[2]);                      /* only element */
     CHECK(!sq_any(&q), "queues not empty after removing all");
-    CHECK(q.head[SQ_CLASS_NORMAL] == NULL && q.tail[SQ_CLASS_NORMAL] == NULL,
+    CHECK(q.head[SQ_CLASS_FOREGROUND] == NULL && q.tail[SQ_CLASS_FOREGROUND] == NULL,
           "head/tail not cleared");
 
     /* Re-add after removal works and links are clean */
@@ -218,10 +224,93 @@ static void test_weighting(void) {
     CHECK(p == &procs[0], "woken SYSTEM not picked next");
 }
 
+/* K1: three classes */
+static void test_three_classes(void) {
+    sched_queues_t q;
+    reset(&q);
+    process_t p;
+    memset(&p, 0, sizeof(p));
+    p.flags = PROC_FLAG_USER;
+    p.sched_class = NX_CLASS_BACKGROUND;
+    CHECK(sq_class_of(&p) == SQ_CLASS_BACKGROUND, "NX_CLASS_BACKGROUND app should be BACKGROUND");
+    p.sched_class = NX_CLASS_FOREGROUND;
+    CHECK(sq_class_of(&p) == SQ_CLASS_FOREGROUND, "NX_CLASS_FOREGROUND app should be FOREGROUND");
+    p.flags = PROC_FLAG_USER | PROC_FLAG_SYSTEM;
+    p.sched_class = NX_CLASS_BACKGROUND;
+    CHECK(sq_class_of(&p) == SQ_CLASS_SYSTEM, "a system process ignores sched_class");
+    CHECK(sq_priority_of(SQ_CLASS_SYSTEM) == 64 && sq_priority_of(SQ_CLASS_FOREGROUND) == 112 &&
+          sq_priority_of(SQ_CLASS_BACKGROUND) == 144, "priority per class");
+
+    /* desktop, one focused app, two background apps: 9:2:1 */
+    procs[0].flags = PROC_FLAG_USER | PROC_FLAG_SYSTEM;
+    procs[1].flags = PROC_FLAG_USER;                     /* FOREGROUND */
+    procs[2].flags = PROC_FLAG_USER; procs[2].sched_class = NX_CLASS_BACKGROUND;
+    procs[3].flags = PROC_FLAG_USER; procs[3].sched_class = NX_CLASS_BACKGROUND;
+    for (int i = 0; i < 4; i++) sq_add(&q, &procs[i]);
+    int per[NPROC] = {0};
+    int s = 0, n = 0;
+    run_turns(&q, 1200, &s, &n, per);
+    CHECK(per[0] == 900, "system got %d of 1200 (want 900)", per[0]);
+    CHECK(per[1] == 200, "foreground got %d of 1200 (want 200)", per[1]);
+    CHECK(per[2] == 50 && per[3] == 50, "background got %d and %d (want 50 each)", per[2], per[3]);
+
+    /* No SYSTEM work: foreground 2 of every 3 turns, background 1 */
+    reset(&q);
+    procs[1].flags = PROC_FLAG_USER;
+    procs[2].flags = PROC_FLAG_USER; procs[2].sched_class = NX_CLASS_BACKGROUND;
+    sq_add(&q, &procs[1]);
+    sq_add(&q, &procs[2]);
+    const char *want = "FFBFFBFFB";
+    for (int t = 0; want[t]; t++) {
+        process_t *pk = sq_pick(&q);
+        char got = (pk == &procs[1]) ? 'F' : (pk == &procs[2]) ? 'B' : '?';
+        CHECK(got == want[t], "app turn %d: got %c want %c", t, got, want[t]);
+        sq_remove(&q, pk);
+        sq_add(&q, pk);
+    }
+
+    /* Background only: every turn, no debt */
+    reset(&q);
+    procs[2].flags = PROC_FLAG_USER; procs[2].sched_class = NX_CLASS_BACKGROUND;
+    sq_add(&q, &procs[2]);
+    memset(per, 0, sizeof(per));
+    s = n = 0;
+    run_turns(&q, 50, &s, &n, per);
+    CHECK(per[2] == 50 && q.fg_streak == 0, "background alone: %d turns, streak %u", per[2], q.fg_streak);
+
+    /* Many foreground hogs cannot starve one background app */
+    reset(&q);
+    for (int i = 1; i < NPROC; i++) procs[i].flags = PROC_FLAG_USER;
+    procs[7].sched_class = NX_CLASS_BACKGROUND;
+    for (int i = 1; i < NPROC; i++) sq_add(&q, &procs[i]);
+    memset(per, 0, sizeof(per));
+    s = n = 0;
+    run_turns(&q, 300, &s, &n, per);
+    CHECK(per[7] == 100, "lone background app got %d of 300 (want 100)", per[7]);
+
+    /* Class change while queued, done like process_set_class */
+    reset(&q);
+    procs[1].flags = PROC_FLAG_USER;
+    procs[2].flags = PROC_FLAG_USER;
+    sq_add(&q, &procs[1]);
+    sq_add(&q, &procs[2]);
+    int queued = sq_contains(&q, &procs[1]);
+    if (queued) sq_remove(&q, &procs[1]);
+    procs[1].sched_class = NX_CLASS_BACKGROUND;
+    if (queued) sq_add(&q, &procs[1]);
+    CHECK(queued, "process was queued");
+    CHECK(q.head[SQ_CLASS_FOREGROUND] == &procs[2] && q.tail[SQ_CLASS_FOREGROUND] == &procs[2],
+          "foreground queue holds only the other app");
+    CHECK(q.head[SQ_CLASS_BACKGROUND] == &procs[1] && q.tail[SQ_CLASS_BACKGROUND] == &procs[1],
+          "moved app is in the background queue");
+    CHECK(sq_contains(&q, &procs[1]) && sq_contains(&q, &procs[2]), "both still queued");
+}
+
 int main(void) {
     test_class();
     test_add_remove();
     test_weighting();
+    test_three_classes();
     printf("sched_queue_test: %d checks, %d failed\n", g_checks, g_fail);
     return g_fail ? 1 : 0;
 }

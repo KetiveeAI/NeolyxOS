@@ -30,6 +30,7 @@ struct nx_shm;
 #define NX_OBJ_SHM          1
 #define NX_OBJ_CHAN         2   /* one channel endpoint */
 #define NX_OBJ_PORT         3   /* named service port */
+#define NX_OBJ_MEMPRESSURE  4   /* memory pressure notifier (core/nx_mem.c) */
 
 #define NX_RIGHTS_ALL       (NX_RIGHT_READ | NX_RIGHT_WRITE | NX_RIGHT_MAP | \
                              NX_RIGHT_TRANSFER | NX_RIGHT_DUPLICATE)
@@ -141,6 +142,19 @@ void nx_shm_unmap_all(struct process *proc, nx_proc_ipc_t *ipc);
 
 /** Stop charging proc for objects it created that outlive it. */
 void nx_shm_forget_creator(struct process *proc);
+
+/** Bytes of all live shm objects (mem.stats). Syscall context (IRQs off). */
+uint64_t nx_shm_total_bytes(void);
+
+/* ============ Memory pressure objects (core/nx_mem.c, K1) ============ */
+
+/** Signals of a pressure object for obj.wait (NX_SIGNAL_READABLE when the
+ *  level changed since its handle last read it). */
+uint32_t nx_mem_pressure_signals(nx_object_t *obj);
+
+/** Timer tick hook: after a pressure level change, log it and wake
+ *  obj.wait waiters. Cheap when nothing changed. */
+void nx_mem_tick(void);
 
 /* ============ Channels and ports (nx_chan.c) ============ */
 

@@ -140,4 +140,7 @@ void addrspace_unmap_shared(addrspace_t *as, uint64_t va, uint64_t count);
 /** Load a space into CR3 (NULL loads the kernel-only tables). */
 void addrspace_activate(const addrspace_t *as);
 
+/** User mappings refused at the memory reserve since boot (mem.stats). */
+uint64_t addrspace_reserve_refusals(void);
+
 #endif /* NEOLYX_ADDRSPACE_H */

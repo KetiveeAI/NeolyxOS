@@ -76,6 +76,7 @@ obj-y += syscall.o
 obj-y += nx_syscall.o
 obj-y += nx_handle.o
 obj-y += nx_shm.o
+obj-y += nx_mem.o
 obj-y += nx_chan.o
 obj-y += nx_fb.o
 obj-y += process.o
@@ -290,6 +291,9 @@ nx_shm.o: src/core/nx_shm.c include/core/nx_handle.h include/core/nx_ipc.h inclu
 nx_chan.o: src/core/nx_chan.c include/core/nx_handle.h include/core/nx_ipc.h include/core/process.h include/core/syscall.h
 	$(CC) $(CFLAGS) -c src/core/nx_chan.c -o nx_chan.o
 
+nx_mem.o: src/core/nx_mem.c include/core/nx_mem.h include/core/nx_handle.h include/core/process.h include/mm/pmm.h include/mm/addrspace.h
+	$(CC) $(CFLAGS) -c src/core/nx_mem.c -o nx_mem.o
+
 nx_fb.o: src/core/nx_fb.c include/core/nx_fb.h include/core/process.h include/core/syscall.h
 	$(CC) $(CFLAGS) -c src/core/nx_fb.c -o nx_fb.o
 
@@ -302,7 +306,7 @@ boot_image.o: src/core/boot_image.c include/core/boot_image.h include/mm/addrspa
 process.o: src/core/process.c include/core/process.h include/core/sched_queue.h include/core/kernel.h include/utils/log.h
 	$(CC) $(CFLAGS) -c src/core/process.c -o process.o
 
-sched_queue.o: src/core/sched_queue.c include/core/sched_queue.h include/core/process.h
+sched_queue.o: src/core/sched_queue.c include/core/sched_queue.h include/core/process.h include/core/nx_mem.h
 	$(CC) $(CFLAGS) -c src/core/sched_queue.c -o sched_queue.o
 
 elf.o: src/core/elf.c include/core/elf.h

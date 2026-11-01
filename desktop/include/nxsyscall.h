@@ -431,6 +431,35 @@ static inline nx_handle_t nx_handle_dup(nx_handle_t h, uint32_t rights) {
     return (nx_handle_t)syscall2(SYS_HANDLE_DUP, (int64_t)h, (int64_t)rights);
 }
 
+/* ============ App classes and memory pressure (ABI 1.3) ============ */
+/*
+ * Spec: docs/kernel/app-classes-and-memory-pressure.md. Types come from the
+ * kernel's public header. Check NX_ABI_FLAG_MEMCLASS before relying on them.
+ */
+#include "nx_mem.h"
+
+#define SYS_PROC_SET_CLASS     153
+#define SYS_MEM_PRESSURE_OPEN  154
+#define SYS_MEM_PRESSURE_READ  155
+#define SYS_MEM_STATS          156
+
+/* NX_CLASS_FOREGROUND / NX_CLASS_BACKGROUND. 0 or a negative errno. */
+static inline int nx_proc_set_class(uint32_t pid, uint32_t cls) {
+    return (int)syscall2(SYS_PROC_SET_CLASS, (int64_t)pid, (int64_t)cls);
+}
+/* Handle (> 0) that is READABLE in nx_obj_wait after the pressure level
+ * changes, or a negative errno. */
+static inline nx_handle_t nx_mem_pressure_open(void) {
+    return (nx_handle_t)syscall1(SYS_MEM_PRESSURE_OPEN, 0);
+}
+/* Current NX_MEM_* level (and clears READABLE), or a negative errno. */
+static inline int nx_mem_pressure_read(nx_handle_t h) {
+    return (int)syscall1(SYS_MEM_PRESSURE_READ, (int64_t)h);
+}
+static inline int nx_mem_stats(nx_mem_stats_t *st) {
+    return (int)syscall2(SYS_MEM_STATS, (int64_t)st, (int64_t)sizeof(*st));
+}
+
 /* ============ ABI query (syscall 0) ============ */
 #include "nx_abi.h"
 #define SYS_ABI_QUERY     0

@@ -110,3 +110,10 @@ NX_SYSCALL(149, "handle.dup",   sys_handle_dup_impl,   2, PRIV_USER, 0)
 NX_SYSCALL(150, "port.listen",  sys_port_listen_impl,  2, PRIV_USER, NX_FLAG_AUDIT)
 NX_SYSCALL(151, "port.connect", sys_port_connect_impl, 2, PRIV_USER, NX_FLAG_AUDIT)
 NX_SYSCALL(152, "port.accept",  sys_port_accept_impl,  2, PRIV_USER, 0)
+
+/* App classes, memory pressure and memory stats (153-156) - ABI v1.3,
+ * core/nx_mem.h. proc.set_class checks its finer rules in the handler. */
+NX_SYSCALL(153, "proc.set_class",    sys_proc_set_class_impl,    2, PRIV_USER, NX_FLAG_AUDIT)
+NX_SYSCALL(154, "mem.pressure_open", sys_mem_pressure_open_impl, 1, PRIV_USER, 0)
+NX_SYSCALL(155, "mem.pressure_read", sys_mem_pressure_read_impl, 1, PRIV_USER, 0)
+NX_SYSCALL(156, "mem.stats",         sys_mem_stats_impl,         2, PRIV_USER, 0)

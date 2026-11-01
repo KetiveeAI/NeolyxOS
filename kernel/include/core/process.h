@@ -131,6 +131,7 @@ typedef struct process {
     uint64_t user_argv;                 /* First-run: RSI */
     int stack_released;                 /* Kernel stack + FPU area already freed */
     struct nx_proc_ipc *ipc;            /* Handles + shm mappings (NULL until first use) */
+    uint32_t sched_class;               /* NX_CLASS_* for apps (K1); ignored for system/kernel */
 } process_t;
 
 /* ============ Process API ============ */
@@ -238,6 +239,15 @@ process_t *process_current(void);
  * Get process by PID.
  */
 process_t *process_get(uint32_t pid);
+
+/**
+ * Move an app between NX_CLASS_FOREGROUND and NX_CLASS_BACKGROUND (K1).
+ * Requeues it if it is ready, updates priority, and preempts a running
+ * background app at the next tick when a ready app moves to foreground.
+ * The caller (proc.set_class) has validated the target and permission.
+ * @return the previous class
+ */
+uint32_t process_set_class(process_t *proc, uint32_t cls);
 
 /**
  * Yield CPU to next process.

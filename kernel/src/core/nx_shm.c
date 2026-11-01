@@ -152,6 +152,12 @@ static void shm_destroy(nx_object_t *obj) {
     kfree(shm);
 }
 
+uint64_t nx_shm_total_bytes(void) {
+    uint64_t total = 0;
+    for (nx_shm_t *s = g_shm_list; s; s = s->next) total += s->size;
+    return total;
+}
+
 void nx_shm_forget_creator(struct process *proc) {
     for (nx_shm_t *s = g_shm_list; s; s = s->next) {
         if (s->charged == proc) s->charged = NULL;

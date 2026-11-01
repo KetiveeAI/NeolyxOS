@@ -9,7 +9,9 @@
  *   - double frees, unaligned and out-of-range frees are refused and do
  *     not change the statistics;
  *   - free/used counters stay consistent with the bitmap;
- *   - the K0b memory reserve: size and the normal/system floors.
+ *   - the K0b memory reserve: size and the normal/system floors;
+ *   - K1 pressure levels: thresholds, hysteresis, live level and change
+ *     signal while memory is drained into the reserve.
  *
  * Build and run from the repository root:
  *   gcc -std=c11 -O1 -Wall -Wextra -DPMM_HOST_TEST -Ikernel/include -no-pie \
@@ -151,11 +153,18 @@ int main(void) {
     {
         pmm_stats_t rs;
         pmm_get_stats(&rs);
+        check(pmm_pressure_level() == PMM_PRESSURE_NORMAL, "plenty free: NORMAL");
+        (void)pmm_pressure_take_change();
+        uint64_t seq0 = pmm_pressure_seq();
         /* Bring free memory down to reserve + 10 pages */
         uint64_t keep = rsv + 10, held = 0;
         while (rs.free_pages > keep && pmm_alloc_page() != 0) { held++; rs.free_pages--; }
         pmm_get_stats(&rs);
         check(rs.free_pages == keep, "drained to reserve + 10");
+        check(pmm_pressure_level() == PMM_PRESSURE_CRITICAL, "drained into 1.5R: CRITICAL");
+        check(pmm_pressure_seq() >= seq0 + 2, "NORMAL -> WARN -> CRITICAL counted");
+        check(pmm_pressure_take_change() == 1, "change flagged for the tick");
+        check(pmm_pressure_take_change() == 0, "flag cleared after taking it");
         check(pmm_user_alloc_allowed(10, 0) == 1, "normal may take down to the reserve");
         check(pmm_user_alloc_allowed(11, 0) == 0, "normal refused inside the reserve");
         check(pmm_user_alloc_allowed(11, 1) == 1, "system may use the upper half");
@@ -165,6 +174,46 @@ int main(void) {
         check(pmm_user_alloc_allowed(0, 0) == 1, "zero pages allowed above the reserve");
         check(pmm_lock == 0 && g_lock_errors == 0, "reserve check releases the lock");
         (void)held;
+    }
+
+    /* K1 pressure levels: thresholds (R = reserve) and hysteresis */
+    {
+        const uint64_t R = 1000;
+        check(pmm_pressure_next(PMM_PRESSURE_NORMAL, 4 * R, R) == PMM_PRESSURE_NORMAL, "4R is NORMAL");
+        check(pmm_pressure_next(PMM_PRESSURE_NORMAL, 3 * R + 1, R) == PMM_PRESSURE_NORMAL, "just above 3R stays NORMAL");
+        check(pmm_pressure_next(PMM_PRESSURE_NORMAL, 3 * R, R) == PMM_PRESSURE_WARN, "3R enters WARN");
+        check(pmm_pressure_next(PMM_PRESSURE_WARN, 4 * R, R) == PMM_PRESSURE_WARN, "WARN holds up to 4R");
+        check(pmm_pressure_next(PMM_PRESSURE_WARN, 4 * R + 1, R) == PMM_PRESSURE_NORMAL, "WARN leaves above 4R");
+        check(pmm_pressure_next(PMM_PRESSURE_WARN, R + R / 2 + 1, R) == PMM_PRESSURE_WARN, "just above 1.5R stays WARN");
+        check(pmm_pressure_next(PMM_PRESSURE_WARN, R + R / 2, R) == PMM_PRESSURE_CRITICAL, "1.5R enters CRITICAL");
+        check(pmm_pressure_next(PMM_PRESSURE_NORMAL, R, R) == PMM_PRESSURE_CRITICAL, "a jump to R goes straight to CRITICAL");
+        check(pmm_pressure_next(PMM_PRESSURE_CRITICAL, 2 * R, R) == PMM_PRESSURE_CRITICAL, "CRITICAL holds up to 2R");
+        check(pmm_pressure_next(PMM_PRESSURE_CRITICAL, 2 * R + 1, R) == PMM_PRESSURE_WARN, "CRITICAL leaves to WARN above 2R");
+        check(pmm_pressure_next(PMM_PRESSURE_CRITICAL, 5 * R, R) == PMM_PRESSURE_NORMAL, "a big free goes straight to NORMAL");
+        check(pmm_pressure_next(PMM_PRESSURE_CRITICAL, 0, 0) == PMM_PRESSURE_NORMAL, "no reserve: NORMAL");
+
+        /* Random walk: every change needs a move of at least R/2 past the
+         * entry point that caused the previous one (no flapping) */
+        uint32_t level = PMM_PRESSURE_NORMAL;
+        uint64_t free_now = 5 * R, changes = 0, flaps = 0, last_change_free = 5 * R;
+        for (int i = 0; i < 10000; i++) {
+            uint64_t r = next_rand();
+            int64_t step = (int64_t)(r % 201) - 100;          /* -100..+100 pages */
+            if (step < 0 && (uint64_t)(-step) > free_now) step = -(int64_t)free_now;
+            free_now = (uint64_t)((int64_t)free_now + step);
+            if (free_now > 6 * R) free_now = 6 * R;
+            uint32_t next = pmm_pressure_next(level, free_now, R);
+            if (next != level) {
+                uint64_t d = free_now > last_change_free ? free_now - last_change_free
+                                                         : last_change_free - free_now;
+                if (changes > 0 && d < R / 2) flaps++;
+                changes++;
+                last_change_free = free_now;
+                level = next;
+            }
+        }
+        check(changes > 10, "pressure walk changed level");
+        check(flaps == 0, "no level change within R/2 of the previous one");
     }
 
     /* Exhaustion: allocate every page, then one more fails cleanly */
