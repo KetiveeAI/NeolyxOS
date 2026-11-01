@@ -154,6 +154,9 @@
 #define SYS_MEM_PRESSURE_READ   155 /* int sys_mem_pressure_read(nx_handle_t h) */
 #define SYS_MEM_STATS           156 /* int sys_mem_stats(nx_mem_stats_t *buf, uint32_t size) */
 
+/* ============ Network Status (ABI v1.4, core/nx_net.h) ============ */
+#define SYS_NET_IF_LIST         157 /* int sys_net_if_list(nx_net_if_info_t *buf, uint32_t cap, uint32_t elem_size) */
+
 /* Maximum syscall number */
 #define SYS_MAX         160
 

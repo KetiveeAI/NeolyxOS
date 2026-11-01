@@ -4,11 +4,11 @@
  * Structure:
  *   1. Pure helpers: validation, parsing, formatting. Always available.
  *   2. Backend: the only code that talks to the system.
- *        - OS build: the kernel has no network-info/config syscalls yet
- *          (sockets 40-47 only; sys_info 50 has no network fields), so
- *          every backend call returns NXNET_ERR_UNSUPPORTED, logged once.
- *          The syscalls to add are specified in
- *          docs/desktop/proposals/net.md; wire them in kb_* below.
+ *        - OS build: interface status from net.if_list (syscall 157,
+ *          ABI 1.4) once abi.query reports NX_ABI_FLAG_NET. Hostname,
+ *          Wi-Fi and IPv4 configuration have no syscall yet and return
+ *          NXNET_ERR_UNSUPPORTED; they are specified in
+ *          docs/desktop/proposals/net.md.
  *        - NX_HOST_PREVIEW: an in-memory demo (Ethernet + Wi-Fi + scan
  *          results) so the UI can be reviewed. Clearly fenced; never
  *          compiled into the OS.
@@ -308,14 +308,78 @@ static void bump(void) { g_generation++; if (g_generation == 0) g_generation = 1
 
 #ifndef NX_HOST_PREVIEW
 /* ---- OS build: kernel backend --------------------------------------
- * The kernel keeps interface, DHCP, DNS and Wi-Fi state (net/network.c,
- * drivers/wifi.c) but no syscall exposes it. Until net.info / net.config
- * / wifi.* land (docs/desktop/proposals/net.md), every request is
- * answered with UNSUPPORTED. Nothing is guessed. */
+ * Interface status comes from net.if_list (syscall 157, ABI 1.4,
+ * kernel/include/core/nx_net.h). Hostname, Wi-Fi and IPv4 configuration
+ * have no syscall yet (docs/desktop/proposals/net.md), so those requests
+ * are answered with UNSUPPORTED. Nothing is guessed. */
 
-static nxnet_status_t kb_probe(void) { return NXNET_ERR_UNSUPPORTED; }
+static nxnet_status_t kb_probe(void) {
+    nx_abi_info_t abi;
+    nn_zero(&abi, sizeof(abi));
+    if (nx_abi_query(&abi) != 0) return NXNET_ERR_UNSUPPORTED;
+    /* An older kernel has no syscall 157: never call it there */
+    if (abi.major != 1 || abi.minor < 4 || !(abi.flags & NX_ABI_FLAG_NET)) {
+        return NXNET_ERR_UNSUPPORTED;
+    }
+    return NXNET_OK;
+}
+
+/* Kernel errno values (kernel/include/core/syscall.h) */
+#define NN_EFAULT   14
+#define NN_EINVAL   22
+#define NN_ENOSYS   38
+
+static nxnet_status_t kb_errno(int r) {
+    if (r == -NN_EFAULT || r == -NN_EINVAL) return NXNET_ERR_INVALID_ARG;
+    if (r == -NN_ENOSYS) return NXNET_ERR_UNSUPPORTED;
+    return NXNET_ERR_IO;
+}
+
 static nxnet_status_t kb_interfaces(nxnet_interface_t *out, uint32_t cap, uint32_t *count) {
-    (void)out; (void)cap; (void)count; return NXNET_ERR_UNSUPPORTED;
+    nx_net_if_info_t info[NX_NET_IF_MAX];
+    nn_zero(info, sizeof(info));
+    uint32_t want = cap < NX_NET_IF_MAX ? cap : NX_NET_IF_MAX;
+
+    int r = nx_net_if_list(info, want);
+    if (r < 0) return kb_errno(r);
+
+    uint32_t total = (uint32_t)r;
+    uint32_t n = total < want ? total : want;
+    for (uint32_t i = 0; i < n; i++) {
+        const nx_net_if_info_t *k = &info[i];
+        nxnet_interface_t *f = &out[i];
+        nn_zero(f, sizeof(*f));
+        if (k->size < NX_NET_IF_INFO_V1_SIZE) return NXNET_ERR_IO;
+        if (k->kind > NX_NET_IF_LOOPBACK || k->state > NX_NET_STATE_ERROR) return NXNET_ERR_IO;
+
+        f->index = k->index;
+        nn_strcpy(f->name, k->name, sizeof(f->name));   /* bounded, always NUL-terminated */
+        f->kind = (nxnet_if_kind_t)k->kind;
+        f->state = (nxnet_if_state_t)k->state;
+        f->link_up = k->link_up ? 1 : 0;
+        f->primary = k->primary ? 1 : 0;
+        for (int b = 0; b < 6; b++) f->mac.b[b] = k->mac[b];
+        f->speed_mbps = k->speed_mbps;
+        f->ipv4.method = k->ipv4_method == NX_NET_IPV4_MANUAL ? NXNET_IPV4_MANUAL : NXNET_IPV4_DHCP;
+        for (int b = 0; b < 4; b++) {
+            f->ipv4.address.b[b] = k->addr[b];
+            f->ipv4.netmask.b[b] = k->mask[b];
+            f->ipv4.gateway.b[b] = k->gateway[b];
+        }
+        uint32_t dn = k->dns_count > NXNET_DNS_MAX ? NXNET_DNS_MAX : k->dns_count;
+        for (uint32_t d = 0; d < dn; d++)
+            for (int b = 0; b < 4; b++) f->ipv4.dns[d].b[b] = k->dns[d][b];
+        f->ipv4.dns_count = dn;
+        f->ipv4.lease_seconds = k->lease_seconds;
+        f->counters.rx_bytes = k->rx_bytes;
+        f->counters.tx_bytes = k->tx_bytes;
+        f->counters.rx_packets = k->rx_packets;
+        f->counters.tx_packets = k->tx_packets;
+        f->counters.rx_errors = k->rx_errors;
+        f->counters.tx_errors = k->tx_errors;
+    }
+    *count = total;
+    return total > cap ? NXNET_ERR_BUFFER_TOO_SMALL : NXNET_OK;
 }
 static nxnet_status_t kb_hostname(char *buf, size_t cap) { (void)buf; (void)cap; return NXNET_ERR_UNSUPPORTED; }
 static nxnet_status_t kb_wifi_status(nxnet_wifi_status_t *out) { (void)out; return NXNET_ERR_UNSUPPORTED; }

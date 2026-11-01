@@ -461,6 +461,21 @@ static inline int nx_mem_stats(nx_mem_stats_t *st) {
     return (int)syscall2(SYS_MEM_STATS, (int64_t)st, (int64_t)sizeof(*st));
 }
 
+/* ============ Network status (ABI 1.4) ============ */
+/*
+ * Spec: docs/network/wired-networking.md. Types come from the kernel's
+ * public header. Check NX_ABI_FLAG_NET before calling.
+ */
+#include "nx_net.h"
+
+#define SYS_NET_IF_LIST        157
+
+/* Copies up to cap entries and returns the total number of interfaces
+ * (more than cap when buf was too small), or a negative errno. */
+static inline int nx_net_if_list(nx_net_if_info_t *buf, uint32_t cap) {
+    return (int)syscall3(SYS_NET_IF_LIST, (int64_t)buf, (int64_t)cap, (int64_t)sizeof(*buf));
+}
+
 /* ============ ABI query (syscall 0) ============ */
 #include "nx_abi.h"
 #define SYS_ABI_QUERY     0
