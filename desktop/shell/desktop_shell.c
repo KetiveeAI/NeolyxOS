@@ -44,6 +44,7 @@
 #include "../lib/nxicons/nxicons_internal.h"
 #include "../include/nxicon_pack.h"
 #include "nxserver/nxserver.h"
+#include "nxserver/nxs_damage.h"
 #define nxc_cosf_shell nxc_cosf_pub
 #define nxc_sinf_shell nxc_sinf_pub
 
@@ -201,11 +202,16 @@ static int g_rtc_cache_valid = 0;
 
 /* Use Calendar.app's calendar_days_in_month() instead of duplicate array */
 
-static int get_cached_rtc_time(rtc_time_t *out) {
+static uint64_t g_clock_snapshot_ms = 0;   /* uptime at the last clock_tick */
+
+/* may_refresh: re-read the RTC once the cache is a second old. Only the
+ * frame tick does (clock_tick); drawing reads the cache, so every pass of a
+ * frame, and every redraw of the same frame, shows the same time. */
+static int get_cached_rtc_time(rtc_time_t *out, int may_refresh) {
     uint64_t now_ms = nx_gettime();
     
     /* Update cache if invalid or 1 second has passed */
-    if (!g_rtc_cache_valid || (now_ms - g_rtc_cache_last_update >= 1000)) {
+    if (!g_rtc_cache_valid || (may_refresh && now_ms - g_rtc_cache_last_update >= 1000)) {
         if (nx_rtc_get(&g_cached_rtc_time) == 0) {
             /* Apply timezone offset from config (not hardcoded) */
             int16_t tz_offset = nx_config_tz_offset();  /* Minutes from UTC */
@@ -729,17 +735,25 @@ static int str_app(char *dst, int pos, int cap, const char *src) {
     return pos;
 }
 
-/* Current wall-clock time: RTC when available, else boot ticks. */
+/* Once per frame tick, before anything reads the time. */
+static void clock_tick(void) {
+    rtc_time_t t;
+    g_clock_snapshot_ms = nx_gettime();
+    (void)get_cached_rtc_time(&t, 1);
+}
+
+/* Current wall-clock time: RTC when available, else boot ticks. Reads the
+ * values clock_tick took this tick. */
 static void current_time(uint32_t *hour, uint32_t *minute, uint32_t *second,
                          uint32_t *day, uint32_t *month, uint32_t *year, uint32_t *weekday) {
     rtc_time_t now;
-    if (get_cached_rtc_time(&now) == 0) {
+    if (get_cached_rtc_time(&now, 0) == 0) {
         *hour = now.hour; *minute = now.minute; *second = now.second;
         *day = now.day; *month = now.month ? now.month : 1; *year = now.year;
         *weekday = calendar_day_of_week(*year, *month, *day);
         return;
     }
-    uint64_t secs = nx_gettime() / 1000;
+    uint64_t secs = (g_clock_snapshot_ms ? g_clock_snapshot_ms : nx_gettime()) / 1000;
     *hour = (uint32_t)((secs / 3600) % 24); *minute = (uint32_t)((secs / 60) % 60);
     *second = (uint32_t)(secs % 60);
     *day = 1; *month = 1; *year = 2026; *weekday = 4;
@@ -1432,12 +1446,79 @@ static void render_resize_hint(nxc_canvas_t *c) {
     }
 }
 
-/* Frame statistics (ms, accumulated over 60 frames) */
-static uint64_t g_render_ms_acc = 0, g_flip_ms_acc = 0, g_last_frame_end = 0;
+/* ============ Damage-driven frames ============ */
+/*
+ * Spec: docs/desktop/proposals/nxserver-window-protocol.md, Decision 3
+ * (approved 2026-11-01). Every 16 ms frame tick:
+ *
+ *  1. tick: window springs, Stage/Overview/switcher motion, visibility,
+ *     snapshot captures (frame_tick);
+ *  2. damage: what changed since the last drawn frame (frame_collect_damage)
+ *     - shell activity (input, an open overlay, a running animation, a
+ *       window opened/closed/refocused/retitled, a snapshot capture) damages
+ *       the whole screen, and keeps doing so for SETTLE_MS after the last
+ *       activity so delayed effects (tooltips, auto-hide) are drawn;
+ *     - client commits damage their rectangles (desktop_damage_window_content);
+ *     - a window that only moved or resized damages its old and new frame
+ *       plus shadow; windows drawn by the shell's own views damage their
+ *       frame every tick (their content may animate);
+ *     - the cursor's old and new rectangles; the clock widget each second,
+ *       the menu bar strip each second (clock, network, volume, battery);
+ *  3. draw: nothing when the damage is empty; else one pass per damaged
+ *     rectangle (at most 8, merged), each with the canvas clipped to it, or
+ *     one full pass when more than half the screen is damaged (frame_draw);
+ *  4. present: fb.flip_rects with the damaged rectangles, or fb.flip.
+ *
+ * Correctness first: when in doubt, the whole screen is redrawn. A debug
+ * build with -DDESKTOP_DAMAGE_VERIFY redraws the whole frame into a second
+ * buffer every tick and logs any pixel that differs from what was
+ * presented (missed damage, or drawing that ignores the clip).
+ */
+#define FRAME_TICK_MS       16
+#define SETTLE_MS           1000u   /* full frames after the last shell activity */
+#define WIN_SHADOW_MARGIN   116     /* deepest window shadow reach (nxui level 4) */
+#define CLOCK_WIDGET_X      24
+#define CLOCK_WIDGET_Y      44
+#define CLOCK_WIDGET_W      240
+#define CLOCK_WIDGET_H      112
+#define FRAME_LOG_TICKS     300u    /* summary line every ~5 s */
+#define CURSOR_NOT_DRAWN    (-0x7FFFFFFF - 1)
+#define BBOX_NONE           0x7FFFFFFF
 
-/* Per-stage profile in TSC cycles (printed as k-cycles per frame). */
+static nxs_damage_t g_damage;
+static int      g_damage_ready = 0;
+static uint64_t g_settle_until = 0;         /* ms: full frames until then */
+static int      g_motion_pending = 0;       /* the last drawn frame left an animation unsettled */
+static int32_t  g_cursor_drawn_x = CURSOR_NOT_DRAWN, g_cursor_drawn_y = CURSOR_NOT_DRAWN;
+
+/* What a window looked like in the last tick, to damage its changes. */
+typedef struct {
+    uint32_t id;
+    int32_t  x, y;
+    uint32_t w, h;
+    uint8_t  visible, focused, minimized, z, phase, mode, sidebar_open, pip;
+    uint8_t  opacity8;
+    uint32_t text_hash;     /* title and place */
+} win_sig_t;
+static win_sig_t g_win_sig[MAX_WINDOWS];
+
+static uint32_t g_seen_second = 0xFFFFFFFFu, g_seen_minute = 0xFFFFFFFFu;
+static int      g_force_full = 0;           /* redraw everything next tick (night mode, verify repair) */
+static uint32_t g_items_sig = 0;
+
+/* Frame log (over FRAME_LOG_TICKS ticks) */
+static struct {
+    uint32_t ticks, full, partial, skipped, passes;
+    uint64_t partial_px, partial_px_max;
+    uint64_t draw_ms, present_ms;
+    uint32_t verify_bad_frames;
+    uint64_t verify_bad_px;
+    uint64_t window_start;
+} g_fs;
+
+/* Per-stage profile of drawn frames in TSC cycles (k-cycles per frame). */
 enum { PF_BG, PF_NAV, PF_CLOCK, PF_SEARCH, PF_WINDOWS, PF_DOCK, PF_OVERLAYS, PF_END, PF_INPUT, PF_SLEEP, PF_COUNT };
-static uint64_t g_pf_loop_t = 0;   /* TSC at the end of the previous render */
+static uint64_t g_pf_loop_t = 0;   /* TSC at the end of the previous tick */
 static uint64_t g_pf[PF_COUNT];
 static inline uint64_t rdtsc_now(void) {
     uint32_t lo, hi;
@@ -1446,45 +1527,94 @@ static inline uint64_t rdtsc_now(void) {
 }
 #define PF_MARK(stage) do { uint64_t _t = rdtsc_now(); g_pf[stage] += _t - pf_t; pf_t = _t; } while (0)
 
-static void render_desktop(void) {
-    /* Only log once every 60 frames to avoid serial spam */
-    static int frame_count = 0;
-    static uint64_t last_time = 0;
-    static uint64_t window_start = 0;
-    
-    uint64_t now = pit_get_ticks();
-    if (frame_count++ % 60 == 0) {
-        /* Once per 60 frames: average frame, render and flip time (ms) */
-        serial_puts("[DESKTOP] Frame");
-        if (window_start) {
-            serial_puts(" avg ");
-            serial_dec((int64_t)((now - window_start) / 60));
-            serial_puts(" ms (render ");
-            serial_dec((int64_t)(g_render_ms_acc / 60));
-            serial_puts(", flip ");
-            serial_dec((int64_t)(g_flip_ms_acc / 60));
-            serial_puts(") kcyc bg/nav/clock/search/win/dock/ovl/end/input/sleep:");
-            for (int i = 0; i < PF_COUNT; i++) {
-                serial_puts(" ");
-                serial_dec((int64_t)(g_pf[i] / 60 / 1000));
-                g_pf[i] = 0;
-            }
-        }
-        serial_puts("\n");
-        window_start = now;
-        g_render_ms_acc = 0;
-        g_flip_ms_acc = 0;
+/* The whole screen changed: draw it all now and for the settle period. */
+static void shell_activity(void) {
+    if (!g_damage_ready) return;
+    nxs_damage_add_full(&g_damage);
+    g_settle_until = pit_get_ticks() + SETTLE_MS;
+}
+
+static void damage_rect(int64_t x, int64_t y, int64_t w, int64_t h) {
+    if (g_damage_ready) nxs_damage_add(&g_damage, x, y, w, h);
+}
+
+/* Frame rect plus the deepest shadow around it. */
+static void damage_window_frame(int32_t x, int32_t y, uint32_t w, uint32_t h) {
+    damage_rect((int64_t)x - WIN_SHADOW_MARGIN, (int64_t)y - WIN_SHADOW_MARGIN,
+                (int64_t)w + 2 * WIN_SHADOW_MARGIN, (int64_t)h + WIN_TITLE_H + 2 * WIN_SHADOW_MARGIN);
+}
+
+void desktop_damage_window_content(uint32_t window_id, int32_t x, int32_t y, uint32_t w, uint32_t h) {
+    desktop_window_t *win = window_by_id(window_id);
+    if (!win || !win->visible || win->minimized || w == 0 || h == 0) return;
+    win_anim_t *a = anim_of(win);
+    if ((a && (a->phase != WA_NONE || a->geo)) || overview_active()) {
+        shell_activity();           /* drawn transformed: redraw everything */
+        return;
     }
-    uint64_t t_render0 = now;
-    uint64_t pf_t = rdtsc_now();
+    /* Clip to the content area in 64 bits, then move to the screen */
+    int64_t x0 = x < 0 ? 0 : x, y0 = y < 0 ? 0 : y;
+    int64_t x1 = (int64_t)x + (int64_t)w, y1 = (int64_t)y + (int64_t)h;
+    if (x1 > (int64_t)win->width) x1 = (int64_t)win->width;
+    if (y1 > (int64_t)win->height) y1 = (int64_t)win->height;
+    if (x0 >= x1 || y0 >= y1) return;
+    damage_rect((int64_t)win->x + x0, (int64_t)win->y + WIN_TITLE_H + y0, x1 - x0, y1 - y0);
+}
 
+static uint32_t text_hash(const char *a, int na, const char *b, int nb) {
+    uint32_t h = 2166136261u;
+    for (int i = 0; i < na && a[i]; i++) h = (h ^ (uint8_t)a[i]) * 16777619u;
+    h = (h ^ 0x1Fu) * 16777619u;
+    for (int i = 0; i < nb && b[i]; i++) h = (h ^ (uint8_t)b[i]) * 16777619u;
+    return h;
+}
+
+static void window_signature(const desktop_window_t *w, const win_anim_t *a, win_sig_t *out) {
+    for (uint32_t k = 0; k < sizeof(*out); k++) ((uint8_t *)out)[k] = 0;
+    if (!w || w->id == 0) return;
+    wm_window_state_t *ws = wm_get_window_state(w->id);
+    out->id = w->id;
+    out->x = w->x; out->y = w->y; out->w = w->width; out->h = w->height;
+    out->visible = w->visible; out->focused = w->focused; out->minimized = w->minimized;
+    out->z = w->z_order;
+    out->phase = a ? (uint8_t)a->phase : 0;
+    out->mode = ws ? (uint8_t)ws->mode : 0;
+    out->sidebar_open = ws ? (uint8_t)(ws->sidebar_expanded != 0) : 0;
+    out->pip = (uint8_t)(wm_is_pip(w->id) != 0);
+    float op = ws ? ws->opacity : 1.0f;
+    if (!(op >= 0.0f)) op = 0.0f;
+    if (op > 1.0f) op = 1.0f;
+    out->opacity8 = (uint8_t)(op * 255.0f + 0.5f);
+    out->text_hash = text_hash(w->title, WINDOW_TITLE_MAX, w->place, WINDOW_PLACE_MAX);
+}
+
+/* A shell component that is open or animating redraws everything. */
+static int shell_busy(void) {
+    wm_quick_menu_t *qm = wm_get_quick_menu();
+    if (setup_assistant_active() || app_drawer_is_open() || switcher_active() || overview_active() ||
+        menubar_is_open() || dock_menu_is_open() || anveshan_is_active() || control_center_is_visible() ||
+        notification_center_is_visible() || volume_osd_is_visible() || keyboard_osd_is_visible() ||
+        theme_osd_is_visible() || battery_warning_is_visible() || keyboard_osd_help_visible() ||
+        (qm && qm->visible) || g_ges.kind != GES_NONE || dock_is_animating()) {
+        return 1;
+    }
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        if (g_windows[i].id && wm_is_animating(g_windows[i].id)) return 1;
+    }
+    return 0;
+}
+
+/* Once per tick, before drawing: animations that are not drawn by the
+ * components themselves, then window visibility and snapshot captures.
+ * Returns 1 if a snapshot was captured (the backbuffer was drawn over). */
+static int frame_tick(void) {
+    static uint64_t last_time = 0;
+    uint64_t now = pit_get_ticks();
     float dt = (last_time > 0) ? (float)(now - last_time) / 1000.0f : 0.016f;
-    if (dt > 0.1f) dt = 0.016f;  /* Cap delta time */
+    if (!(dt > 0.0f) || dt > 0.1f) dt = 0.016f;   /* cap delta time */
     last_time = now;
-    
-    /* Update window manager animations */
-    wm_tick(dt);
 
+    wm_tick(dt);
     /* Window springs, Stage/Overview/switcher motion, then visibility */
     windows_tick(dt);
     stage_tick(dt);
@@ -1496,17 +1626,114 @@ static void render_desktop(void) {
     /* Window snapshots requested by Overview/Stage/minimize are drawn into
      * the backbuffer here, before the wallpaper overwrites it. No requests,
      * no work. */
-    wm_snapshot_service(nxui_canvas());
+    return wm_snapshot_service(nxui_canvas()) > 0;
+}
 
-    /*
-     * TEMPORARILY DISABLED: Static layer caching was causing missing UI issues.
-     * Always render static elements every frame for now.
-     */
-    /* Wallpaper and a clean canvas for this frame */
-    nxui_frame_begin();
+/* Everything that changed since the last tick, into g_damage. */
+static void frame_collect_damage(int had_input, int snapshot_drawn) {
+    uint64_t now = pit_get_ticks();
+    if (had_input || snapshot_drawn || g_motion_pending || nxui_motion_take() || shell_busy()) shell_activity();
+    g_motion_pending = 0;
+    if (now < g_settle_until || g_force_full) nxs_damage_add_full(&g_damage);
+    g_force_full = 0;
+
+    /* Windows: opened/closed/restacked/refocused/retitled redraw everything
+     * (title bars, menu bar app name, dock indicators); a move or resize
+     * damages the old and new frame. Windows of the shell's own views are
+     * redrawn every tick, client windows only when they commit. */
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        desktop_window_t *w = &g_windows[i];
+        win_sig_t cur;
+        window_signature(w, &g_wanim[i], &cur);
+        win_sig_t *old = &g_win_sig[i];
+        if (cur.id != old->id || cur.visible != old->visible || cur.focused != old->focused ||
+            cur.minimized != old->minimized || cur.z != old->z || cur.phase != old->phase ||
+            cur.mode != old->mode || cur.sidebar_open != old->sidebar_open || cur.pip != old->pip ||
+            cur.opacity8 != old->opacity8 || cur.text_hash != old->text_hash) {
+            shell_activity();
+        } else if (cur.id && (cur.x != old->x || cur.y != old->y || cur.w != old->w || cur.h != old->h)) {
+            damage_window_frame(old->x, old->y, old->w, old->h);
+            damage_window_frame(cur.x, cur.y, cur.w, cur.h);
+        }
+        *old = cur;
+        if (cur.id && cur.visible && !cur.minimized && !nxserver_owns_window(cur.id)) {
+            if (cur.mode == WIN_MODE_SIDEBAR && !cur.sidebar_open) continue;   /* a static tab */
+            damage_rect(cur.x, cur.y, cur.w, (int64_t)cur.h + WIN_TITLE_H);
+        }
+    }
+
+    /* Clock: the widget each second, the menu bar strip with it (its clock,
+     * network, volume and battery items refresh about once a second while
+     * drawn), everything when the minute changes (date and time strings). */
+    uint32_t hh, mm, ss, dd, mo, yy, wd;
+    clock_tick();
+    current_time(&hh, &mm, &ss, &dd, &mo, &yy, &wd);
+    uint32_t minute_key = ((yy * 13u + mo) * 32u + dd) * 1440u + hh * 60u + mm;
+    if (minute_key != g_seen_minute) {
+        if (g_seen_minute != 0xFFFFFFFFu) nxs_damage_add_full(&g_damage);
+        g_seen_minute = minute_key;
+    }
+    if (ss != g_seen_second) {
+        g_seen_second = ss;
+        network_indicator_update();     /* drawn in the menu bar strip below */
+        damage_rect(CLOCK_WIDGET_X - 2, CLOCK_WIDGET_Y - 2, CLOCK_WIDGET_W + 4, CLOCK_WIDGET_H + 4);
+        damage_rect(0, 0, g_desktop.width, WM_MENUBAR_H + 2);
+        uint32_t sig = desktop_items_poll();
+        if (sig != g_items_sig) {
+            if (g_items_sig != 0) nxs_damage_add_full(&g_damage);
+            g_items_sig = sig;
+        }
+    }
+
+    /* Cursor: where it was drawn and where it is now */
+    if (g_desktop.mouse_x != g_cursor_drawn_x || g_desktop.mouse_y != g_cursor_drawn_y) {
+        if (g_cursor_drawn_x != CURSOR_NOT_DRAWN) {
+            nxc_irect_t o = nxui_cursor_bounds(g_cursor_drawn_x, g_cursor_drawn_y);
+            damage_rect(o.x, o.y, o.w, o.h);
+        }
+        nxc_irect_t n = nxui_cursor_bounds(g_desktop.mouse_x, g_desktop.mouse_y);
+        damage_rect(n.x, n.y, n.w, n.h);
+    }
+}
+
+/* Night Mode blue-light filter on the current pass (last step before the
+ * cursor). Each pixel is filtered once, right after it is drawn. */
+static void night_mode_pass(void) {
+    if (!(g_night_mode_strength > 0.001f)) return;
+    nxc_canvas_t *c = nxui_canvas();
+    if (!c || !c->target || !c->target->pixels) return;
+    float str = g_night_mode_strength;
+    if (str > 1.0f) str = 1.0f;
+    /* Fixed-point multipliers avoid per-pixel float */
+    uint32_t blue_mult = (uint32_t)((1.0f - str * 0.45f) * 256.0f);
+    uint32_t red_mult  = (uint32_t)((1.0f + str * 0.08f) * 256.0f);
+    if (red_mult > 256) red_mult = 256;
+    nxc_irect_t r = c->st.clip;
+    if (r.x < 0 || r.y < 0 || r.w <= 0 || r.h <= 0 ||
+        r.x + r.w > c->target->width || r.y + r.h > c->target->height) return;
+    for (int32_t y = r.y; y < r.y + r.h; y++) {
+        uint32_t *row = c->target->pixels + (int64_t)y * c->target->stride;
+        for (int32_t x = r.x; x < r.x + r.w; x++) {
+            uint32_t px = row[x];
+            uint32_t rr = (((px >> 16) & 0xFF) * red_mult) >> 8;
+            uint32_t b = ((px & 0xFF) * blue_mult) >> 8;
+            if (rr > 255) rr = 255;
+            row[x] = (px & 0xFF00FF00) | (rr << 16) | b;
+        }
+    }
+}
+
+/*
+ * Draw every component into the current pass (the canvas is clipped to
+ * it). first_pass runs the components' own per-frame ticks; later passes
+ * of the same frame draw the same state (nxui_frame_dt() is 0).
+ */
+static void frame_draw(int first_pass) {
+    uint64_t pf_t = rdtsc_now();
     nxc_canvas_t *frame = nxui_canvas();
+    float dt = nxui_frame_dt();
     PF_MARK(PF_BG);
-    
+
     render_navigation_bar();
     PF_MARK(PF_NAV);
     render_globe_clock_widget();
@@ -1514,7 +1741,7 @@ static void render_desktop(void) {
     if (!anveshan_is_active()) render_search_bar();   /* active: drawn above windows */
     render_desktop_icons();
     PF_MARK(PF_SEARCH);
-    
+
     /* Tile preview (below windows): sprung glass panel with accent tint */
     render_tile_preview(frame, dt);
 
@@ -1530,7 +1757,7 @@ static void render_desktop(void) {
     PF_MARK(PF_WINDOWS);
 
     /* Modular dock rendering */
-    dock_tick();  /* Update animations */
+    if (first_pass) dock_tick();  /* launch bounce */
     dock_render(frame, g_desktop.mouse_x, g_desktop.mouse_y);
     PF_MARK(PF_DOCK);
 
@@ -1545,30 +1772,26 @@ static void render_desktop(void) {
     render_resize_hint(frame);
 
     /* App Drawer overlay (above everything except cursor) */
-    app_drawer_update((uint32_t)(nxui_frame_dt() * 1000.0f));
+    if (first_pass) app_drawer_update((uint32_t)(nxui_frame_dt() * 1000.0f));
     app_drawer_render(frame);
-    
-    /* Render Control Center overlay */
-    control_center_tick();
+
+    /* Control Center, Notification Center, then the OSDs above them */
+    if (first_pass) control_center_tick();
     control_center_render(frame);
-    
-    /* Render Notification Center overlay */
-    notification_center_tick();
+    if (first_pass) notification_center_tick();
     notification_center_render(frame);
-    
-    /* Render OSD overlays (above notification center) */
-    volume_osd_tick();
+    if (first_pass) volume_osd_tick();
     volume_osd_render(frame);
-    keyboard_osd_tick();
+    if (first_pass) keyboard_osd_tick();
     keyboard_osd_render(frame);
-    theme_osd_tick();
+    if (first_pass) theme_osd_tick();
     theme_osd_render(frame);
-    battery_warning_tick();
+    if (first_pass) battery_warning_tick();
     battery_warning_render(frame);
-    
+
     /* Render keyboard shortcut help overlay (full-screen, above everything) */
     keyboard_osd_help_render(frame);
-    
+
     /* Quick Access Menu (window mode switcher) */
     wm_quick_menu_t *qm = wm_get_quick_menu();
     if (qm && qm->visible) {
@@ -1587,44 +1810,227 @@ static void render_desktop(void) {
 
     /* First-run Setup Assistant covers the whole desktop while active */
     if (setup_assistant_active()) {
-        setup_assistant_tick(nxui_frame_dt());
+        if (first_pass) setup_assistant_tick(nxui_frame_dt());
         setup_assistant_render(frame);
     }
 
-    /* Night Mode blue-light filter — last pass before flip.
-     * Reduces eye strain in low-light by warming the display.
-     * Set g_night_mode_strength via Settings or API. */
-    if (g_night_mode_strength > 0.001f) {
-        float str = g_night_mode_strength;
-        if (str > 1.0f) str = 1.0f;
-        /* Precompute fixed-point multipliers to avoid per-pixel float */
-        uint32_t blue_mult  = (uint32_t)((1.0f - str * 0.45f) * 256.0f);
-        uint32_t red_mult   = (uint32_t)((1.0f + str * 0.08f) * 256.0f);
-        if (red_mult > 256) red_mult = 256;  /* Clamp to prevent overflow */
-        
-        uint32_t pixel_count = g_desktop.width * g_desktop.height;
-        for (uint32_t i = 0; i < pixel_count; i++) {
-            uint32_t px = g_desktop.framebuffer[i];
-            uint32_t r = (px >> 16) & 0xFF;
-            uint32_t b = px & 0xFF;
-            
-            r = (r * red_mult) >> 8;
-            b = (b * blue_mult) >> 8;
-            
-            if (r > 255) r = 255;
-            
-            g_desktop.framebuffer[i] = (px & 0xFF00FF00) | (r << 16) | b;
+    /* Night Mode, last before the cursor */
+    night_mode_pass();
+    PF_MARK(PF_OVERLAYS);
+}
+
+#ifdef DESKTOP_DAMAGE_VERIFY
+/*
+ * Debug self-check: redraw the whole frame into a second buffer (with
+ * nxui_frame_dt() 0, so nothing animates twice) and compare it with the
+ * backbuffer before the cursor goes on. Any difference outside the cursor
+ * is a bug: damage that was missed, or drawing that ignored the clip.
+ * Differences inside client windows are counted apart: a client may draw
+ * its next frame into its buffer before it commits it. So are differences
+ * inside windows of the shell's own views, which are redrawn every tick.
+ */
+static uint32_t *g_verify_px = 0;
+
+static void frame_verify(uint64_t tick_no, int drew) {
+    uint32_t w = g_desktop.width, h = g_desktop.height;
+    if (!g_verify_px) {
+        g_verify_px = (uint32_t *)nx_malloc((uint64_t)w * h * 4u);
+        if (!g_verify_px) { serial_puts("[DAMAGE] verify: no memory, self-check off\n"); return; }
+        serial_puts("[DAMAGE] verify: self-check on (debug build)\n");
+    }
+    int motion_before = nxui_motion_take();
+    uint32_t *back = nxui_retarget(g_verify_px);
+    if (!back) return;
+    nxui_pass_begin(0, 0, (int32_t)w, (int32_t)h, 0);
+    frame_draw(0);
+    nxui_retarget(back);
+    int motion_verify = nxui_motion_take();
+    if (motion_before) nxui_motion_note();
+    if (motion_verify && !drew && !motion_before) {
+        serial_puts("[DAMAGE] verify: an animation is unsettled but the tick drew nothing\n");
+    }
+
+    nxc_irect_t cur = nxui_cursor_bounds(g_desktop.mouse_x, g_desktop.mouse_y);
+    uint64_t bad = 0, client_bad = 0, view_bad = 0;
+    int32_t bx0 = BBOX_NONE, by0 = BBOX_NONE, bx1 = -1, by1 = -1;
+    for (uint32_t y = 0; y < h; y++) {
+        const uint32_t *a = back + (uint64_t)y * w, *b = g_verify_px + (uint64_t)y * w;
+        for (uint32_t x = 0; x < w; x++) {
+            if (a[x] == b[x]) continue;
+            if ((int32_t)x >= cur.x && (int32_t)x < cur.x + cur.w && (int32_t)y >= cur.y && (int32_t)y < cur.y + cur.h)
+                continue;
+            int in_window = 0;
+            for (int i = 0; i < MAX_WINDOWS && !in_window; i++) {
+                desktop_window_t *cw = &g_windows[i];
+                if (!cw->id || !cw->visible || cw->minimized) continue;
+                if (nxserver_owns_window(cw->id)) {
+                    if ((int32_t)x >= cw->x && (int32_t)x < cw->x + (int32_t)cw->width &&
+                        (int32_t)y >= cw->y + WIN_TITLE_H && (int32_t)y < cw->y + WIN_TITLE_H + (int32_t)cw->height)
+                        in_window = 1;
+                } else if ((int32_t)x >= cw->x && (int32_t)x < cw->x + (int32_t)cw->width &&
+                           (int32_t)y >= cw->y && (int32_t)y < cw->y + WIN_TITLE_H + (int32_t)cw->height) {
+                    in_window = 2;
+                }
+            }
+            if (in_window == 1) { client_bad++; continue; }
+            if (in_window == 2) { view_bad++; continue; }
+            bad++;
+            if ((int32_t)x < bx0) bx0 = (int32_t)x;
+            if ((int32_t)y < by0) by0 = (int32_t)y;
+            if ((int32_t)x > bx1) bx1 = (int32_t)x;
+            if ((int32_t)y > by1) by1 = (int32_t)y;
         }
     }
-    
-    PF_MARK(PF_OVERLAYS);
-    /* Cursor + present the backbuffer (double buffered, no tearing) */
-    uint64_t t_flip0 = pit_get_ticks();
-    g_render_ms_acc += t_flip0 - t_render0;
-    nxui_frame_end(g_desktop.mouse_x, g_desktop.mouse_y);
-    g_flip_ms_acc += pit_get_ticks() - t_flip0;
-    PF_MARK(PF_END);
-    g_last_frame_end = pit_get_ticks();
+    if (view_bad) {
+        /* Windows of the shell's own views are redrawn every tick, so a
+         * difference there is a view that draws differently the second
+         * time in one frame (e.g. it set its title while drawing), not
+         * missed damage. */
+        serial_puts("[DAMAGE] verify: tick ");
+        serial_dec((int64_t)tick_no);
+        serial_puts(": ");
+        serial_dec((int64_t)view_bad);
+        serial_puts(" px differ inside a shell view window (redrawn every tick)\n");
+    }
+    if (bad || client_bad) {
+        g_fs.verify_bad_frames++;
+        g_fs.verify_bad_px += bad;
+        serial_puts("[DAMAGE] VERIFY MISMATCH tick ");
+        serial_dec((int64_t)tick_no);
+        serial_puts(drew ? " (drawn): " : " (skipped): ");
+        serial_dec((int64_t)bad);
+        serial_puts(" px in ");
+        serial_dec(bx0 == BBOX_NONE ? 0 : bx0); serial_puts(","); serial_dec(by0 == BBOX_NONE ? 0 : by0);
+        serial_puts(" ");
+        serial_dec(bx1 < 0 ? 0 : bx1 - bx0 + 1); serial_puts("x"); serial_dec(by1 < 0 ? 0 : by1 - by0 + 1);
+        serial_puts(", client windows ");
+        serial_dec((int64_t)client_bad);
+        serial_puts(" px\n");
+        /* Repair: the next tick redraws everything, so one bug is one line */
+        g_force_full = 1;
+    }
+}
+#endif
+
+/* Log one line of frame statistics every FRAME_LOG_TICKS ticks. */
+static void frame_log(void) {
+    if (g_fs.ticks < FRAME_LOG_TICKS) return;
+    uint64_t now = pit_get_ticks();
+    uint32_t drawn = g_fs.full + g_fs.partial;
+    serial_puts("[DESKTOP] Frames: ");
+    serial_dec(g_fs.ticks);
+    serial_puts(" ticks in ");
+    serial_dec((int64_t)(now - g_fs.window_start));
+    serial_puts(" ms: ");
+    serial_dec(g_fs.full);
+    serial_puts(" full, ");
+    serial_dec(g_fs.partial);
+    serial_puts(" partial (");
+    serial_dec(g_fs.passes);
+    serial_puts(" passes, avg ");
+    serial_dec(g_fs.partial ? (int64_t)(g_fs.partial_px / g_fs.partial) : 0);
+    serial_puts(" px, max ");
+    serial_dec((int64_t)g_fs.partial_px_max);
+    serial_puts(" px), ");
+    serial_dec(g_fs.skipped);
+    serial_puts(" skipped; per drawn frame: draw ");
+    serial_dec(drawn ? (int64_t)(g_fs.draw_ms / drawn) : 0);
+    serial_puts(" ms, present ");
+    serial_dec(drawn ? (int64_t)(g_fs.present_ms / drawn) : 0);
+    serial_puts(" ms, kcyc bg/nav/clock/search/win/dock/ovl/end/input/sleep:");
+    for (int i = 0; i < PF_COUNT; i++) {
+        serial_puts(" ");
+        serial_dec(drawn ? (int64_t)(g_pf[i] / drawn / 1000) : 0);
+        g_pf[i] = 0;
+    }
+#ifdef DESKTOP_DAMAGE_VERIFY
+    serial_puts("; verify mismatches: ");
+    serial_dec(g_fs.verify_bad_frames);
+    serial_puts(" frames, ");
+    serial_dec((int64_t)g_fs.verify_bad_px);
+    serial_puts(" px");
+#endif
+    serial_puts("\n");
+    for (uint32_t k = 0; k < sizeof(g_fs); k++) ((uint8_t *)&g_fs)[k] = 0;
+    g_fs.window_start = now;
+}
+
+/*
+ * One frame tick: tick, collect damage, draw the damaged rectangles (or
+ * nothing), present them. had_input: the shell handled input this tick.
+ */
+static void render_desktop_tick(int had_input) {
+    if (!g_damage_ready) {
+        nxs_damage_init(&g_damage, (int32_t)g_desktop.width, (int32_t)g_desktop.height);
+        g_damage_ready = 1;
+        g_fs.window_start = pit_get_ticks();
+        shell_activity();           /* the first frames draw everything */
+    }
+    static uint64_t tick_no = 0;
+    tick_no++;
+    g_fs.ticks++;
+
+    int snapshot_drawn = frame_tick();
+    frame_collect_damage(had_input, snapshot_drawn);
+
+    int drew = 0;
+    if (nxs_damage_empty(&g_damage)) {
+        nxui_frame_skipped();
+        g_fs.skipped++;
+    } else {
+        uint64_t t0 = pit_get_ticks();
+        nx_fb_rect_t rects[NXS_DAMAGE_RECTS];
+        uint32_t n = 0;
+        if (g_damage.full) {
+            nxui_pass_begin(0, 0, (int32_t)g_desktop.width, (int32_t)g_desktop.height, 1);
+            frame_draw(1);
+            g_fs.full++;
+            g_fs.passes++;
+        } else {
+            for (uint32_t i = 0; i < g_damage.count; i++) {
+                const nxs_rect_t *r = &g_damage.rects[i];
+                if (!nxui_pass_begin(r->x, r->y, r->w, r->h, n == 0)) continue;
+                frame_draw(n == 0);
+                rects[n].x = r->x; rects[n].y = r->y;
+                rects[n].w = (uint32_t)r->w; rects[n].h = (uint32_t)r->h;
+                n++;
+            }
+            uint64_t area = nxs_damage_area(&g_damage);
+            g_fs.partial++;
+            g_fs.passes += n;
+            g_fs.partial_px += area;
+            if (area > g_fs.partial_px_max) g_fs.partial_px_max = area;
+        }
+        /* The passes stepped animations: one still moving needs the next tick */
+        if (nxui_motion_take()) g_motion_pending = 1;
+#ifdef DESKTOP_DAMAGE_VERIFY
+        frame_verify(tick_no, 1);
+#endif
+        /* Cursor on top, clipped to every damaged rectangle */
+        if (g_damage.full) {
+            nxui_draw_cursor(0, 0, (int32_t)g_desktop.width, (int32_t)g_desktop.height,
+                             g_desktop.mouse_x, g_desktop.mouse_y);
+        } else {
+            for (uint32_t i = 0; i < n; i++) {
+                nxui_draw_cursor(rects[i].x, rects[i].y, (int32_t)rects[i].w, (int32_t)rects[i].h,
+                                 g_desktop.mouse_x, g_desktop.mouse_y);
+            }
+        }
+        uint64_t t1 = pit_get_ticks();
+        nxui_present(g_damage.full ? 0 : rects, g_damage.full ? 0 : n);
+        uint64_t t2 = pit_get_ticks();
+        g_fs.draw_ms += t1 - t0;
+        g_fs.present_ms += t2 - t1;
+        g_cursor_drawn_x = g_desktop.mouse_x;
+        g_cursor_drawn_y = g_desktop.mouse_y;
+        drew = 1;
+    }
+#ifdef DESKTOP_DAMAGE_VERIFY
+    if (!drew) frame_verify(tick_no, 0);
+#endif
+    (void)drew;
+    nxs_damage_clear(&g_damage);
+    frame_log();
 }
 
 /* ============ Window Management ============ */
@@ -2117,6 +2523,7 @@ void desktop_set_night_mode(float strength) {
     if (!(strength >= 0.0f)) strength = 0.0f;   /* also rejects NaN */
     if (strength > 1.0f) strength = 1.0f;
     g_night_mode_strength = strength;
+    g_force_full = 1;               /* every pixel is filtered differently */
     serial_puts("[DESKTOP] Night mode strength changed\n");
 }
 
@@ -2260,7 +2667,10 @@ int desktop_set_window_title(uint32_t window_id, const char *title) {
 
 void desktop_set_window_resizable(uint32_t window_id, int resizable) {
     desktop_window_t *w = window_by_id(window_id);
-    if (w) w->no_resize = resizable ? 0 : 1;
+    if (w) {
+        w->no_resize = resizable ? 0 : 1;
+        g_force_full = 1;           /* the zoom control may change */
+    }
 }
 
 /* ============ Window move / resize gestures ============ */
@@ -3231,23 +3641,18 @@ void desktop_run(void) {
     
     /* Initial render */
     serial_puts("[DR] About to call render_desktop\n");
-    render_desktop();
+    render_desktop_tick(1);
     serial_puts("[DESKTOP] Initial render complete\n");
     
-    uint32_t frame_count = 0;
     uint32_t input_count = 0;
-    uint32_t last_mouse_x = g_desktop.mouse_x;
-    uint32_t last_mouse_y = g_desktop.mouse_y;
+    int had_input = 0;              /* input since the last frame tick */
+    uint64_t next_tick = pit_get_ticks() + FRAME_TICK_MS;
     
     while (g_desktop.running) {
-        frame_count++;
-        
         /* Poll ALL input events */
         if (g_pf_loop_t) g_pf[PF_SLEEP] += rdtsc_now() - g_pf_loop_t;
         uint64_t pf_in0 = rdtsc_now();
         input_event_t event;
-        int had_input = 0;
-        int mouse_moved = 0;
         
         while (nx_input_poll(&event) > 0) {
             had_input = 1;
@@ -3257,7 +3662,6 @@ void desktop_run(void) {
                 /* Mouse event */
                 desktop_handle_mouse(event.mouse.dx, event.mouse.dy, event.mouse.buttons);
                 if (event.mouse.wheel != 0) desktop_handle_scroll(event.mouse.wheel);
-                mouse_moved = 1;
                 
                 /* Debug: log first 10 mouse events */
                 if (input_count <= 10) {
@@ -3284,22 +3688,33 @@ void desktop_run(void) {
         /* Check NX key long-press for help overlay */
         nx_key_tick();
 
-        /* App windows: requests, CONFIGURE, pointer motion (never blocks) */
+        /* App windows: requests (commits add damage), CONFIGURE, pointer
+         * motion (never blocks) */
         nxserver_poll();
         
         g_pf[PF_INPUT] += rdtsc_now() - pf_in0;
         
-        /* Always render every frame */
-        render_desktop();
-        nxserver_frame_presented();   /* FRAME_DONE for commits drawn in it */
+        /* Frame tick: draw what changed (or nothing), then FRAME_DONE */
+        uint64_t now = pit_get_ticks();
+        if (now >= next_tick) {
+            render_desktop_tick(had_input);
+            had_input = 0;
+            nxserver_frame_presented();
+            /* Steady 16 ms ticks; after a slow frame, restart from now
+             * instead of drawing a burst of late frames. */
+            next_tick += FRAME_TICK_MS;
+            now = pit_get_ticks();
+            if (next_tick <= now) next_tick = now + 1;
+        }
         g_pf_loop_t = rdtsc_now();
         
-        /* Frame pacing: aim at 60 Hz, sleeping only the unused part of
-         * the budget so a slow frame never adds a full sleep on top. */
-        {
-            uint64_t spent = pit_get_ticks() - g_last_frame_end;
-            if (spent < 15) nx_sleep(15 - spent);
-        }
+        /* Wait for the next tick; a client message wakes the loop at once
+         * so requests are answered without waiting for the tick. Input
+         * devices are polled, so the wait never exceeds one tick. */
+        now = pit_get_ticks();
+        uint32_t wait_ms = next_tick > now ? (uint32_t)(next_tick - now) : 0;
+        if (wait_ms > FRAME_TICK_MS) wait_ms = FRAME_TICK_MS;
+        if (wait_ms > 0 && nxserver_wait(wait_ms) < 0) nx_sleep(wait_ms);
     }
     
     /* This should NEVER be reached */

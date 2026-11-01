@@ -15,9 +15,11 @@
 
 void preview_machine_init(void);
 uint32_t preview_frame_count(void);
+/* Presents so far (fb.flip and fb.flip_rects); idle ticks present nothing. */
+uint32_t preview_flip_count(void);
 const uint32_t *preview_framebuffer(void);
 
-/* Called after every flip with the 1-based frame number. */
+/* Called after every frame tick (drawn or skipped) with its 1-based number. */
 void preview_on_flip(uint32_t frame);
 /* Deliver at most max scripted events due at this frame. */
 int preview_input_poll(input_event_t *ev, int max, uint32_t frame, uint64_t now_ms);

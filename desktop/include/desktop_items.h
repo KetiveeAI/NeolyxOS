@@ -24,4 +24,10 @@ void desktop_items_render(nxc_canvas_t *c, int32_t screen_w, int32_t screen_h, i
  * was hit (selected or opened), 0 otherwise (clears the selection). */
 int desktop_items_click(int32_t x, int32_t y, int32_t screen_w, int32_t screen_h);
 
+/* Reload the ~/Desktop listing when the last reload is 5 s old, and return
+ * a hash of what the items show (names, kinds, selection; never 0). The
+ * frame loop calls it about once a second and redraws when it changes;
+ * drawing itself never reloads. */
+uint32_t desktop_items_poll(void);
+
 #endif /* DESKTOP_ITEMS_H */

@@ -7,7 +7,7 @@
  *
  *   preview [-v] [-n frames] [-o out.png] [-s script.txt]
  *
- * Script lines (frame numbers count completed frames, '#' comments):
+ * Script lines (frame numbers count frame ticks, drawn or skipped, '#' comments):
  *   <frame> move <x> <y>      move the pointer to absolute (x, y)
  *   <frame> down | up         press / release the left button
  *   <frame> rdown | rup       press / release the right button
@@ -228,6 +228,7 @@ static void run_action(const action_t *a) {
             break;
         case ACT_END:
             if (g_out_path) write_png(g_out_path);
+            fprintf(stderr, "preview: %u ticks, %u presents\n", preview_frame_count(), preview_flip_count());
             exit(0);
     }
 }
@@ -247,6 +248,7 @@ void preview_on_flip(uint32_t frame) {
     }
     if (frame >= g_end_frame) {
         if (g_out_path) write_png(g_out_path);
+        fprintf(stderr, "preview: %u ticks, %u presents\n", frame, preview_flip_count());
         exit(0);
     }
 }

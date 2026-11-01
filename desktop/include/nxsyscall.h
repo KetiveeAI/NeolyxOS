@@ -290,6 +290,17 @@ static inline int nx_fb_flip(void *backbuffer) {
     return (int)syscall1(SYS_FB_FLIP, (int64_t)backbuffer);
 }
 
+/* Present only some rectangles of the backbuffer (ABI 1.2, system
+ * processes only; spec: docs/desktop/proposals/nxserver-window-protocol.md).
+ * The backbuffer has the same layout fb.flip takes. Returns 0 or a
+ * negative errno (-EPERM for apps, -EINVAL for 0 or > NX_FB_RECTS_MAX
+ * rectangles, -EFAULT for bad pointers). */
+#include "nx_fb.h"
+#define SYS_FB_FLIP_RECTS 148
+static inline int nx_fb_flip_rects(const void *backbuffer, const nx_fb_rect_t *rects, uint32_t count) {
+    return (int)syscall3(SYS_FB_FLIP_RECTS, (int64_t)backbuffer, (int64_t)rects, (int64_t)count);
+}
+
 /* Set cursor position (kernel cursor compositor) */
 #define SYS_CURSOR_SET 128
 static inline int nx_cursor_set(int x, int y, int visible) {
@@ -396,7 +407,8 @@ static inline int nx_chan_send(nx_handle_t h, const nx_chan_msg_t *msg) {
 static inline int nx_chan_recv(nx_handle_t h, nx_chan_msg_t *msg) {
     return (int)syscall2(SYS_CHAN_RECV, (int64_t)h, (int64_t)msg);
 }
-/* Returns the number of ready items, 0 on timeout, or a negative errno. */
+/* Returns the number of ready items, or a negative errno: -ETIMEDOUT (-110)
+ * when nothing became ready in time (also for timeout 0). */
 static inline int nx_obj_wait(nx_wait_item_t *items, uint32_t count, uint64_t timeout_ms) {
     return (int)syscall3(SYS_OBJ_WAIT, (int64_t)items, (int64_t)count, (int64_t)timeout_ms);
 }

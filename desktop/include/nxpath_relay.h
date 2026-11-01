@@ -71,6 +71,8 @@ typedef struct {
 /* Listing flags */
 #define NXRELAY_REFRESH      0x1u    /* bypass the cache and ask the kernel */
 #define NXRELAY_SHOW_HIDDEN  0x2u    /* include dot files */
+#define NXRELAY_CACHED       0x4u    /* keep a cached listing past its age limit (still
+                                       loads when nothing is cached); for drawing */
 
 /* Standard places */
 typedef enum {

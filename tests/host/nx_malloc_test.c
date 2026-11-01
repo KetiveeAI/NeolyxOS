@@ -7,7 +7,8 @@
  * reserve like the kernel's USER_HEAP_RESERVE.
  *
  * Build and run on the development machine:
- *   gcc -std=c11 -O1 -Wall -Wextra -DNX_HOST_PREVIEW -o /tmp/nx_malloc_test nx_malloc_test.c
+ *   gcc -std=c11 -O1 -Wall -Wextra -DNX_HOST_PREVIEW -I../../kernel/include/core \
+ *       -o /tmp/nx_malloc_test nx_malloc_test.c
  *   /tmp/nx_malloc_test
  *
  * Copyright (c) 2025 KetiveeAI

@@ -24,9 +24,11 @@
 static uint32_t *g_fb;               /* "hardware" framebuffer */
 static uint8_t  *g_heap;             /* userspace heap (nx_brk base) */
 static uint64_t  g_clock_ms = 1000;  /* virtual monotonic clock */
-static uint32_t  g_frames;           /* number of flips so far */
+static uint32_t  g_frames;           /* frame ticks (desktop sleeps) so far */
+static uint32_t  g_flips;            /* fb.flip and fb.flip_rects calls */
 
 uint32_t preview_frame_count(void) { return g_frames; }
+uint32_t preview_flip_count(void) { return g_flips; }
 const uint32_t *preview_framebuffer(void) { return g_fb; }
 
 void preview_machine_init(void) {
@@ -105,14 +107,17 @@ int64_t nx_host_syscall4(int64_t num, int64_t a1, int64_t a2, int64_t a3, int64_
 /* ============ Dispatcher ============ */
 
 int64_t nx_host_syscall(int64_t num, int64_t a1, int64_t a2, int64_t a3) {
-    (void)a3;
     switch (num) {
         case SYS_TIME:
             return (int64_t)g_clock_ms;
         case SYS_STAT:
             return host_stat((const char *)(uintptr_t)a1, (host_stat_t *)(uintptr_t)a2);
         case SYS_SLEEP:
+            /* The desktop sleeps once per frame tick (drawn or skipped), so
+             * the tick, not the flip, is the harness's frame. */
             if (a1 > 0 && a1 < 100000) g_clock_ms += (uint64_t)a1;
+            g_frames++;
+            preview_on_flip(g_frames);  /* script actions, screenshots, exit */
             return 0;
         case SYS_YIELD:
             return 0;
@@ -144,9 +149,23 @@ int64_t nx_host_syscall(int64_t num, int64_t a1, int64_t a2, int64_t a3) {
         case SYS_FB_FLIP: {
             const uint32_t *src = (const uint32_t *)(uintptr_t)a1;
             if (src && src != g_fb) memcpy(g_fb, src, (size_t)PREVIEW_W * PREVIEW_H * 4);
-            g_frames++;
-            g_clock_ms += 16;           /* one 60 Hz frame */
-            preview_on_flip(g_frames);  /* script actions, screenshots, exit */
+            g_flips++;
+            return 0;
+        }
+        case SYS_FB_FLIP_RECTS: {
+            /* Same contract as the kernel (kernel/src/core/nx_fb.c) */
+            const uint32_t *src = (const uint32_t *)(uintptr_t)a1;
+            const nx_fb_rect_t *r = (const nx_fb_rect_t *)(uintptr_t)a2;
+            if (a3 <= 0 || a3 > NX_FB_RECTS_MAX) return -22;
+            if (!src || !r) return -14;
+            for (int64_t i = 0; i < a3; i++) {
+                uint32_t x0, y0, x1, y1;
+                if (!nx_fb_clip_rect(&r[i], PREVIEW_W, PREVIEW_H, &x0, &y0, &x1, &y1)) continue;
+                for (uint32_t y = y0; y < y1; y++)
+                    memcpy(g_fb + (size_t)y * PREVIEW_W + x0, src + (size_t)y * PREVIEW_W + x0,
+                           (size_t)(x1 - x0) * 4);
+            }
+            g_flips++;
             return 0;
         }
         case SYS_CURSOR_SET:

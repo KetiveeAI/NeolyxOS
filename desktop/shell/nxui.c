@@ -43,6 +43,8 @@ typedef struct {
     uint64_t        last_frame_ms;
     float           dt;
     uint32_t        frame;
+    int             motion;         /* an approach/spring has not settled */
+    int             rects_failed;   /* fb.flip_rects refused: full flips only */
 } nxui_state_t;
 
 static nxui_state_t g_ui;
@@ -882,26 +884,50 @@ float nxui_time(void) {
 
 float nxui_frame_dt(void) { return g_ui.dt; }
 
+/* Below these the motion is invisible: the damage-driven frame loop stops
+ * asking for frames (pixels for positions, units for 0..1 values). */
+#define NXUI_SETTLE_DIST  0.002f
+#define NXUI_SETTLE_VEL   0.02f
+
+static float absf_(float v) { return v < 0.0f ? -v : v; }
+
 void nxui_spring_step(nxui_spring_t *s, float target, float stiffness, float damping, float dt) {
-    if (!s || !(dt > 0.0f)) return;
-    if (dt > 0.05f) dt = 0.05f;
-    /* Semi-implicit Euler in 4 sub-steps keeps stiff springs stable. */
-    float h = dt * 0.25f;
-    for (int i = 0; i < 4; i++) {
-        float a = stiffness * (target - s->value) - damping * s->velocity;
-        s->velocity += a * h;
-        s->value += s->velocity * h;
+    if (!s) return;
+    if (dt > 0.0f) {
+        if (dt > 0.05f) dt = 0.05f;
+        /* Semi-implicit Euler in 4 sub-steps keeps stiff springs stable. */
+        float h = dt * 0.25f;
+        for (int i = 0; i < 4; i++) {
+            float a = stiffness * (target - s->value) - damping * s->velocity;
+            s->velocity += a * h;
+            s->value += s->velocity * h;
+        }
     }
+    /* Not settled (or NaN): the next frame must be drawn */
+    if (!(absf_(target - s->value) <= NXUI_SETTLE_DIST) || !(absf_(s->velocity) <= NXUI_SETTLE_VEL))
+        g_ui.motion = 1;
 }
 
 float nxui_approach(float value, float target, float tau, float dt) {
     if (!(tau > 0.0f)) return target;
     /* First-order response; dt/(tau+dt) is the implicit-Euler step of
      * dv/dt = (target - v)/tau and never overshoots. */
-    if (!(dt > 0.0f)) return value;
-    float k = dt / (tau + dt);
-    return value + (target - value) * k;
+    float v = value;
+    if (dt > 0.0f) {
+        float k = dt / (tau + dt);
+        v = value + (target - value) * k;
+    }
+    if (!(absf_(target - v) <= NXUI_SETTLE_DIST)) g_ui.motion = 1;
+    return v;
 }
+
+int nxui_motion_take(void) {
+    int m = g_ui.motion;
+    g_ui.motion = 0;
+    return m;
+}
+
+void nxui_motion_note(void) { g_ui.motion = 1; }
 
 float nxui_ease_out_cubic(float t) {
     if (t <= 0.0f) return 0.0f;
@@ -1085,31 +1111,85 @@ nxc_status_t nxui_init(void) {
     return NXC_OK;
 }
 
-void nxui_frame_begin(void) {
-    if (!g_ui.ready) return;
-    uint64_t now = nx_gettime();
-    float dt = (float)(now - g_ui.last_frame_ms) * 0.001f;
-    if (!(dt > 0.0f)) dt = 1.0f / 60.0f;
-    if (dt > 0.1f) dt = 0.1f;
-    g_ui.dt = dt;
-    g_ui.last_frame_ms = now;
-    g_ui.frame++;
-
-    /* Fresh canvas state each frame (drops any unbalanced saves). */
-    if (g_ui.canvas.depth != 0) ui_log("[NXUI] warning: unbalanced nxc_save in last frame\n");
-    nxc_canvas_init(&g_ui.canvas, &g_ui.back);
-    nxc_surface_copy(&g_ui.back, 0, 0, &g_ui.wallpaper,
-                     nxc_irect(0, 0, g_ui.wallpaper.width, g_ui.wallpaper.height));
+/* Clamp a rect to the backbuffer; returns 0 when nothing is left. */
+static int clamp_to_back(int32_t x, int32_t y, int32_t w, int32_t h, nxc_irect_t *out) {
+    int64_t x0 = x < 0 ? 0 : x, y0 = y < 0 ? 0 : y;
+    int64_t x1 = (int64_t)x + (w > 0 ? w : 0), y1 = (int64_t)y + (h > 0 ? h : 0);
+    if (x1 > g_ui.back.width) x1 = g_ui.back.width;
+    if (y1 > g_ui.back.height) y1 = g_ui.back.height;
+    if (x0 >= x1 || y0 >= y1) return 0;
+    *out = nxc_irect((int32_t)x0, (int32_t)y0, (int32_t)(x1 - x0), (int32_t)(y1 - y0));
+    return 1;
 }
 
-nxc_status_t nxui_frame_end(int32_t cursor_x, int32_t cursor_y) {
-    if (!g_ui.ready) return NXC_ERR_STATE;
+void nxui_frame_begin(void) {
+    if (!g_ui.ready) return;
+    nxui_pass_begin(0, 0, g_ui.back.width, g_ui.back.height, 1);
+}
+
+int nxui_pass_begin(int32_t x, int32_t y, int32_t w, int32_t h, int first_pass) {
+    if (!g_ui.ready) return 0;
+    if (first_pass) {
+        uint64_t now = nx_gettime();
+        float dt = (float)(now - g_ui.last_frame_ms) * 0.001f;
+        if (!(dt > 0.0f)) dt = 1.0f / 60.0f;
+        if (dt > 0.1f) dt = 0.1f;
+        g_ui.dt = dt;
+        g_ui.last_frame_ms = now;
+        g_ui.frame++;
+    } else {
+        g_ui.dt = 0.0f;     /* the same frame again: animations stand still */
+    }
+
+    /* Fresh canvas state each pass (drops any unbalanced saves). */
+    if (g_ui.canvas.depth != 0) ui_log("[NXUI] warning: unbalanced nxc_save in last frame\n");
     nxc_canvas_init(&g_ui.canvas, &g_ui.back);
-    if (g_ui.cursor.pixels) {
-        nxc_draw_surface(&g_ui.canvas, &g_ui.cursor, nxc_irect(0, 0, CURSOR_SIZE, CURSOR_SIZE),
-                         nxc_rect((float)cursor_x - CURSOR_HOT_X, (float)cursor_y - CURSOR_HOT_Y,
-                                  CURSOR_SIZE, CURSOR_SIZE),
-                         255, NXC_FILTER_NEAREST);
+    nxc_irect_t r;
+    if (!clamp_to_back(x, y, w, h, &r)) {
+        nxc_clip_rect(&g_ui.canvas, nxc_irect(0, 0, 0, 0));    /* draws nothing */
+        return 0;
+    }
+    nxc_clip_rect(&g_ui.canvas, r);
+    nxc_surface_copy(&g_ui.back, r.x, r.y, &g_ui.wallpaper, r);
+    return 1;
+}
+
+void nxui_frame_skipped(void) {
+    if (!g_ui.ready) return;
+    /* Nothing moved while no frame was drawn: the next frame's dt is one
+     * tick, not the whole idle time. */
+    g_ui.last_frame_ms = nx_gettime();
+}
+
+nxc_irect_t nxui_cursor_bounds(int32_t cursor_x, int32_t cursor_y) {
+    return nxc_irect(cursor_x - (int32_t)CURSOR_HOT_X, cursor_y - (int32_t)CURSOR_HOT_Y, CURSOR_SIZE, CURSOR_SIZE);
+}
+
+void nxui_draw_cursor(int32_t x, int32_t y, int32_t w, int32_t h, int32_t cursor_x, int32_t cursor_y) {
+    if (!g_ui.ready) return;
+    if (g_ui.canvas.depth != 0) ui_log("[NXUI] warning: unbalanced nxc_save in this pass\n");
+    nxc_canvas_init(&g_ui.canvas, &g_ui.back);
+    nxc_irect_t r;
+    if (!clamp_to_back(x, y, w, h, &r)) return;
+    nxc_clip_rect(&g_ui.canvas, r);
+    if (!g_ui.cursor.pixels) return;
+    nxc_irect_t cb = nxui_cursor_bounds(cursor_x, cursor_y);
+    if (cb.x >= r.x + r.w || cb.y >= r.y + r.h || cb.x + cb.w <= r.x || cb.y + cb.h <= r.y) return;
+    nxc_draw_surface(&g_ui.canvas, &g_ui.cursor, nxc_irect(0, 0, CURSOR_SIZE, CURSOR_SIZE),
+                     nxc_rect((float)cursor_x - CURSOR_HOT_X, (float)cursor_y - CURSOR_HOT_Y,
+                              CURSOR_SIZE, CURSOR_SIZE),
+                     255, NXC_FILTER_NEAREST);
+}
+
+nxc_status_t nxui_present(const nx_fb_rect_t *rects, uint32_t count) {
+    if (!g_ui.ready) return NXC_ERR_STATE;
+    if (rects && count > 0 && count <= NX_FB_RECTS_MAX && !g_ui.rects_failed) {
+        int r = nx_fb_flip_rects(g_ui.back.pixels, rects, count);
+        if (r == 0) return NXC_OK;
+        /* Older kernel or refused: the backbuffer always holds the whole
+         * frame, so a full flip is always correct. */
+        g_ui.rects_failed = 1;
+        ui_log("[NXUI] fb.flip_rects failed; presenting whole frames from now on\n");
     }
     if (nx_fb_flip(g_ui.back.pixels) != 0) {
         static int warned = 0;
@@ -1117,4 +1197,17 @@ nxc_status_t nxui_frame_end(int32_t cursor_x, int32_t cursor_y) {
         return NXC_ERR_STATE;
     }
     return NXC_OK;
+}
+
+uint32_t *nxui_retarget(uint32_t *pixels) {
+    if (!g_ui.ready || !pixels) return 0;
+    uint32_t *old = g_ui.back.pixels;
+    g_ui.back.pixels = pixels;
+    return old;
+}
+
+nxc_status_t nxui_frame_end(int32_t cursor_x, int32_t cursor_y) {
+    if (!g_ui.ready) return NXC_ERR_STATE;
+    nxui_draw_cursor(0, 0, g_ui.back.width, g_ui.back.height, cursor_x, cursor_y);
+    return nxui_present(0, 0);
 }

@@ -890,12 +890,14 @@ static int snap_capture(wm_snap_slot_t *sl, nxc_canvas_t *frame) {
     return 1;
 }
 
-void wm_snapshot_service(nxc_canvas_t *frame) {
-    if (!frame || !g_snap_renderer) return;
+int wm_snapshot_service(nxc_canvas_t *frame) {
+    if (!frame || !g_snap_renderer) return 0;
+    int drawn = 0;   /* captures attempted: each one may have drawn into frame */
     /* Urgent captures (a consumer view just opened): all of them now. */
     for (int i = 0; i < WM_SNAP_SLOTS; i++) {
         wm_snap_slot_t *sl = &g_snaps[i];
         if (sl->window_id == 0 || !sl->urgent) continue;
+        drawn++;
         if (!snap_capture(sl, frame)) sl->urgent = 0;   /* failure: placeholder */
     }
     /* Periodic refresh: at most one window per frame, round robin. A
@@ -908,6 +910,7 @@ void wm_snapshot_service(nxc_canvas_t *frame) {
         uint64_t age = now - sl->captured_ms;
         uint32_t limit = sl->stale ? sl->max_age_ms / 4u : sl->max_age_ms;
         if (age >= limit) {
+            drawn++;
             snap_capture(sl, frame);
             g_snap_rr = (i + 1) % WM_SNAP_SLOTS;
             break;
@@ -916,6 +919,7 @@ void wm_snapshot_service(nxc_canvas_t *frame) {
     /* keep_fresh is a per-frame lease: consumers renew it while visible,
      * so nothing is captured once Overview/Stage are off. */
     for (int i = 0; i < WM_SNAP_SLOTS; i++) g_snaps[i].max_age_ms = 0;
+    return drawn;
 }
 
 int wm_snapshot_get(uint32_t window_id, const nxc_surface_t **surf, nxc_irect_t *src) {

@@ -269,6 +269,15 @@ typedef struct {
 int desktop_window_info(uint32_t window_id, desktop_window_info_t *out);
 
 /*
+ * The pixels (x, y, w, h) of window_id's content changed (content-local
+ * coordinates, (0, 0) = top-left below the title bar). The next frame
+ * redraws that part of the screen, clipped to the content area. Nothing
+ * happens for an unknown, hidden or minimized window; while the window
+ * animates the whole screen is redrawn anyway.
+ */
+void desktop_damage_window_content(uint32_t window_id, int32_t x, int32_t y, uint32_t w, uint32_t h);
+
+/*
  * The window whose content area is under the pointer, or 0 (title bar, no
  * window, or a shell overlay such as the app drawer or a menu is open).
  * *mx, *my receive the pointer on screen, *lx, *ly the content-local
