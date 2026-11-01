@@ -1,3 +1,5 @@
+> **Status (2026-11-01):** this checklist tracked a hosted Rust/OpenGL build for ZepraBrowser and does not describe the NeolyxOS code. Its "COMPLETE" marks do not apply to `gui/nxrender_c`, which nothing on NeolyxOS runs yet. Current status: [docs/STATUS.md](../../docs/STATUS.md).
+
 # NXRENDER - Step-by-Step Implementation TODO
 
 > **Goal**: Build a custom rendering system for ZepraBrowser (and later NeolyxOS) to replace third-party SDL dependency. This makes the browser independent, like Chrome/Firefox/Safari with their own rendering systems.
