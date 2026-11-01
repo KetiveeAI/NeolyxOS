@@ -150,31 +150,7 @@ static nvme_controller_t *irq_controller = 0;
  * Returns offset of MSI-X capability, or 0 if not found
  */
 static uint8_t nvme_find_msix_cap(pci_device_t *dev) {
-    /* Check if capabilities list exists */
-    uint16_t status = pci_read_config16(dev->bus, dev->device, dev->function, 0x06);
-    if (!(status & 0x10)) {
-        return 0;  /* No capabilities list */
-    }
-    
-    /* Get capabilities pointer */
-    uint8_t cap_ptr = pci_read_config8(dev->bus, dev->device, dev->function, 0x34);
-    cap_ptr &= 0xFC;  /* Must be dword aligned */
-    
-    /* Walk capabilities list */
-    int count = 0;
-    while (cap_ptr && count < 48) {  /* Max 48 caps to prevent infinite loop */
-        uint8_t cap_id = pci_read_config8(dev->bus, dev->device, dev->function, cap_ptr);
-        
-        if (cap_id == PCI_CAP_MSIX) {
-            return cap_ptr;
-        }
-        
-        cap_ptr = pci_read_config8(dev->bus, dev->device, dev->function, cap_ptr + 1);
-        cap_ptr &= 0xFC;
-        count++;
-    }
-    
-    return 0;
+    return pci_find_cap(dev, PCI_CAP_ID_MSIX);
 }
 
 /**
@@ -200,12 +176,17 @@ static int nvme_setup_msix(nvme_controller_t *ctrl) {
     uint8_t table_bir = table_offset & 0x7;
     table_offset &= 0xFFFFFFF8;
     
-    if (table_bir >= 6 || dev->bars[table_bir].type != PCI_BAR_MEM) {
+    /* The BIR is a BAR number; dev->bars[] is indexed by BAR number */
+    const pci_bar_t *table_bar = pci_get_bar(dev, table_bir);
+    volatile void *table_base = 0;
+    if (!table_bar || table_bar->type != PCI_BAR_MEM ||
+        (uint64_t)table_offset + (uint64_t)ctrl->msix_table_size * 16 > table_bar->size ||
+        pci_bar_map(dev, table_bir, &table_base) != 0) {
         serial_puts("[NVMe] Invalid MSI-X table BAR\r\n");
         return -2;
     }
     
-    ctrl->msix_table = (volatile uint32_t*)(uintptr_t)(dev->bars[table_bir].base + table_offset);
+    ctrl->msix_table = (volatile uint32_t*)((volatile uint8_t *)table_base + table_offset);
     
     serial_puts("[NVMe] MSI-X: ");
     char buf[4];
@@ -831,12 +812,13 @@ static int nvme_init_controller(pci_device_t *pci_dev) {
     ctrl->device_id = pci_dev->device_id;
     
     /* Get BAR0 (MMIO registers) */
-    if (pci_dev->bar_count == 0 || pci_dev->bars[0].type != PCI_BAR_MEM) {
+    volatile void *regs = 0;
+    if (pci_bar_map(pci_dev, 0, &regs) != 0) {
         serial_puts("[NVMe] No valid BAR0\r\n");
         return -2;
     }
     
-    ctrl->regs = (volatile uint32_t*)(uintptr_t)pci_dev->bars[0].base;
+    ctrl->regs = (volatile uint32_t*)regs;
     
     /* Enable bus mastering and memory */
     pci_enable_bus_master(pci_dev);

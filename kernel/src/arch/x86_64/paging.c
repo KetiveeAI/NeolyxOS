@@ -508,11 +508,193 @@ int paging_map_2mb_page(uint64_t virt, uint64_t phys, uint64_t flags) {
     uint64_t pd_phys = get_or_create_pd(pdpt_phys, i3, 0);
     if (pd_phys == 0) return -1;
     
-    /* Set PD entry as 2MB huge page (PAGE_LARGE) */
+    /* Set PD entry as 2MB huge page (PAGE_LARGE). Never replace a page
+     * table: its 4 KB mappings (and the table itself) would be lost. */
     pde_t *pd = (pde_t *)pd_phys;
+    if ((pd[i2] & PAGE_PRESENT) && !(pd[i2] & PAGE_LARGE)) {
+        serial_puts("[PAGING] ERROR: 2MB mapping at 0x");
+        serial_hex64(virt);
+        serial_puts(" would replace a page table\n");
+        return -1;
+    }
     pd[i2] = (phys & 0xFFFFFFFFFFE00000ULL) | flags | PAGE_PRESENT | PAGE_LARGE;
     
     return 0;
+}
+
+/* ============ Device MMIO above 4 GB ============ */
+
+/*
+ * The kernel identity map covers 0-4 GB. Device registers that firmware
+ * placed above 4 GB (64-bit PCI BARs, e.g. xHCI on q35) are added to the
+ * same identity map, kernel-only and uncached, when paging_init() builds
+ * the kernel tables. Process address spaces copy the kernel's top-level
+ * entries when they are created (addrspace_create), all of them after
+ * paging_init(), so every process sees these mappings for its syscalls and
+ * interrupts. A range registered after the tables are built is refused,
+ * because existing processes would not see it.
+ *
+ * Ranges must stay in the lower canonical half and out of the per-process
+ * shared region (PML4 slot 128), which addrspace.c reserves for shm.
+ */
+
+#define MMIO_MAX_RANGES        32
+#define MMIO_LOW_LIMIT         0x0000000100000000ULL   /* 4 GB: already mapped */
+#define MMIO_IDENTITY_LIMIT    0x0000800000000000ULL   /* end of lower canonical half */
+#define MMIO_SHARED_BASE       0x0000400000000000ULL   /* AS_SHARED_BASE */
+#define MMIO_SHARED_END        0x0000408000000000ULL   /* AS_SHARED_END */
+#define MMIO_MAX_RANGE         (1ULL << 30)            /* larger BARs are not mapped */
+#define MMIO_PAGE_FLAGS        (PAGE_PRESENT | PAGE_WRITE | PAGE_NOCACHE | PAGE_WRITETHROUGH)
+#define SIZE_2MB               0x200000ULL
+#define PHYS_ADDR_MASK         0x000FFFFFFFFFF000ULL   /* bits 51:12 of an entry */
+
+typedef struct {
+    uint64_t base;      /* page aligned */
+    uint64_t size;      /* page aligned */
+    int      mapped;
+} mmio_range_t;
+
+static mmio_range_t g_mmio[MMIO_MAX_RANGES];
+static int g_mmio_count = 0;
+static int g_kernel_tables_built = 0;
+
+static void paging_put_range(uint64_t base, uint64_t size) {
+    serial_hex64(base);
+    serial_puts(" size ");
+    serial_hex64(size);
+}
+
+/*
+ * paging_mmio_register - Ask for a device range above 4 GB to be mapped.
+ * @phys: physical (bus) address
+ * @size: bytes
+ *
+ * Ranges entirely below 4 GB need nothing and return 0. Returns 0 when the
+ * range is (or will be) identity-mapped, -1 on invalid arguments, -2 if the
+ * range cannot be mapped (too large, outside the identity-mappable half,
+ * overlapping the shared region, or the table is full), -3 if the kernel
+ * tables are already built and the range is not covered.
+ */
+int paging_mmio_register(uint64_t phys, uint64_t size) {
+    if (size == 0 || phys + size < phys) return -1;
+    uint64_t end = phys + size;
+    if (end <= MMIO_LOW_LIMIT) return 0;
+    if (phys < MMIO_LOW_LIMIT) phys = MMIO_LOW_LIMIT;  /* low part already mapped */
+
+    uint64_t base = phys & ~(PAGE_SIZE_4K - 1);
+    end = (end + PAGE_SIZE_4K - 1) & ~(PAGE_SIZE_4K - 1);
+    size = end - base;
+
+    for (int i = 0; i < g_mmio_count; i++) {
+        if (base >= g_mmio[i].base && end <= g_mmio[i].base + g_mmio[i].size) return 0;
+    }
+
+    serial_puts("[PAGING] MMIO ");
+    paging_put_range(base, size);
+    if (end > MMIO_IDENTITY_LIMIT) {
+        serial_puts(": ERROR above the identity-mappable range, not mapped\n");
+        return -2;
+    }
+    if (base < MMIO_SHARED_END && end > MMIO_SHARED_BASE) {
+        serial_puts(": ERROR overlaps the shared-memory region, not mapped\n");
+        return -2;
+    }
+    if (size > MMIO_MAX_RANGE) {
+        serial_puts(": ERROR larger than 1 GB, not mapped\n");
+        return -2;
+    }
+    if (g_kernel_tables_built) {
+        serial_puts(": ERROR registered after the kernel page tables were built, not mapped\n");
+        return -3;
+    }
+    if (g_mmio_count >= MMIO_MAX_RANGES) {
+        serial_puts(": ERROR too many MMIO ranges, not mapped\n");
+        return -2;
+    }
+    g_mmio[g_mmio_count].base = base;
+    g_mmio[g_mmio_count].size = size;
+    g_mmio[g_mmio_count].mapped = 0;
+    g_mmio_count++;
+    serial_puts(": registered\n");
+    return 0;
+}
+
+/* Map one range: 2 MB pages when the range is 2 MB aligned and sized
+ * (BARs are naturally aligned, so large BARs are), else 4 KB pages, so a
+ * small BAR never maps its neighbours. */
+static int mmio_map_one(uint64_t base, uint64_t size) {
+    if ((base & (SIZE_2MB - 1)) == 0 && (size & (SIZE_2MB - 1)) == 0) {
+        for (uint64_t off = 0; off < size; off += SIZE_2MB) {
+            if (paging_map_2mb_page(base + off, base + off, MMIO_PAGE_FLAGS) != 0) return -1;
+        }
+        return 0;
+    }
+    return paging_map_range(base, base, size, MMIO_PAGE_FLAGS);
+}
+
+static void mmio_map_registered(void) {
+    for (int i = 0; i < g_mmio_count; i++) {
+        mmio_range_t *r = &g_mmio[i];
+        serial_puts("[PAGING] Mapping MMIO above 4 GB ");
+        paging_put_range(r->base, r->size);
+        if (mmio_map_one(r->base, r->size) == 0) {
+            r->mapped = 1;
+            serial_puts(" (uncached, kernel only)\n");
+        } else {
+            serial_puts(" FAILED\n");
+        }
+    }
+}
+
+/*
+ * Return the size of the page that maps @virt in the tables at @pml4_phys
+ * (4 KB, 2 MB or 1 GB), or 0 if it is not mapped. Tables are read through
+ * the identity map, which covers every table the kernel or firmware built.
+ */
+static uint64_t mapped_page_size(uint64_t pml4_phys, uint64_t virt) {
+    const pml4e_t *pml4 = (const pml4e_t *)pml4_phys;
+    uint64_t e = pml4[pml4_index(virt)];
+    if (!(e & PAGE_PRESENT)) return 0;
+    const pdpte_t *pdpt = (const pdpte_t *)(e & PHYS_ADDR_MASK);
+    e = pdpt[pdpt_index(virt)];
+    if (!(e & PAGE_PRESENT)) return 0;
+    if (e & PAGE_LARGE) return 1ULL << 30;
+    const pde_t *pd = (const pde_t *)(e & PHYS_ADDR_MASK);
+    e = pd[pd_index(virt)];
+    if (!(e & PAGE_PRESENT)) return 0;
+    if (e & PAGE_LARGE) return SIZE_2MB;
+    const pte_t *pt = (const pte_t *)(e & PHYS_ADDR_MASK);
+    e = pt[pt_index(virt)];
+    return (e & PAGE_PRESENT) ? PAGE_SIZE_4K : 0;
+}
+
+/*
+ * paging_mmio_is_mapped - Check that a physical range is reachable at its
+ * identity address in the page tables active now (firmware's before the
+ * kernel switches CR3, the kernel's after).
+ *
+ * Returns 1 if every page of the range is mapped, 0 otherwise.
+ */
+int paging_mmio_is_mapped(uint64_t phys, uint64_t size) {
+    if (size == 0 || phys + size < phys || phys + size > MMIO_IDENTITY_LIMIT) return 0;
+    /* The walk below is for 4-level tables; with 5-level paging (CR4.LA57)
+     * the answer would be wrong, so report "not mapped". */
+    uint64_t cr4;
+    __asm__ volatile("mov %%cr4, %0" : "=r"(cr4));
+    if (cr4 & (1ULL << 12)) return 0;
+    uint64_t cr3;
+    __asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
+    uint64_t pml4_phys = cr3 & PHYS_ADDR_MASK;
+    uint64_t addr = phys & ~(PAGE_SIZE_4K - 1);
+    uint64_t end = phys + size;
+    while (addr < end) {
+        uint64_t step = mapped_page_size(pml4_phys, addr);
+        if (step == 0) return 0;
+        uint64_t next = (addr & ~(step - 1)) + step;
+        if (next <= addr) return 0;     /* wrapped */
+        addr = next;
+    }
+    return 1;
 }
 
 /*
@@ -556,6 +738,10 @@ void paging_init(void) {
         }
     }
     serial_puts("[PAGING] Identity mapped 0-4GB with 2MB pages\n");
+
+    /* Device registers above 4 GB (PCI BARs registered by pci_init) */
+    mmio_map_registered();
+    g_kernel_tables_built = 1;
     
     /* Note: User regions (code, stack) are mapped dynamically in main.c
      * based on actual ELF size. This prevents hardcoded value mismatches.
