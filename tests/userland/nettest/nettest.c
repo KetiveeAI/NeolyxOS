@@ -1,6 +1,9 @@
 /*
  * NeolyxOS nettest - end-to-end network test over the socket syscalls
  *
+ *   0. Status: abi.query reports ABI 1.4 with NX_ABI_FLAG_NET, and
+ *      net.if_list (157) lists every interface; eth0 is connected.
+ *
  * Runs in the QEMU setup of boot_test.sh (e1000 on "-netdev user"), where
  * QEMU's built-in NAT puts the DNS proxy at 10.0.2.3 and the host at
  * 10.0.2.2. The kernel must already have an address from DHCP (it logs
@@ -13,7 +16,7 @@
  *      "nettest A.B.C.D" uses that address instead when DNS fails.
  *
  * Results go to the serial log as "[NETTEST] PASS/FAIL/SKIP ...", ending
- * with "[NETTEST] RESULT: PASS" (DNS and internet HTTP worked) or
+ * with "[NETTEST] RESULT: PASS" (status, DNS and internet HTTP worked) or
  * "[NETTEST] RESULT: FAIL". Exit code 0 on PASS, 1 on FAIL.
  *
  * Launch from the desktop's app drawer (/apps/nettest on the boot disk).
@@ -23,6 +26,8 @@
  */
 
 #include <stdint.h>
+#include "nx_abi.h"     /* kernel/include/core: abi.query result */
+#include "nx_net.h"     /* kernel/include/core: net.if_list (ABI 1.4) */
 
 /* ============ Syscalls (numbers from kernel/include/core/syscall.h) ============ */
 
@@ -35,6 +40,8 @@
 #define SYS_RECV        46
 #define SYS_CLOSESOCK   47
 #define SYS_DEBUG_PRINT 127
+#define SYS_ABI_QUERY   0
+#define SYS_NET_IF_LIST 157
 
 #define SOCK_STREAM     1
 #define SOCK_DGRAM      2
@@ -287,6 +294,68 @@ static int starts_with(const char *s, const char *p) {
     return 1;
 }
 
+/* ============ Interface status (net.if_list) ============ */
+
+static const char *state_name(uint8_t st) {
+    switch (st) {
+        case NX_NET_STATE_DISABLED:    return "disabled";
+        case NX_NET_STATE_NO_LINK:     return "no link";
+        case NX_NET_STATE_CONFIGURING: return "configuring";
+        case NX_NET_STATE_CONNECTED:   return "connected";
+        default:                       return "error";
+    }
+}
+
+/* Lists interfaces; returns 1 when an Ethernet interface is connected
+ * with an address, a gateway and at least one DNS server. */
+static int check_if_list(void) {
+    nx_abi_info_t abi;
+    uint8_t *z = (uint8_t *)&abi;
+    for (uint32_t i = 0; i < sizeof(abi); i++) z[i] = 0;
+    int64_t r = sc1(SYS_ABI_QUERY, (int64_t)&abi);
+    if (r != 0 || abi.major != 1 || abi.minor < 4 || !(abi.flags & NX_ABI_FLAG_NET)) {
+        out_str("[NETTEST] FAIL abi: need 1.4 with NX_ABI_FLAG_NET (got ");
+        out_sdec(abi.major); out_str("."); out_sdec(abi.minor);
+        out_str(" flags "); out_sdec(abi.flags); out_str(")");
+        flush();
+        return 0;
+    }
+
+    /* Bad element size must be refused */
+    static nx_net_if_info_t info[NX_NET_IF_MAX];
+    int64_t bad = sc3(SYS_NET_IF_LIST, (int64_t)info, NX_NET_IF_MAX, 8);
+    int64_t total = sc3(SYS_NET_IF_LIST, 0, 0, sizeof(nx_net_if_info_t));
+    r = sc3(SYS_NET_IF_LIST, (int64_t)info, NX_NET_IF_MAX, sizeof(nx_net_if_info_t));
+    if (bad != -22 || r < 0 || total != r) {
+        out_str("[NETTEST] FAIL if_list (bad size -> "); out_sdec(bad);
+        out_str(", count -> "); out_sdec(total); out_str(", list -> "); out_sdec(r); out_str(")");
+        flush();
+        return 0;
+    }
+
+    int ok = 0;
+    for (int64_t i = 0; i < r && i < (int64_t)NX_NET_IF_MAX; i++) {
+        const nx_net_if_info_t *f = &info[i];
+        char name[17];
+        for (int k = 0; k < 16; k++) name[k] = f->name[k];
+        name[16] = '\0';
+        out_str("[NETTEST] if "); out_str(name); out_str(": ");
+        out_str(state_name(f->state));
+        out_str(f->primary ? ", primary" : "");
+        out_str(", "); out_ip(f->addr); out_str(" gw "); out_ip(f->gateway);
+        out_str(" dns "); out_sdec(f->dns_count);
+        out_str(", "); out_sdec(f->speed_mbps); out_str(" Mb/s, rx ");
+        out_sdec((int64_t)f->rx_packets); out_str(" tx "); out_sdec((int64_t)f->tx_packets);
+        flush();
+        if (f->kind == NX_NET_IF_ETHERNET && f->state == NX_NET_STATE_CONNECTED && f->primary &&
+            f->addr[0] != 0 && f->gateway[0] != 0 && f->dns_count > 0) ok = 1;
+    }
+    out_str(ok ? "[NETTEST] PASS if_list: Ethernet connected and primary"
+               : "[NETTEST] FAIL if_list: no connected primary Ethernet interface");
+    flush();
+    return ok;
+}
+
 /* ============ Main ============ */
 
 /* Parse a dotted-quad IPv4 address. Returns 0 on success. */
@@ -319,6 +388,9 @@ void _start(long argc, char **argv) {
     while ((r = dns_lookup(name, ip)) == -ENXIO && now_ms() < dhcp_deadline) {
         sleep_ms(500);
     }
+
+    /* 0. Interface status, now that DHCP has had its chance */
+    int status_ok = check_if_list();
     int dns_ok = (r == 0);
     out_str(dns_ok ? "[NETTEST] PASS dns " : "[NETTEST] FAIL dns ");
     out_str(name);
@@ -367,8 +439,8 @@ void _start(long argc, char **argv) {
     }
     flush();
 
-    /* PASS needs the whole path: DNS and a web page from the internet */
-    int ok = dns_ok && web_ok;
+    /* PASS needs the whole path: status, DNS and a web page from the internet */
+    int ok = status_ok && dns_ok && web_ok;
     out_str(ok ? "[NETTEST] RESULT: PASS" : "[NETTEST] RESULT: FAIL");
     flush();
     finish(ok ? 0 : 1);

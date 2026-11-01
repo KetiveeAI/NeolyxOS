@@ -23,6 +23,8 @@
 #include "drivers/e1000.h"
 #include "mm/kheap.h"
 #include "core/process.h"
+#include "core/syscall.h"   /* errno values, user-copy helpers */
+#include "core/nx_net.h"
 
 /* ============ External Dependencies ============ */
 
@@ -827,6 +829,110 @@ int network_service_start(void) {
         return -1;
     }
     return netd_pid;
+}
+
+/* ============ net.if_list (syscall 157, ABI 1.4) ============ */
+
+#define NET_IF_LIST_MAX_CAP     64u
+#define NET_IF_LIST_MAX_ELEM    1024u
+
+static void if_info_fill(net_interface_t *iface, uint32_t index,
+                         net_interface_t *primary, nx_net_if_info_t *out) {
+    uint8_t *z = (uint8_t *)out;
+    for (uint32_t i = 0; i < sizeof(*out); i++) z[i] = 0;
+
+    out->size = sizeof(*out);
+    out->index = index;
+    net_strcpy(out->name, iface->name, sizeof(out->name));
+    out->kind = (uint8_t)iface->type;
+
+    int is_loop = (iface->type == NET_IF_LOOPBACK);
+    uint8_t link = is_loop ? 1 : iface->link_up;
+    out->link_up = link;
+    out->primary = (iface == primary) ? 1 : 0;
+
+    switch (iface->state) {
+        case NET_STATE_DOWN:      out->state = NX_NET_STATE_DISABLED; break;
+        case NET_STATE_ERROR:     out->state = NX_NET_STATE_ERROR; break;
+        case NET_STATE_CONNECTED: out->state = NX_NET_STATE_CONNECTED; break;
+        default:
+            if (is_loop) out->state = NX_NET_STATE_CONNECTED;
+            else if (!link) out->state = NX_NET_STATE_NO_LINK;
+            else out->state = NX_NET_STATE_CONFIGURING;
+            break;
+    }
+    /* A lost link outranks a stale address */
+    if (!is_loop && !link && out->state == NX_NET_STATE_CONNECTED) {
+        out->state = NX_NET_STATE_NO_LINK;
+    }
+
+    for (int i = 0; i < 6; i++) out->mac[i] = iface->mac.bytes[i];
+    out->ipv4_method = (is_loop || (!iface->ipv4_dhcp && !ip_is_zero(iface->ip)))
+                       ? NX_NET_IPV4_MANUAL : NX_NET_IPV4_DHCP;
+
+    if (iface->type == NET_IF_ETHERNET && iface->driver_data && link) {
+        out->speed_mbps = ((e1000_device_t *)iface->driver_data)->speed_mbps;
+    }
+
+    for (int i = 0; i < 4; i++) {
+        out->addr[i] = iface->ip.bytes[i];
+        out->mask[i] = iface->netmask.bytes[i];
+        out->gateway[i] = iface->gateway.bytes[i];
+    }
+    uint8_t n = iface->dns_count > NX_NET_DNS_MAX ? NX_NET_DNS_MAX : iface->dns_count;
+    out->dns_count = n;
+    for (uint8_t d = 0; d < n; d++) {
+        for (int i = 0; i < 4; i++) out->dns[d][i] = iface->dns_servers[d].bytes[i];
+    }
+    out->lease_seconds = iface->lease_seconds;
+
+    out->rx_bytes = iface->rx_bytes;
+    out->tx_bytes = iface->tx_bytes;
+    out->rx_packets = iface->rx_packets;
+    out->tx_packets = iface->tx_packets;
+    out->rx_errors = iface->rx_errors;
+    out->tx_errors = iface->tx_errors;
+    if (iface->type == NET_IF_ETHERNET && iface->driver_data) {
+        out->rx_errors += ((e1000_device_t *)iface->driver_data)->rx_dropped;
+        out->tx_errors += ((e1000_device_t *)iface->driver_data)->tx_ring_full;
+    }
+}
+
+/*
+ * int net_if_list(nx_net_if_info_t *buf, uint32_t cap, uint32_t elem_size)
+ *
+ * Copies up to `cap` entries, each `elem_size` bytes apart (the kernel
+ * fills min(elem_size, sizeof) bytes of each), and returns the total
+ * number of interfaces, which is larger than cap when buf was too small.
+ * cap 0 with buf NULL just counts. Read-only; any process may call it.
+ */
+int64_t sys_net_if_list_impl(uint64_t ubuf, uint64_t cap, uint64_t elem_size,
+                             uint64_t a4, uint64_t a5) {
+    (void)a4; (void)a5;
+
+    if (elem_size < NX_NET_IF_INFO_V1_SIZE || elem_size > NET_IF_LIST_MAX_ELEM) return -EINVAL;
+    if (cap > NET_IF_LIST_MAX_CAP) return -EINVAL;
+    if (cap > 0) {
+        if (!ubuf || syscall_validate_ptr((void *)ubuf, (size_t)(cap * elem_size), 1) != 0) {
+            return -EFAULT;
+        }
+    }
+
+    net_interface_t *primary = network_default_iface();
+    uint32_t total = 0;
+    uint64_t copy = elem_size < sizeof(nx_net_if_info_t) ? elem_size : sizeof(nx_net_if_info_t);
+
+    for (net_interface_t *iface = interfaces; iface && total < NX_NET_IF_MAX; iface = iface->next) {
+        if (total < cap) {
+            nx_net_if_info_t info;
+            if_info_fill(iface, total, primary, &info);
+            info.size = (uint32_t)copy;
+            void *dst = (uint8_t *)(uintptr_t)ubuf + (uint64_t)total * elem_size;
+            if (syscall_copy_to_user(dst, &info, (size_t)copy) != 0) return -EFAULT;
+        }
+        total++;
+    }
+    return (int64_t)total;
 }
 
 /* ============ Status ============ */

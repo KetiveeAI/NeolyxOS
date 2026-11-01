@@ -13,6 +13,7 @@
 #include "core/nx_ipc.h"
 #include "core/nx_fb.h"
 #include "core/nx_mem.h"
+#include "core/nx_net.h"
 #include "mm/addrspace.h"
 #include <stdint.h>
 
@@ -65,6 +66,7 @@ int64_t sys_abi_query_impl(uint64_t info_ptr, uint64_t a2, uint64_t a3,
     if (addrspace_shared_ok()) info.flags |= NX_ABI_FLAG_SHM;
     if (g_framebuffer_addr) info.flags |= NX_ABI_FLAG_FB_RECTS;   /* fb.flip_rects (148) */
     info.flags |= NX_ABI_FLAG_MEMCLASS;   /* proc.set_class, mem.* (153-156) */
+    info.flags |= NX_ABI_FLAG_NET;        /* net.if_list (157) */
     info.syscall_count = nx_syscall_count;
     info.reserved[0] = 0;
     info.reserved[1] = 0;

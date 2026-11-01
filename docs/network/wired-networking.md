@@ -58,11 +58,39 @@ The numbers and arguments are unchanged. These are the results:
   after a reset. A UDP `recv` returns one datagram.
 - `listen` and `accept` return `-ENOSYS`, because there is no server-side TCP yet.
 
+## Network status for the desktop: `net.if_list` (syscall 157, ABI 1.4)
+
+```c
+int64_t net.if_list(nx_net_if_info_t *buf, uint32_t cap, uint32_t elem_size);
+```
+
+A read-only call open to every process (PRIV_USER). It fills `buf` with up
+to `cap` interfaces, each `elem_size` bytes apart, and returns the **total**
+number of interfaces, which can be larger than `cap`. Call it with `cap = 0`
+and `buf = NULL` to get just the count. The struct, its constants and the
+capability flag are in `kernel/include/core/nx_net.h`.
+
+- `elem_size` must be at least `NX_NET_IF_INFO_V1_SIZE` (120) and at most
+  1024, otherwise `-EINVAL`. The kernel copies `min(elem_size, sizeof)`
+  bytes per entry, so a later, larger struct keeps old programs working.
+- `cap` above 64 gives `-EINVAL`. A bad `buf` gives `-EFAULT`.
+- Each entry has the name, kind (loopback or Ethernet), state (disabled,
+  no link, connecting, connected, error), link and speed, MAC, IPv4 method
+  (DHCP or manual), address, mask, gateway, up to 3 DNS servers, the DHCP
+  lease, and byte, packet and error counters. `primary` marks the interface
+  that carries the default route.
+- Programs check for it first: `abi.query` must report version 1.4 or later
+  and `NX_ABI_FLAG_NET` (0x10) in `flags`. `desktop/lib/nxnet.c` does this,
+  so on an older kernel Settings still shows "unavailable" instead of
+  calling an unknown syscall number.
+
+With this call, the menu bar indicator and Settings > Network show the
+wired connection, its address, gateway and DNS.
+
 ## Not done yet
 
-- **No way for the desktop to read network status.** Settings > Network shows
-  "unavailable". This needs the read-only `net.if_list` syscall from
-  `docs/desktop/proposals/net.md`, planned as the next change (ABI 1.4).
+- No way to change settings from the desktop: setting a manual address,
+  the hostname and Wi-Fi still return "unsupported" in Settings.
 - No userspace DNS call. Programs must send their own queries to a server they
   already know.
 - Not implemented: server-side TCP, IP fragmentation, IPv6, Wi-Fi joins, and
@@ -71,11 +99,13 @@ The numbers and arguments are unchanged. These are the results:
 ## Testing in QEMU
 
 `tests/userland/nettest` is installed as `/apps/nettest`. Launch it from the
-app drawer. It runs three checks, a DNS lookup of example.com through
+app drawer. It first waits for DHCP and checks `net.if_list` (step 0: the
+ABI flag, that a bad `elem_size` is refused, and that a connected, primary
+Ethernet interface has an address, gateway and DNS). Then it runs three checks, a DNS lookup of example.com through
 10.0.2.3, an HTTP GET to the host at 10.0.2.2:8080, and an HTTP GET to the
 address from DNS, and logs one `[NETTEST] PASS/FAIL/SKIP` line for each. It
-ends with `[NETTEST] RESULT: PASS` only when both DNS and the internet GET
-worked.
+ends with `[NETTEST] RESULT: PASS` only when the interface check, DNS and
+the internet GET all worked.
 
 This output came from a cloud container whose DNS answers "no such domain"
 for every name and whose proxy answers outbound HTTP with 403:

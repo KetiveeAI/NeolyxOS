@@ -7,7 +7,7 @@
 CC = gcc
 LD = ld
 
-CFLAGS = -ffreestanding -nostdlib -fno-builtin -fno-stack-protector \
+CFLAGS = -I../../../kernel/include/core -ffreestanding -nostdlib -fno-builtin -fno-stack-protector \
          -fno-pie -no-pie -m64 -mno-red-zone -Wall -Wextra -O2
 
 LDFLAGS = -nostdlib -static -T linker.ld

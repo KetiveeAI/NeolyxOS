@@ -43,6 +43,12 @@ syscall that exposes this state:
 
 ## Proposed syscalls
 
+> **Status:** `net.if_list` is implemented as syscall **157** (ABI 1.4,
+> capability flag `NX_ABI_FLAG_NET`). The final signature differs from the
+> draft below: it is `net.if_list(buf, cap, elem_size)` and returns the total
+> number of interfaces. See `kernel/include/core/nx_net.h` and
+> `docs/network/wired-networking.md`. The other calls are still proposals.
+
 The numbers below are **tentative**. 133+ is currently unused in
 `kernel/include/core/syscall_table.def`; the kernel owner allocates the
 final numbers. The format matches the existing table:
@@ -134,7 +140,7 @@ typedef struct {
 
 ### Semantics
 
-- **`net.if_list(buf, cap, out_count)`**: copies up to `cap`
+- **`net.if_list(buf, cap, out_count)`** (superseded, see the status note above): copies up to `cap`
   `nx_net_if_info_t` entries and writes the total to `*out_count`.
   Returns the number copied, or `-ERANGE` when `cap` is too small (the
   total is still written). Every pointer is checked with
