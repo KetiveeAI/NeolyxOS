@@ -26,6 +26,7 @@
 #include <core/runtime.h>
 #include <utils/string.h>
 #include <video/splash.h>
+#include <video/bootlog.h>
 #include <core/boot_image.h>
 
 /* ============ Framebuffer Globals for Syscalls ============ */
@@ -47,6 +48,34 @@ extern void heap_init(uint64_t start_addr, size_t size);
 
 // Timer includes
 extern void timer_init(uint32_t frequency);
+
+/*
+ * Verbose (hardware diagnostics) boots only: hold the on-screen boot log for
+ * about @seconds so it can be photographed before the desktop draws over it.
+ * Uses the PIT uptime; gives up early if the timer is not running.
+ */
+static void boot_photo_pause(uint32_t seconds) {
+    extern uint64_t pit_get_uptime_ms(void);
+    /* Lines worth a photo: what was found, what was refused, what failed */
+    static const char *const summary_patterns[] = {
+        "WARNING", "ERROR", "FAIL", "failed", "[PS2]", "[USB]", "[STORAGE]",
+        "[AHCI] Port", "[AHCI] Model", "[NVMe] Found", "Mounted", "[BOOT] Framebuffer",
+        "[PCI] Found", "[E1000]", "Write refused",
+    };
+    serial_puts("[KERNEL] Verbose boot: showing the boot summary; the desktop starts in 15 seconds\n");
+    bootlog_show_summary("NeolyxOS boot summary - take a photo; the desktop starts in 15 seconds",
+                         summary_patterns,
+                         (uint32_t)(sizeof(summary_patterns) / sizeof(summary_patterns[0])));
+    uint64_t start = pit_get_uptime_ms();
+    uint64_t spins = 0;
+    while (pit_get_uptime_ms() - start < (uint64_t)seconds * 1000ULL) {
+        __asm__ volatile("pause");
+        if (++spins == 50000000ULL && pit_get_uptime_ms() == start) {
+            serial_puts("[KERNEL] WARNING: timer not running, skipping the pause\n");
+            return;
+        }
+    }
+}
 
 void init_memory(void) {
     klog("Initializing memory management...");
@@ -422,6 +451,13 @@ void nx_kernel_start(void) {
             if (desktop_pid > 0) {
                 svc_set_state(desktop_svc_id, SVC_STATE_RUNNING);
                 serial_puts("[KERNEL] Desktop service state: RUNNING\n");
+                /* The desktop owns the screen from here; the boot log stays
+                 * in memory for the crash screen. */
+                if (bootlog_mirror_active()) {
+                    boot_photo_pause(15);
+                    bootlog_set_mirror(0);
+                    serial_puts("[KERNEL] Desktop starting: on-screen boot log ends here\n");
+                }
                 splash_update(95, 0);
                 launched = 1;
             } else {

@@ -31,13 +31,14 @@ None of the rows below has been verified on real hardware yet.
 | Framebuffer syscalls | Partial | `fb.map` gives any user process the raw framebuffer. `fb.flip` copies the full frame. `fb.flip_rects` (148, ABI 1.2) copies only given rectangles and is limited to system processes; the desktop does not use it yet (week 3, step 3). Verified by `tests/userland/fbtest` and `tests/host/nx_fb_clip_test.c`. No vsync. |
 | Input syscalls | Partial | One global event queue: the first process to poll takes each event. `input.register` is a no-op. |
 | Syscall dispatch, ABI query, filter, audit | Real | `nx_syscall.c`, `syscall_table.def`. |
+| Boot log and diagnostics | Real | All kernel log output is kept in a 64 KiB ring (`kernel/src/video/bootlog.c`). A kernel exception or panic draws the last lines on screen. With `\EFI\BOOT\diagnose.flg` on the boot volume the loader shows firmware facts, the kernel shows its log and a boot summary on screen, and every disk driver refuses writes (`write_guard.c`). Hardware test procedure: `docs/hardware/smoke-test.md`. Host test `tests/host/bootlog_test.c`. |
 
 ## Drivers
 
 | Area | State | What the code shows |
 | --- | --- | --- |
-| PS/2 keyboard and mouse | Real | IRQ1 and IRQ12, press/release event queue. |
-| USB | Partial | xHCI controllers and devices enumerate. No USB HID keyboard or mouse input, so USB-only machines have no input. |
+| PS/2 keyboard and mouse | Real | IRQ1 and IRQ12, press/release event queue. The controller is detected first (`ps2_controller_present`); without one the kernel logs that the machine has no input. |
+| USB | Partial | xHCI controllers are found. The driver leaves a controller alone when the firmware still owns it, its registers are above 4 GB, or it needs scratchpad buffers (the QEMU q35 xHCI is above 4 GB, so it is left alone). No USB HID and no USB storage, so USB-only machines have no input and a USB boot stick is not readable by the kernel. |
 | Storage | Partial | AHCI, ATA and NVMe driver files present. The desktop reads and writes the FAT boot volume, including delete and rename. |
 | Network | Partial | e1000, kernel TCP/IP, socket syscalls. No TLS. |
 | GPU (`nxgfx_kdrv`) | Mock | Detects Intel, AMD, NVIDIA and Bochs by PCI ID. `nxgfx_kdrv_flip` and `nxgfx_kdrv_wait_vblank` return 0 and do nothing. No modesetting driver. Display is the UEFI GOP framebuffer only. |

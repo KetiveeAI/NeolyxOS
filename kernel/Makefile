@@ -182,6 +182,7 @@ obj-y += npa_archive.o
 # Storage subsystem
 obj-y += storage.o
 obj-y += ahci_block.o
+obj-y += write_guard.o
 
 # Block layer
 obj-y += block.o
@@ -205,6 +206,7 @@ obj-y += nucleus_write.o
 obj-y += video.o
 obj-y += console.o
 obj-y += splash.o
+obj-y += bootlog.o
 obj-y += fbuffer.o
 obj-y += nxgfx_accel.o
 obj-y += nx3d.o
@@ -363,6 +365,9 @@ network.o: src/network/network.c include/network/network.h include/core/kernel.h
 storage.o: src/storage/storage.c include/storage/storage.h include/core/kernel.h
 	$(CC) $(CFLAGS) -c src/storage/storage.c -o storage.o
 
+write_guard.o: src/storage/write_guard.c include/storage/write_guard.h
+	$(CC) $(CFLAGS) -c src/storage/write_guard.c -o write_guard.o
+
 ahci_block.o: src/storage/ahci_block.c include/storage/ahci_block.h include/drivers/ahci.h include/fs/nxfs.h
 	$(CC) $(CFLAGS) -c src/storage/ahci_block.c -o ahci_block.o
 
@@ -439,6 +444,9 @@ console.o: src/video/console.c src/video/font.h include/video/console.h
 
 splash.o: src/video/splash.c src/video/splash_assets.h include/video/splash.h
 	$(CC) $(CFLAGS) -c src/video/splash.c -o splash.o
+
+bootlog.o: src/video/bootlog.c include/video/bootlog.h src/video/font.h
+	$(CC) $(CFLAGS) -c src/video/bootlog.c -o bootlog.o
 
 fbuffer.o: src/video/framebuffer.c
 	$(CC) $(CFLAGS) -c src/video/framebuffer.c -o fbuffer.o

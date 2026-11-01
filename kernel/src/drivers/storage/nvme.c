@@ -7,6 +7,7 @@
  */
 
 #include "nvme.h"
+#include "storage/write_guard.h"
 #include "../serial.h"
 
 /* ============ Controller Storage ============ */
@@ -990,6 +991,9 @@ int nvme_read(nvme_controller_t *ctrl, uint32_t nsid,
 int nvme_write(nvme_controller_t *ctrl, uint32_t nsid,
                uint64_t lba, uint32_t count, const void *buffer) {
     if (!ctrl || !ctrl->initialized || !buffer) {
+        return -1;
+    }
+    if (!storage_write_allowed("NVMe", lba, count)) {
         return -1;
     }
     
