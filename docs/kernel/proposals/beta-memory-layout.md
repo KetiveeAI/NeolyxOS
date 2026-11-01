@@ -1,8 +1,9 @@
 # Proposal: use RAM above 4 GB (memory layout for the beta, S9)
 
-Status: **proposal, not implemented.** No kernel code changes with this
-document. It asks for owner decision D7 and is part of the Beta ABI batch
-(D2, 2026-11-06). Stream: S9 of
+Status: **proposal.** No kernel code changes with this document. It asks
+for owner decision D7 and is part of the Beta ABI batch (D2, 2026-11-06).
+Option A is implemented and tested on the S9 branch, held back until D7 is
+decided (section 4). Stream: S9 of
 `/mnt/project-files/beta-plan/parallel-workstreams.md`.
 Checked against: `main` at c1b2f63 (PR #49), plus PR #50 (PCI 64-bit BARs).
 
@@ -60,11 +61,11 @@ Rules:
    device memory allows speculative reads of device registers). Device
    ranges above 4 GB keep using `paging_mmio_register()` from PR #50
    (uncached).
-2. **Page size:** 1 GB pages where the CPU supports them (CPUID
-   `0x80000001` EDX bit 26) and the range covers a whole aligned 1 GB;
-   2 MB pages where it covers a whole aligned 2 MB; 4 KB pages at the
-   edges. Cost of the tables for 64 GB of RAM: with 1 GB pages, one page
-   (the PDPT); with 2 MB pages only, 32 PDs = 128 KB.
+2. **Page size:** 2 MB pages where the range covers a whole aligned
+   2 MB, 4 KB pages at the edges. Cost of the tables: one 4 KB page
+   directory per GB, so 240 KB for 60 GB above 4 GB. 1 GB pages are not
+   used: the page-table code cannot split one (`get_or_create_pd`), and
+   the saving is small.
 3. **Kernel-only, as today.** No `PAGE_USER` on these entries. The user
    window (16-256 MB) and its reserved physical alias are unchanged.
 4. **Built before any process exists.** Process address spaces copy the
@@ -132,7 +133,22 @@ the stress test above checks that no page above 4 GB is ever returned.
 
 ## 4. Until D7 is decided
 
-Nothing changes on `main`. The fault in section 1 is possible today but
+The Option A code is ready on the S9 branch and is not pushed until D7 is
+decided. Results (QEMU, logs in `/mnt/project-files/beta-plan/S9/d7-*`):
+
+| Test | Result |
+|------|--------|
+| Stress test, q35 8 GB: every free page taken, written, verified, freed | PASS: 2,027,438 pages, 1,572,864 above 4 GB, highest `0x27FFFF000`, free count restored |
+| Same, q35 12 GB | PASS: 3,076,010 pages, highest `0x37FFFF000` |
+| Same, pc 8 GB | PASS: 2,027,442 pages, highest `0x23FFFF000` |
+| All RAM below 4 GB held after the test, then boot to the desktop (desktop, its page tables, kernel stacks and shm on RAM above 4 GB) | Desktop runs, no faults |
+| q35 2 GB (no RAM above 4 GB) | Desktop runs, nothing registered |
+| Host tests (`pmm_test.c`, new `pmm_high_test.c`) | 56 + 22 + 16 checks pass |
+
+16 GB and 64 GB were not run: the cloud test machine has 15 GB of RAM and
+the stress test touches every guest page.
+
+Until then nothing changes on `main`. The fault in section 1 is possible today but
 needs more than about 2 GB of allocations on q35 (3 GB on pc), which no
 current workload reaches.
 
