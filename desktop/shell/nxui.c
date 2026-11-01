@@ -1046,10 +1046,8 @@ nxc_status_t nxui_init(void) {
         ui_log("[NXUI] fb_info failed or unsupported format\n");
         return NXC_ERR_UNSUPPORTED;
     }
-    if (!nx_fb_map()) {
-        ui_log("[NXUI] fb_map failed\n");
-        return NXC_ERR_STATE;
-    }
+    /* No fb.map: the screen is written only by the kernel, which copies
+     * the back buffer below in fb.flip_rects / fb.flip. */
 
     nxc_env_t env;
     env.alloc = ui_alloc;
