@@ -254,6 +254,16 @@ void scheduler_add(process_t *proc) {
     irq_restore(flags);
 }
 
+/*
+ * How far user mappings of a process may take free memory down (K0b
+ * reserve, K2 class limits): the desktop to R/2, foreground apps to R,
+ * background apps to 1.5R.
+ */
+static uint32_t reserve_class_for(uint32_t proc_flags, uint32_t sched_class) {
+    if (proc_flags & PROC_FLAG_SYSTEM) return AS_CLASS_SYSTEM;
+    return (sched_class == NX_CLASS_BACKGROUND) ? AS_CLASS_BACKGROUND : AS_CLASS_NORMAL;
+}
+
 uint32_t process_set_class(process_t *proc, uint32_t cls) {
     if (!proc) return 0;
     uint64_t flags = irq_save();
@@ -262,6 +272,8 @@ uint32_t process_set_class(process_t *proc, uint32_t cls) {
     if (queued) sq_remove(&run_queues, proc);
     proc->sched_class = cls;
     proc->priority = sq_priority_of(sq_class_of(proc));
+    /* K2: the memory limit follows the class */
+    if (proc->as) proc->as->reserve_class = reserve_class_for(proc->flags, cls);
     if (queued) {
         sq_add(&run_queues, proc);
         if (current_process && current_process != proc &&
@@ -560,6 +572,7 @@ static int setup_user_stack(addrspace_t *as, int argc, const char *const *argv,
  */
 static addrspace_t *build_image(const void *image, uint64_t size,
                                 int argc, const char *const *argv, uint32_t proc_flags,
+                                uint32_t sched_class,
                                 elf_info_t *info, uint64_t *rsp, uint64_t *uargv) {
     if (argc < 0 || argc > PROCESS_ARGV_MAX || (argc > 0 && !argv)) {
         serial_puts("[PROC] ERROR: bad argument vector\n");
@@ -571,8 +584,7 @@ static addrspace_t *build_image(const void *image, uint64_t size,
 
     addrspace_t *as = addrspace_create();
     if (!as) return NULL;
-    /* System processes (the desktop) may dip into half the memory reserve */
-    as->reserve_class = (proc_flags & PROC_FLAG_SYSTEM) ? AS_CLASS_SYSTEM : AS_CLASS_NORMAL;
+    as->reserve_class = reserve_class_for(proc_flags, sched_class);
 
     if (elf_load_user(as, image, size, info) != 0) {
         addrspace_destroy(as);
@@ -612,7 +624,9 @@ int32_t process_spawn_image(const char *name, const void *image, uint64_t size,
 
     elf_info_t info;
     uint64_t user_rsp = 0, user_argv = 0;
-    addrspace_t *as = build_image(image, size, argc, argv, flags, &info, &user_rsp, &user_argv);
+    /* New apps start FOREGROUND (K1), so they get the foreground limit */
+    addrspace_t *as = build_image(image, size, argc, argv, flags, NX_CLASS_FOREGROUND,
+                                  &info, &user_rsp, &user_argv);
     if (!as) return -ENOEXEC;
 
     uint64_t irq = irq_save();
@@ -1130,7 +1144,7 @@ int process_exec(const char *path, char *const argv[], char *const envp[]) {
     elf_info_t info;
     uint64_t user_rsp = 0, user_argv = 0;
     addrspace_t *as = build_image((const void *)buf, size, argc, use_argv, self->flags,
-                                  &info, &user_rsp, &user_argv);
+                                  self->sched_class, &info, &user_rsp, &user_argv);
     pmm_free_pages(buf, pages);
     if (!as) return -ENOEXEC;
 

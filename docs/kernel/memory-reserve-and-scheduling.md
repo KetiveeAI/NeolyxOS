@@ -14,20 +14,20 @@ Every user page mapping (heap growth with `brk`, ELF segments and the stack at s
 
 | Who | May allocate down to |
 |---|---|
-| Ordinary processes | the full reserve |
+| Ordinary processes | the full reserve (K2 part 2: background apps stop at 1.5 times the reserve, see `memory-policy.md`) |
 | `PROC_FLAG_SYSTEM` processes (the desktop) | half the reserve |
 | Kernel (kernel stacks, kernel heap, DMA buffers) | zero |
 
-A refused mapping fails the request with `-ENOMEM` and logs the free memory and the reserve:
+A refused mapping fails the request with `-ENOMEM` and logs the free memory, the reserve, and (since K2 part 2) the floor of the process's class:
 
 ```
-[MEM] user mapping refused: 36824 KB free, reserve 36824 KB
+[MEM] user mapping refused: 36824 KB free, reserve 36824 KB, foreground app floor 36824 KB
 [BRK] PID 33: out of memory
 ```
 
 Shared memory keeps its own, stricter 64 MiB floor (`SHM_SYSTEM_FLOOR` in `nx_shm.c`).
 
-The process's class is recorded in `addrspace_t.reserve_class` when its image is built, so the check needs no process lookup.
+The process's class is recorded in `addrspace_t.reserve_class` when its image is built, and is updated when its app class changes (K2 part 2), so the check needs no process lookup.
 
 ## Scheduling
 

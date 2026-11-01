@@ -57,9 +57,11 @@ typedef struct addrspace {
     uint32_t reserve_class;     /* AS_CLASS_*: how deep user mappings may dig into the PMM reserve */
 } addrspace_t;
 
-/* addrspace_t.reserve_class (K0b memory reserve, see pmm_user_alloc_allowed) */
-#define AS_CLASS_NORMAL     0   /* apps: stop at the full reserve */
-#define AS_CLASS_SYSTEM     1   /* PROC_FLAG_SYSTEM: may use the upper half */
+/* addrspace_t.reserve_class (K0b memory reserve, K2 class limits; see
+ * pmm_user_alloc_allowed). Values equal the PMM_USER_* classes. */
+#define AS_CLASS_NORMAL     0   /* foreground apps: stop at the full reserve R */
+#define AS_CLASS_SYSTEM     1   /* PROC_FLAG_SYSTEM: may use the upper half (R/2) */
+#define AS_CLASS_BACKGROUND 2   /* background apps: stop at 1.5R */
 
 /**
  * Reserve the physical range that aliases the user window.
