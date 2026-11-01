@@ -124,8 +124,21 @@ uint64_t addrspace_reserve_refusals(void) {
     return as_refusals;
 }
 
-static int as_reserve_allows(int system_class) {
-    if (pmm_user_alloc_allowed(1, system_class)) return 1;
+_Static_assert(AS_CLASS_NORMAL == PMM_USER_NORMAL && AS_CLASS_SYSTEM == PMM_USER_SYSTEM &&
+               AS_CLASS_BACKGROUND == PMM_USER_BACKGROUND,
+               "AS_CLASS_* must match PMM_USER_*");
+
+static const char *as_class_name(uint32_t cls) {
+    switch (cls) {
+    case AS_CLASS_SYSTEM:     return "system";
+    case AS_CLASS_NORMAL:     return "foreground";
+    case AS_CLASS_BACKGROUND: return "background";
+    default:                  return "unknown";
+    }
+}
+
+static int as_reserve_allows(uint32_t cls) {
+    if (pmm_user_alloc_allowed(1, cls)) return 1;
     as_refusals++;
     pmm_stats_t st;
     pmm_get_stats(&st);
@@ -133,7 +146,11 @@ static int as_reserve_allows(int system_class) {
     as_log_dec(st.free_pages * PAGE_SIZE / 1024);
     serial_puts(" KB free, reserve ");
     as_log_dec(pmm_reserve_pages() * PAGE_SIZE / 1024);
-    serial_puts(system_class ? " KB (system class may use half)\n" : " KB\n");
+    serial_puts(" KB, ");
+    serial_puts(as_class_name(cls));
+    serial_puts(" app floor ");
+    as_log_dec(pmm_user_floor_pages(cls) * PAGE_SIZE / 1024);
+    serial_puts(" KB\n");
     return 0;
 }
 
@@ -402,12 +419,12 @@ int addrspace_map_alloc(addrspace_t *as, uint64_t va, uint64_t size, uint32_t fl
 
     uint64_t leaf = PTE_PRESENT | PTE_USER | ((flags & AS_MAP_WRITE) ? PTE_WRITE : 0);
     uint64_t *pd = (uint64_t *)as->pd_phys;
-    int system_class = (as->reserve_class == AS_CLASS_SYSTEM);
+    uint32_t cls = as->reserve_class;
 
     for (uint64_t page = start; page < end; page += AS_PAGE) {
         uint64_t pdi = (page >> 21) & 0x1FF;
         if (!(pd[pdi] & PTE_PRESENT)) {
-            if (!as_reserve_allows(system_class)) return -1;
+            if (!as_reserve_allows(cls)) return -1;
             uint64_t pt_phys = as_alloc_frame();
             if (!pt_phys) return -1;
             pd[pdi] = pt_phys | PTE_PRESENT | PTE_WRITE | PTE_USER;
@@ -421,7 +438,7 @@ int addrspace_map_alloc(addrspace_t *as, uint64_t va, uint64_t size, uint32_t fl
             continue;
         }
 
-        if (!as_reserve_allows(system_class)) return -1;
+        if (!as_reserve_allows(cls)) return -1;
         uint64_t frame = as_alloc_frame();
         if (!frame) return -1;
         *pte = frame | leaf;

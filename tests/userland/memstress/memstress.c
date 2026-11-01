@@ -28,6 +28,13 @@
  * pages went back to the system (its own pages drop by exactly that much,
  * free memory rises), and that growing again gives zeroed pages.
  *
+ * K2 part 2: after the first run, a second run starts "bg" children that
+ * move themselves to BACKGROUND and fill memory, then one "fg" child.
+ * Background apps must be refused at 1.5R free and the foreground app
+ * must still get memory down to R. These children exit with
+ * MS_FREE_CODE + the free MB they saw when refused (1 heap limit, 2 bad
+ * memory, 3 could not change class).
+ *
  * Copyright (c) 2025 KetiveeAI
  * SPDX-License-Identifier: MIT
  */
@@ -60,6 +67,11 @@
 #define MS_HOLD_MS      6000
 #define MS_PAGE         4096
 #define MS_TRIM_MB      32              /* K2 brk shrink check */
+#define MS_CLASS_HOLD_MS 12000          /* K2 class run: hold while the rest fill */
+#define MS_CLASS_GAP_MS 250             /* K2 class run: between spawns */
+#define MS_FREE_CODE    16              /* K2 class run: exit code base */
+#define MS_SLACK_MB     2               /* K2 class run: refusal level tolerance */
+#define SYS_PROC_SET_CLASS 153
 
 static inline int64_t sc0(int64_t n) {
     int64_t r;
@@ -167,6 +179,54 @@ static void run_child(void) {
     finish(bad ? 2 : (refused ? 0 : 1));
 }
 
+/* ============ Class children (K2 part 2) ============ */
+
+/* Fill like run_child, but report the free memory seen at the refusal
+ * in the exit code. background: move to BACKGROUND first. */
+static void run_class_child(int background) {
+    int64_t pid = sc0(SYS_GETPID);
+    if (background && sc2(SYS_PROC_SET_CLASS, pid, NX_CLASS_BACKGROUND) != 0) {
+        out_str("[MEMSTRESS] class child PID "); out_dec(pid);
+        out_str(": FAIL: cannot move to BACKGROUND\n");
+        flush();
+        finish(3);
+    }
+    int64_t base = sc1(SYS_BRK, 0);
+    if (base <= 0) finish(2);
+
+    uint64_t got = 0;
+    int refused = 0;
+    uint64_t free_mb = 0;
+    while (got + MS_STEP <= MS_HEAP_LIMIT) {
+        int64_t want = base + (int64_t)(got + MS_STEP);
+        if (sc1(SYS_BRK, want) < want) {
+            nx_mem_stats_t st;
+            if (sc2(SYS_MEM_STATS, (int64_t)&st, sizeof(st)) == 0) free_mb = st.free_bytes >> 20;
+            refused = 1;
+            break;
+        }
+        volatile uint64_t *p = (volatile uint64_t *)(base + (int64_t)got);
+        for (uint64_t off = 0; off < MS_STEP; off += MS_PAGE) p[off / 8] = ((uint64_t)pid << 32) | (got + off);
+        got += MS_STEP;
+    }
+    int bad = 0;
+    for (uint64_t off = 0; off < got; off += MS_PAGE) {
+        volatile uint64_t *p = (volatile uint64_t *)(base + (int64_t)off);
+        if (*p != (((uint64_t)pid << 32) | off)) { bad = 1; break; }
+    }
+    out_str("[MEMSTRESS] "); out_str(background ? "background" : "foreground");
+    out_str(" child PID "); out_dec(pid);
+    out_str(": holding "); out_dec((int64_t)(got / MS_STEP)); out_str(" MB");
+    if (refused) { out_str(", refused at "); out_dec((int64_t)free_mb); out_str(" MB free"); }
+    else out_str(", heap limit");
+    out_str(bad ? ", FAIL: content mismatch\n" : "\n");
+    flush();
+    sc1(SYS_SLEEP, MS_CLASS_HOLD_MS);
+    if (bad) finish(2);
+    if (!refused) finish(1);
+    finish(MS_FREE_CODE + (int)(free_mb > 200 ? 200 : free_mb));
+}
+
 /* ============ Parent: pressure listener (K1) ============ */
 
 static int64_t g_ph = -1;           /* pressure handle, or < 0 */
@@ -247,10 +307,86 @@ static int check_trim(void) {
     return ok;
 }
 
+/* ============ Parent: background apps hit the limit first (K2 part 2) ============ */
+
+static int within(uint64_t mb, uint64_t floor_mb) {
+    return mb + MS_SLACK_MB >= floor_mb && mb <= floor_mb + MS_SLACK_MB;
+}
+
+/* Returns 1 PASS, 0 FAIL, -1 skipped (no mem.stats). */
+static int check_classes(void) {
+    nx_mem_stats_t st;
+    if (sc2(SYS_MEM_STATS, (int64_t)&st, sizeof(st)) != 0) return -1;
+    uint64_t r_mb = st.reserve_bytes >> 20;
+    uint64_t bg_floor_mb = (st.reserve_bytes + st.reserve_bytes / 2) >> 20;
+    int nbg = (int)((st.free_bytes >> 20) / (MS_HEAP_LIMIT >> 20)) + 3;
+    if (nbg > MS_CHILDREN - 1) nbg = MS_CHILDREN - 1;
+    out_str("[MEMSTRESS] class run: "); out_dec(nbg);
+    out_str(" background children, then 1 foreground; floors: background ");
+    out_dec((int64_t)bg_floor_mb); out_str(" MB, foreground "); out_dec((int64_t)r_mb);
+    out_str(" MB\n");
+    flush();
+
+    static const char *bg_argv[] = { "/apps/memstress", "bg", 0 };
+    static const char *fg_argv[] = { "/apps/memstress", "fg", 0 };
+    int32_t kids[MS_CHILDREN];
+    int n = 0, failed = 0;
+    for (int i = 0; i <= nbg; i++) {
+        int fg = (i == nbg);
+        int64_t c = sc3(SYS_SPAWN, (int64_t)"/apps/memstress",
+                        (int64_t)(fg ? fg_argv : bg_argv), SPAWN_WAITABLE);
+        if (c <= 0) {
+            out_str("[MEMSTRESS] class run: spawn "); out_dec(i);
+            out_str(" refused ("); out_dec(c); out_str(") (FAIL)\n");
+            flush();
+            failed++;
+            break;
+        }
+        kids[n++] = (int32_t)c;
+        sc1(SYS_SLEEP, MS_CLASS_GAP_MS);
+    }
+
+    int bg_refused = 0, bg_wrong = 0, fg_ok = 0;
+    uint64_t bg_min = ~0ULL, bg_max = 0, fg_mb = 0;
+    for (int i = 0; i < n; i++) {
+        int status = -1;
+        int is_fg = (i == nbg);
+        if (sc2(SYS_WAIT, kids[i], (int64_t)&status) < 0) { failed++; continue; }
+        if (status >= MS_FREE_CODE) {
+            uint64_t mb = (uint64_t)(status - MS_FREE_CODE);
+            if (is_fg) {
+                fg_mb = mb;
+                fg_ok = within(mb, r_mb);
+            } else {
+                bg_refused++;
+                if (mb < bg_min) bg_min = mb;
+                if (mb > bg_max) bg_max = mb;
+                if (!within(mb, bg_floor_mb)) bg_wrong++;
+            }
+        } else if (status != 1) {
+            failed++;           /* 2 bad memory, 3 class change refused */
+        }
+    }
+
+    int ok = failed == 0 && bg_refused > 0 && bg_wrong == 0 && fg_ok;
+    out_str("[MEMSTRESS] class run: "); out_dec(bg_refused);
+    out_str(" background refused at ");
+    if (bg_refused) { out_dec((int64_t)bg_min); out_str("-"); out_dec((int64_t)bg_max); }
+    else out_str("-");
+    out_str(" MB free (floor "); out_dec((int64_t)bg_floor_mb);
+    out_str("), foreground refused at "); out_dec((int64_t)fg_mb);
+    out_str(" MB free (floor "); out_dec((int64_t)r_mb); out_str(")");
+    out_str(ok ? " (PASS)\n" : " (FAIL)\n");
+    flush();
+    return ok;
+}
+
 /* ============ Parent: spawn children and wait ============ */
 
 void _start(long argc, char **argv) {
     if (argc > 1 && argv && str_eq(argv[1], "child")) run_child();
+    if (argc > 1 && argv && str_eq(argv[1], "bg")) run_class_child(1);
+    if (argc > 1 && argv && str_eq(argv[1], "fg")) run_class_child(0);
 
     int64_t pid = sc0(SYS_GETPID);
     out_str("[MEMSTRESS] PID "); out_dec(pid);
@@ -328,6 +464,10 @@ void _start(long argc, char **argv) {
     }
 
     if (trim_ok == 0) failed++;
+
+    /* K2 part 2 runs with memory back to normal */
+    int class_ok = check_classes();
+    if (class_ok == 0) failed++;
 
     out_str("[MEMSTRESS] done: "); out_dec(nkids);
     out_str(" children, "); out_dec(capped);

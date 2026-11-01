@@ -154,6 +154,21 @@ int main(void) {
         pmm_stats_t rs;
         pmm_get_stats(&rs);
         check(pmm_pressure_level() == PMM_PRESSURE_NORMAL, "plenty free: NORMAL");
+        /* K2 part 2: class floors, and the background floor to the page */
+        check(pmm_user_floor_pages(PMM_USER_NORMAL) == rsv, "foreground floor is R");
+        check(pmm_user_floor_pages(PMM_USER_SYSTEM) == rsv / 2, "system floor is R/2");
+        check(pmm_user_floor_pages(PMM_USER_BACKGROUND) == rsv + rsv / 2, "background floor is 1.5R");
+        check(pmm_user_floor_pages(7) == rsv + rsv / 2, "unknown class gets the background floor");
+        {
+            uint64_t bg_room = rs.free_pages - (rsv + rsv / 2);
+            check(pmm_user_alloc_allowed(bg_room, PMM_USER_BACKGROUND) == 1,
+                  "background may take down to 1.5R");
+            check(pmm_user_alloc_allowed(bg_room + 1, PMM_USER_BACKGROUND) == 0,
+                  "background refused below 1.5R");
+            check(pmm_user_alloc_allowed(bg_room + 1, PMM_USER_NORMAL) == 1,
+                  "foreground still allowed there");
+            check(pmm_user_alloc_allowed(bg_room + 1, 7) == 0, "unknown class refused like background");
+        }
         (void)pmm_pressure_take_change();
         uint64_t seq0 = pmm_pressure_seq();
         /* Bring free memory down to reserve + 10 pages */
@@ -172,6 +187,8 @@ int main(void) {
         check(pmm_user_alloc_allowed(11 + rsv / 2, 1) == 0, "system refused in the kernel half");
         check(pmm_user_alloc_allowed(keep + 1, 1) == 0, "more than free refused");
         check(pmm_user_alloc_allowed(0, 0) == 1, "zero pages allowed above the reserve");
+        check(pmm_user_alloc_allowed(0, PMM_USER_BACKGROUND) == 0, "background refused anything below 1.5R");
+        check(pmm_lock == 0 && g_lock_errors == 0, "background check releases the lock");
         check(pmm_lock == 0 && g_lock_errors == 0, "reserve check releases the lock");
         (void)held;
     }

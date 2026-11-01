@@ -182,13 +182,23 @@ void pmm_get_stats(pmm_stats_t *stats);
  */
 uint64_t pmm_reserve_pages(void);
 
+/* User allocation classes for pmm_user_alloc_allowed() (K0b, K2 part 2).
+ * Free memory may not fall below this floor (R = the reserve): */
+#define PMM_USER_NORMAL         0   /* foreground apps: R */
+#define PMM_USER_SYSTEM         1   /* PROC_FLAG_SYSTEM (the desktop): R/2 */
+#define PMM_USER_BACKGROUND     2   /* background apps: 1.5R (the CRITICAL line) */
+
 /**
- * Whether a user allocation of `pages` may proceed without eating into
- * the reserve. system_class: 1 for PROC_FLAG_SYSTEM processes.
+ * Whether a user allocation of `pages` may proceed without taking free
+ * memory below the floor of `user_class` (PMM_USER_*; unknown values get
+ * the strictest, background, floor).
  * Returns 1 if allowed, 0 if it must be refused (-ENOMEM to the caller).
  * Advisory: it does not hold the pages; the caller allocates afterwards.
  */
-int pmm_user_alloc_allowed(uint64_t pages, int system_class);
+int pmm_user_alloc_allowed(uint64_t pages, uint32_t user_class);
+
+/** Floor in pages for a PMM_USER_* class (see pmm_user_alloc_allowed). */
+uint64_t pmm_user_floor_pages(uint32_t user_class);
 
 /* ============ Memory pressure (K1) ============ */
 /* Values match NX_MEM_* in core/nx_mem.h (the user ABI). */

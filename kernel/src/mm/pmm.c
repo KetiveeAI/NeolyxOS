@@ -514,8 +514,16 @@ int pmm_pressure_take_change(void) {
     return changed;
 }
 
-int pmm_user_alloc_allowed(uint64_t pages, int system_class) {
-    uint64_t floor = system_class ? pmm_reserve / 2 : pmm_reserve;
+uint64_t pmm_user_floor_pages(uint32_t user_class) {
+    switch (user_class) {
+    case PMM_USER_SYSTEM: return pmm_reserve / 2;
+    case PMM_USER_NORMAL: return pmm_reserve;
+    default:              return pmm_reserve + pmm_reserve / 2;   /* background, or unknown */
+    }
+}
+
+int pmm_user_alloc_allowed(uint64_t pages, uint32_t user_class) {
+    uint64_t floor = pmm_user_floor_pages(user_class);
     uint64_t flags = pmm_spin_lock();
     uint64_t free_pages = pmm_stats.free_pages;
     pmm_spin_unlock(flags);
