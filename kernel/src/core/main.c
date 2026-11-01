@@ -56,6 +56,7 @@ extern void timer_init(uint32_t frequency);
  */
 static void boot_photo_pause(uint32_t seconds) {
     extern uint64_t pit_get_uptime_ms(void);
+    extern void serial_puts(const char *s);
     /* Lines worth a photo: what was found, what was refused, what failed */
     static const char *const summary_patterns[] = {
         "WARNING", "ERROR", "FAIL", "failed", "[PS2]", "[USB]", "[STORAGE]",
