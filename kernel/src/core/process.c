@@ -14,6 +14,9 @@
  *     masked and only give up the CPU at explicit points (sleep, yield,
  *     wait, exit). The timer preempts code running in ring 3, and the idle
  *     thread.
+ *   - Two run queues (core/sched_queue.h): SYSTEM (PROC_FLAG_SYSTEM and
+ *     kernel threads) gets 3 of every 4 turns while NORMAL work waits;
+ *     a SYSTEM wake-up preempts a NORMAL process at the next tick.
  *   - The boot context becomes the idle thread (PID 0) in scheduler_run().
  *
  * Copyright (c) 2025 KetiveeAI
@@ -21,6 +24,7 @@
  */
 
 #include "core/process.h"
+#include "core/sched_queue.h"
 #include "core/syscall.h"
 #include "core/elf.h"
 #include "mm/kheap.h"
@@ -64,9 +68,14 @@ process_t *current_process = NULL;
 /* Idle process (PID 0): the boot context once scheduler_run() starts */
 static process_t *idle_process = NULL;
 
-/* Ready queue (doubly linked list) */
-static process_t *ready_head = NULL;
-static process_t *ready_tail = NULL;
+/* Run queues: SYSTEM (desktop, kernel threads) and NORMAL, weighted 3:1
+ * when both have work (core/sched_queue.h) */
+static sched_queues_t run_queues;
+
+/* Set when a SYSTEM process becomes ready while a NORMAL process runs in
+ * ring 3: the next timer tick preempts it instead of letting it finish
+ * its slice, so input and frame wake-ups reach the desktop within ~1 ms. */
+static volatile int preempt_for_system = 0;
 
 /* Processes in PROC_STATE_SLEEPING (lets the timer skip the scan) */
 static uint32_t sleeping_count = 0;
@@ -184,7 +193,7 @@ static process_t *alloc_process(void) {
 
     proc->pid = pid;
     proc->state = PROC_STATE_CREATED;
-    proc->priority = 128;
+    proc->priority = SQ_PRIORITY_NORMAL;
     proc->time_slice = SCHED_TIME_SLICE;
     process_table[pid] = proc;
 
@@ -230,39 +239,23 @@ void scheduler_add(process_t *proc) {
     if (!proc || proc == idle_process) return;
     if (proc->state == PROC_STATE_DEAD || proc->state == PROC_STATE_ZOMBIE) return;
 
-    /* Already queued? (prev set, or it is the head) */
-    if (proc->prev || ready_head == proc) return;
-
-    proc->state = PROC_STATE_READY;
-    proc->next = NULL;
-    proc->prev = ready_tail;
-
-    if (ready_tail) {
-        ready_tail->next = proc;
-    } else {
-        ready_head = proc;
+    uint64_t flags = irq_save();
+    if (sq_add(&run_queues, proc)) {
+        proc->state = PROC_STATE_READY;
+        if (sq_class_of(proc) == SQ_CLASS_SYSTEM && current_process &&
+            current_process != proc && current_process != idle_process &&
+            sq_class_of(current_process) == SQ_CLASS_NORMAL) {
+            preempt_for_system = 1;
+        }
     }
-    ready_tail = proc;
+    irq_restore(flags);
 }
 
 void scheduler_remove(process_t *proc) {
     if (!proc) return;
-    if (!proc->prev && ready_head != proc) return;  /* Not queued */
-
-    if (proc->prev) {
-        proc->prev->next = proc->next;
-    } else {
-        ready_head = proc->next;
-    }
-
-    if (proc->next) {
-        proc->next->prev = proc->prev;
-    } else {
-        ready_tail = proc->prev;
-    }
-
-    proc->next = NULL;
-    proc->prev = NULL;
+    uint64_t flags = irq_save();
+    sq_remove(&run_queues, proc);
+    irq_restore(flags);
 }
 
 /* ============ Reaping ============ */
@@ -403,7 +396,8 @@ void process_init(void) {
     serial_puts("[PROC] Initializing process management...\n");
 
     proc_memset(process_table, 0, sizeof(process_table));
-    ready_head = ready_tail = NULL;
+    proc_memset(&run_queues, 0, sizeof(run_queues));
+    preempt_for_system = 0;
     sleeping_count = 0;
     dead_pending = 0;
     pid_cursor = 1;
@@ -463,6 +457,7 @@ int32_t process_create_thread(const char *name, thread_entry_t entry, void *arg)
 
     proc_strcpy(proc->name, name ? name : "thread", PROCESS_NAME_MAX);
     proc->flags = PROC_FLAG_KERNEL;
+    proc->priority = SQ_PRIORITY_SYSTEM;
     proc->ppid = current_process ? current_process->pid : 0;
     proc->start_time = pit_get_ticks();
     proc_strcpy(proc->cwd, "/", 256);
@@ -541,7 +536,7 @@ static int setup_user_stack(addrspace_t *as, int argc, const char *const *argv,
  * address space. On success returns the space and fills the out values.
  */
 static addrspace_t *build_image(const void *image, uint64_t size,
-                                int argc, const char *const *argv,
+                                int argc, const char *const *argv, uint32_t proc_flags,
                                 elf_info_t *info, uint64_t *rsp, uint64_t *uargv) {
     if (argc < 0 || argc > PROCESS_ARGV_MAX || (argc > 0 && !argv)) {
         serial_puts("[PROC] ERROR: bad argument vector\n");
@@ -553,6 +548,8 @@ static addrspace_t *build_image(const void *image, uint64_t size,
 
     addrspace_t *as = addrspace_create();
     if (!as) return NULL;
+    /* System processes (the desktop) may dip into half the memory reserve */
+    as->reserve_class = (proc_flags & PROC_FLAG_SYSTEM) ? AS_CLASS_SYSTEM : AS_CLASS_NORMAL;
 
     if (elf_load_user(as, image, size, info) != 0) {
         addrspace_destroy(as);
@@ -592,7 +589,7 @@ int32_t process_spawn_image(const char *name, const void *image, uint64_t size,
 
     elf_info_t info;
     uint64_t user_rsp = 0, user_argv = 0;
-    addrspace_t *as = build_image(image, size, argc, argv, &info, &user_rsp, &user_argv);
+    addrspace_t *as = build_image(image, size, argc, argv, flags, &info, &user_rsp, &user_argv);
     if (!as) return -ENOEXEC;
 
     uint64_t irq = irq_save();
@@ -605,6 +602,8 @@ int32_t process_spawn_image(const char *name, const void *image, uint64_t size,
 
     proc_strcpy(proc->name, name ? name : "user", PROCESS_NAME_MAX);
     proc->flags = PROC_FLAG_USER | (flags & (PROC_FLAG_SYSTEM | PROC_FLAG_DETACHED));
+    proc->priority = (sq_class_of(proc) == SQ_CLASS_SYSTEM) ? SQ_PRIORITY_SYSTEM
+                                                             : SQ_PRIORITY_NORMAL;
     proc->ppid = current_process ? current_process->pid : 0;
     proc->start_time = pit_get_ticks();
     proc_strcpy(proc->cwd, "/", 256);
@@ -937,7 +936,7 @@ void process_unblock(process_t *proc) {
 
 void scheduler_init(void) {
     serial_puts("[SCHED] Initializing scheduler...\n");
-    serial_puts("[SCHED] Ready (round-robin, preempts ring 3 only)\n");
+    serial_puts("[SCHED] Ready (system:normal 3:1, round-robin per class, preempts ring 3 only)\n");
 }
 
 /*
@@ -948,24 +947,27 @@ void scheduler_init(void) {
 void schedule(void) {
     uint64_t flags = irq_save();
     process_t *self = current_process;
-    process_t *next = ready_head;
+    preempt_for_system = 0;
 
+    /* The running process competes for the next turn too (at the tail
+     * of its class), so the SYSTEM:NORMAL weighting also holds when one
+     * busy process of a class is the only one of that class. */
+    int self_runnable = (self->state == PROC_STATE_RUNNING && self != idle_process);
+    if (self_runnable) {
+        sq_add(&run_queues, self);
+        self->state = PROC_STATE_READY;
+    }
+
+    process_t *next = sq_pick(&run_queues);
     if (next) {
-        scheduler_remove(next);
-        if (self->state == PROC_STATE_RUNNING && self != idle_process) {
-            scheduler_add(self);
-        }
-    } else if (self->state == PROC_STATE_RUNNING) {
-        /* Nothing else to run: keep going */
-        self->time_slice = SCHED_TIME_SLICE;
-        irq_restore(flags);
-        return;
+        sq_remove(&run_queues, next);
     } else {
         next = idle_process;
     }
 
     if (next == self) {
         self->state = PROC_STATE_RUNNING;
+        self->time_slice = SCHED_TIME_SLICE;
         irq_restore(flags);
         return;
     }
@@ -997,7 +999,7 @@ void scheduler_tick_irq(int from_user) {
     wake_sleepers();
 
     if (current_process == idle_process) {
-        if (ready_head) schedule();
+        if (sq_any(&run_queues)) schedule();
         return;
     }
 
@@ -1006,11 +1008,17 @@ void scheduler_tick_irq(int from_user) {
     /* Kernel code is never preempted; only ring 3 and idle */
     if (!from_user) return;
 
+    /* A SYSTEM process woke while this NORMAL one runs: switch now */
+    if (preempt_for_system && sq_class_of(current_process) == SQ_CLASS_NORMAL) {
+        schedule();
+        return;
+    }
+
     if (current_process->time_slice > 0) {
         current_process->time_slice--;
     }
     if (current_process->time_slice == 0) {
-        if (ready_head) {
+        if (sq_any(&run_queues)) {
             schedule();
         } else {
             current_process->time_slice = SCHED_TIME_SLICE;
@@ -1037,7 +1045,7 @@ void scheduler_run(void) {
 
     for (;;) {
         __asm__ volatile("cli");
-        if (ready_head) {
+        if (sq_any(&run_queues)) {
             schedule();
         }
         /* Atomically enable interrupts and wait for the next one */
@@ -1097,7 +1105,7 @@ int process_exec(const char *path, char *const argv[], char *const envp[]) {
 
     elf_info_t info;
     uint64_t user_rsp = 0, user_argv = 0;
-    addrspace_t *as = build_image((const void *)buf, size, argc, use_argv,
+    addrspace_t *as = build_image((const void *)buf, size, argc, use_argv, self->flags,
                                   &info, &user_rsp, &user_argv);
     pmm_free_pages(buf, pages);
     if (!as) return -ENOEXEC;

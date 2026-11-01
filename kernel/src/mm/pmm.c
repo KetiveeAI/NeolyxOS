@@ -84,6 +84,15 @@ static inline void pmm_spin_unlock(uint64_t flags) {
  * Low-first placement matters: the kernel identity-maps only 0-4 GB. */
 static uint64_t pmm_hint_byte = 0;
 
+/* Memory reserve (K0b): free pages ordinary user allocations may not
+ * take. Set once in pmm_init: max(32 MiB, 2% of usable RAM), at most
+ * 128 MiB and at most a quarter of usable RAM. System-class processes
+ * may use its upper half; the lower half is left to the kernel (kernel
+ * stacks, kernel heap, page tables, DMA buffers). */
+#define PMM_RESERVE_MIN_PAGES   ((32ULL * 1024 * 1024) / PAGE_SIZE)
+#define PMM_RESERVE_MAX_PAGES   ((128ULL * 1024 * 1024) / PAGE_SIZE)
+static uint64_t pmm_reserve = 0;
+
 /* Kernel end symbol from linker script */
 extern uint8_t _kernel_end[];
 
@@ -284,6 +293,19 @@ void pmm_init(void *memory_map, uint64_t map_size, uint64_t descriptor_size) {
     
     /* Mark as initialized */
     pmm_hint_byte = 0;
+    
+    /* Memory reserve: see pmm_user_alloc_allowed() */
+    {
+        uint64_t usable = pmm_stats.free_pages;
+        uint64_t r = usable / 50;                       /* 2% */
+        if (r < PMM_RESERVE_MIN_PAGES) r = PMM_RESERVE_MIN_PAGES;
+        if (r > PMM_RESERVE_MAX_PAGES) r = PMM_RESERVE_MAX_PAGES;
+        if (r > usable / 4) r = usable / 4;
+        pmm_reserve = r;
+        serial_puts("[PMM] Reserve: ");
+        serial_dec(r * PAGE_SIZE / 1024 / 1024);
+        serial_puts(" MB kept from user allocations (system processes may use half)\n");
+    }
     pmm_initialized = 1;
 }
 
@@ -430,6 +452,18 @@ void pmm_get_stats(pmm_stats_t *stats) {
         stats->free_memory = pmm_stats.free_pages * PAGE_SIZE;
         pmm_spin_unlock(flags);
     }
+}
+
+uint64_t pmm_reserve_pages(void) {
+    return pmm_reserve;
+}
+
+int pmm_user_alloc_allowed(uint64_t pages, int system_class) {
+    uint64_t floor = system_class ? pmm_reserve / 2 : pmm_reserve;
+    uint64_t flags = pmm_spin_lock();
+    uint64_t free_pages = pmm_stats.free_pages;
+    pmm_spin_unlock(flags);
+    return free_pages >= pages && free_pages - pages >= floor;
 }
 
 int pmm_is_valid_address(uint64_t addr) {

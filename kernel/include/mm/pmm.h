@@ -174,6 +174,23 @@ void pmm_free_pages(uint64_t page, size_t count);
 void pmm_get_stats(pmm_stats_t *stats);
 
 /**
+ * Size of the memory reserve in pages (set by pmm_init).
+ *
+ * Ordinary user allocations may not take the last pmm_reserve_pages()
+ * free pages; system-class processes may use the upper half of them; the
+ * lower half is for the kernel.
+ */
+uint64_t pmm_reserve_pages(void);
+
+/**
+ * Whether a user allocation of `pages` may proceed without eating into
+ * the reserve. system_class: 1 for PROC_FLAG_SYSTEM processes.
+ * Returns 1 if allowed, 0 if it must be refused (-ENOMEM to the caller).
+ * Advisory: it does not hold the pages; the caller allocates afterwards.
+ */
+int pmm_user_alloc_allowed(uint64_t pages, int system_class);
+
+/**
  * Mark a region as reserved (cannot be allocated).
  * 
  * @param start Physical address (page-aligned).
