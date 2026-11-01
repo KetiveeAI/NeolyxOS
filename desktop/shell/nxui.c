@@ -57,8 +57,12 @@ static nxui_state_t g_ui;
 static void ui_log(const char *msg) { nx_debug_print(msg); }
 
 static void *ui_alloc(uint64_t size) {
-    /* nx_malloc returns 16-byte aligned blocks from the pre-mapped heap. */
+    /* nx_malloc returns 16-byte aligned blocks from the process heap. */
     return nx_alloc(size);
+}
+
+static void ui_free(void *ptr) {
+    nx_free(ptr);
 }
 
 static void ui_log_status(const char *what, nxc_status_t st) {
@@ -460,6 +464,19 @@ typedef struct {
 static nxui_panel_slot_t g_panels[NXUI_PANEL_CACHE_SLOTS];
 static uint32_t g_panel_tick;
 static uint32_t g_panel_hits, g_panel_misses;
+static uint64_t g_panel_bytes;          /* pixel memory held by all slots */
+
+static uint64_t panel_slot_bytes(const nxui_panel_slot_t *sl) {
+    return sl->surf.pixels ? (uint64_t)sl->cap_w * (uint64_t)sl->cap_h * 4u : 0;
+}
+
+/* Free a slot's surface and forget it */
+static void panel_slot_release(nxui_panel_slot_t *sl) {
+    g_panel_bytes -= panel_slot_bytes(sl);
+    nxc_surface_destroy(&sl->surf);
+    sl->cap_w = sl->cap_h = 0;
+    sl->used = 0;
+}
 
 static int material_eq(const nxc_material_t *a, const nxc_material_t *b) {
     return a->blur_sigma == b->blur_sigma && a->saturation == b->saturation &&
@@ -640,11 +657,26 @@ nxc_status_t nxui_panel_ex(nxc_canvas_t *c, nxc_rect_t r, float radius, const nx
     if (!hit) {
         nxui_panel_slot_t *sl = victim;
         if (!sl->surf.pixels || sl->cap_w < sw || sl->cap_h < sh) {
-            /* Allocate with slack so small size changes reuse the buffer
-             * (the heap is a bump allocator: every allocation is for good). */
+            /* Allocate with slack so small size changes reuse the buffer.
+             * The slot's old buffer is freed first, then least recently
+             * used slots until the new one fits NXUI_PANEL_CACHE_BYTES. */
             int32_t cw = (sw + 63) & ~63, ch = (sh + 63) & ~63;
             if (cw < sl->cap_w) cw = sl->cap_w;
             if (ch < sl->cap_h) ch = sl->cap_h;
+            uint64_t need = (uint64_t)cw * (uint64_t)ch * 4u;
+            if (need > NXUI_PANEL_CACHE_BYTES) {
+                return panel_draw_direct(c, ir, radius, m, elevation, decor, decor_key);
+            }
+            panel_slot_release(sl);
+            while (g_panel_bytes + need > NXUI_PANEL_CACHE_BYTES) {
+                nxui_panel_slot_t *lru = 0;
+                for (int32_t i = 0; i < NXUI_PANEL_CACHE_SLOTS; i++) {
+                    nxui_panel_slot_t *o = &g_panels[i];
+                    if (o != sl && o->surf.pixels && (!lru || o->last_use < lru->last_use)) lru = o;
+                }
+                if (!lru) break;
+                panel_slot_release(lru);
+            }
             nxc_surface_t ns;
             if (nxc_surface_create(&ns, cw, ch, 0) != NXC_OK) {
                 ui_log("[NXUI] panel cache: slot allocation failed, drawing uncached\n");
@@ -652,6 +684,7 @@ nxc_status_t nxui_panel_ex(nxc_canvas_t *c, nxc_rect_t r, float radius, const nx
             }
             sl->surf = ns;
             sl->cap_w = cw; sl->cap_h = ch;
+            g_panel_bytes += need;
         }
         sl->used = 1;
         sl->x = x; sl->y = y; sl->w = w; sl->h = h;
@@ -977,7 +1010,7 @@ nxc_status_t nxui_init(void) {
 
     nxc_env_t env;
     env.alloc = ui_alloc;
-    env.free = 0;                       /* heap is a bump allocator */
+    env.free = ui_free;                 /* surfaces and caches return memory */
     env.log = ui_log;
     env.max_width = (int32_t)g_ui.fb.width;
     env.max_height = (int32_t)g_ui.fb.height;

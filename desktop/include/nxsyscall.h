@@ -321,8 +321,11 @@ static inline int64_t nx_brk(uint64_t addr) {
  * because each translation unit would get its own heap_end, causing
  * allocations from different files to collide!
  */
-extern void* nx_malloc(uint64_t size);
-extern void nx_mfree(void *ptr);
+extern void* nx_malloc(uint64_t size);           /* NULL when size is 0 or the heap is full */
+extern void nx_mfree(void *ptr);                  /* NULL is ignored; invalid/double frees are refused and logged */
+extern void* nx_calloc(uint64_t count, uint64_t size);   /* zeroed; NULL on overflow */
+extern void* nx_realloc(void *ptr, uint64_t size);       /* keeps contents; on failure ptr stays valid */
+extern void nx_malloc_usage(uint64_t *in_use, uint64_t *heap_size);   /* bytes, headers included */
 
 /* Legacy compatibility wrappers */
 #define nx_alloc(size) nx_malloc(size)

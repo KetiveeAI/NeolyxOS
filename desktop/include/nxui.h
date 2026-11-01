@@ -229,6 +229,10 @@ nxc_status_t nxui_elevation(nxc_canvas_t *c, nxc_rect_t r, float radius, int32_t
  * panels that animate every frame.
  */
 #define NXUI_PANEL_CACHE_SLOTS 16
+/* Pixel memory the panel cache may hold in total; a panel that does not fit
+ * evicts the least recently used slots, and one larger than the whole
+ * budget is drawn uncached. */
+#define NXUI_PANEL_CACHE_BYTES (16u * 1024u * 1024u)
 nxc_status_t nxui_panel(nxc_canvas_t *c, nxc_rect_t r, float radius,
                         const nxc_material_t *m, int32_t elevation);
 
