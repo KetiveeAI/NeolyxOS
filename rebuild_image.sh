@@ -70,6 +70,18 @@ for font in NXSans-Text.ttf; do
     fi
 done
 
+echo "[IMG] Creating user-writable folders..."
+# System Integrity Protection lets ordinary processes write only under
+# /tmp, /Users and /home; without these folders no app can save a file.
+for dir in /tmp /Users /Users/Shared; do
+    if ! mmd -i neolyx_new.img "::$dir"; then
+        echo "[ERROR] cannot create $dir in the image"
+        rm -f neolyx_new.img
+        exit 1
+    fi
+    echo "  ✓ $dir"
+done
+
 echo "[IMG] Creating installation marker..."
 echo "NeolyxOS Installed" | mcopy -i neolyx_new.img - ::/INSTALLED.MRK
 
