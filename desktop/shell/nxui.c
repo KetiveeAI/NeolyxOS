@@ -882,6 +882,23 @@ float nxui_time(void) {
     return (float)(now - g_ui.t0_ms) * 0.001f;
 }
 
+uint32_t nxui_ms_to_next_step(float steps_per_s) {
+    if (!(steps_per_s > 0.0f) || steps_per_s > 1000.0f) return 1000u;
+    /* Integer milliseconds, so the answer matches what nxui_time() will
+     * read: step k starts at ceil(k * 1000 / rate) ms. */
+    uint64_t now = nx_gettime() - g_ui.t0_ms;
+    double rate = (double)steps_per_s;
+    double k = (double)(uint64_t)((double)now * rate / 1000.0) + 1.0;
+    double at = k * 1000.0 / rate;
+    uint64_t at_ms = (uint64_t)at;
+    if ((double)at_ms < at) at_ms++;
+    if (at_ms <= now) return 1u;
+    /* +2 ms: nxui_time() is a float and may read the old step for a
+     * fraction of a millisecond after the exact boundary. */
+    uint64_t d = at_ms - now + 2u;
+    return d > 60000u ? 60000u : (uint32_t)d;
+}
+
 float nxui_frame_dt(void) { return g_ui.dt; }
 
 /* Below these the motion is invisible: the damage-driven frame loop stops

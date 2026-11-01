@@ -476,6 +476,42 @@ static int rclip_row_interior(const nxc_state_t *st, int32_t y, int32_t x0, int3
     return ((float)x0 + 0.5f >= r->x + 1.0f) && ((float)x1 - 0.5f <= r->x + r->w - 1.0f);
 }
 
+/*
+ * Pixels [*ia, *ib) of row y whose centers are at least one pixel inside
+ * the rounded clip, so rclip_coverage is exactly 255 there (the same
+ * one-pixel margin as rclip_row_interior). Rows inside the straight left
+ * and right edges keep everything but a pixel at each side; rows level
+ * with the corners keep the part between the corners; the top and bottom
+ * edge rows keep nothing (*ia >= *ib).
+ */
+static void rclip_interior_x(const nxc_state_t *st, int32_t y, int32_t *ia, int32_t *ib) {
+    const nxc_rect_t *r = &st->rclip;
+    float rad = st->rclip_radius;
+    float py = (float)y + 0.5f;
+    float inset;
+    if (py >= r->y + rad + 1.0f && py <= r->y + r->h - rad - 1.0f) {
+        inset = 1.0f;
+    } else if (py >= r->y + 1.0f && py <= r->y + r->h - 1.0f) {
+        inset = rad + 1.0f;
+    } else {
+        *ia = *ib = 0;
+        return;
+    }
+    /* First center >= left bound, one past the last center <= right bound */
+    float a = r->x + inset - 0.5f, b = r->x + r->w - inset - 0.5f;
+    if (!(a > -1.0e9f && b < 1.0e9f) || b < a) {
+        *ia = *ib = 0;
+        return;
+    }
+    int32_t ai = (int32_t)a;
+    if ((float)ai < a) ai++;
+    int32_t bi = (int32_t)b;
+    if ((float)bi > b) bi--;
+    /* Conservative against float rounding: shrink by one each side */
+    *ia = ai + 1;
+    *ib = bi;
+}
+
 /* ============ Span blending ============ */
 
 /* Clip [x0, x0+n) of row y to the device clip. Returns the number of
@@ -552,8 +588,17 @@ static void span_solid_impl(nxc_canvas_t *c, int32_t y, int32_t x0, int32_t x1,
     uint32_t *row = t->pixels + (uint64_t)y * (uint64_t)t->stride;
 
     if (c->st.rclip_radius > 0.0f && !rclip_row_interior(&c->st, y, xs, xs + n)) {
+        /* Per pixel only near the rounded edge; the interior run (where
+         * the clip's coverage is exactly 255) takes the plain path below. */
+        int32_t ia, ib;
+        rclip_interior_x(&c->st, y, &ia, &ib);
+        if (ia < xs) ia = xs;
+        if (ib > xs + n) ib = xs + n;
+        if (ia >= ib) ia = ib = xs + n;
         uint32_t cv = coverage > 255u ? 255u : coverage;
         for (int32_t i = 0; i < n; i++) {
+            if (xs + i == ia) i = ib - xs;      /* skip the interior run */
+            if (i >= n) break;
             uint32_t rk = rclip_coverage(&c->st, xs + i, y);
             if (rk == 0) continue;
             if (linear) {
@@ -563,7 +608,9 @@ static void span_solid_impl(nxc_canvas_t *c, int32_t y, int32_t x0, int32_t x1,
                 row[xs + i] = blend_px(row[xs + i], premul, nxc__div255(rk * k), opaque);
             }
         }
-        return;
+        if (ia >= ib) return;
+        n = ib - ia;
+        xs = ia;
     }
     if (linear && coverage < 255u) {
         for (int32_t i = 0; i < n; i++) {
@@ -606,21 +653,24 @@ static void span_cov_impl(nxc_canvas_t *c, int32_t y, int32_t x0, const uint8_t 
     int opaque = (t->flags & NXC_SURFACE_OPAQUE) != 0;
     uint32_t *row = t->pixels + (uint64_t)y * (uint64_t)t->stride;
     int rclip = c->st.rclip_radius > 0.0f && !rclip_row_interior(&c->st, y, xs, xs + m);
+    int32_t ia = 0, ib = 0;                 /* interior run: clip coverage 255 */
+    if (rclip) rclip_interior_x(&c->st, y, &ia, &ib);
     int full = ((premul >> 24) == 255u) && ga == 255u;
 
     for (int32_t i = 0; i < m; i++) {
         uint32_t k = cv[i];
         if (k == 0) continue;
+        int edge = rclip && (xs + i < ia || xs + i >= ib);
         if (linear) {
             /* geometric coverage stays apart from the global alpha */
-            if (rclip) k = nxc__div255(k * rclip_coverage(&c->st, xs + i, y));
+            if (edge) k = nxc__div255(k * rclip_coverage(&c->st, xs + i, y));
             if (k == 0) continue;
             if (k == 255u && full) row[xs + i] = premul;
             else row[xs + i] = blend_edge(row[xs + i], premul, ga, k, opaque);
             continue;
         }
         if (ga != 255u) k = nxc__div255(k * ga);
-        if (rclip) k = nxc__div255(k * rclip_coverage(&c->st, xs + i, y));
+        if (edge) k = nxc__div255(k * rclip_coverage(&c->st, xs + i, y));
         if (k == 0) continue;
         if (k == 255u && full) {
             row[xs + i] = premul;
@@ -655,15 +705,18 @@ void nxc__span_pixels(nxc_canvas_t *c, int32_t y, int32_t x0, const uint32_t *sr
     int opaque = (t->flags & NXC_SURFACE_OPAQUE) != 0;
     uint32_t *row = t->pixels + (uint64_t)y * (uint64_t)t->stride;
     int rclip = c->st.rclip_radius > 0.0f && !rclip_row_interior(&c->st, y, xs, xs + m);
+    int32_t ia = 0, ib = 0;                 /* interior run: clip coverage 255 */
+    if (rclip) rclip_interior_x(&c->st, y, &ia, &ib);
 
     for (int32_t i = 0; i < m; i++) {
         uint32_t s = sp[i];
         if (s == 0) continue;
-        if (cv || rclip) {
+        int edge = rclip && (xs + i < ia || xs + i >= ib);
+        if (cv || edge) {
             /* R2: shape edges (shader coverage, rounded clip) in linear light */
             uint32_t geo = cv ? cv[i] : 255u;
             if (geo == 0) continue;
-            if (rclip) geo = nxc__div255(geo * rclip_coverage(&c->st, xs + i, y));
+            if (edge) geo = nxc__div255(geo * rclip_coverage(&c->st, xs + i, y));
             if (geo == 0) continue;
             if (geo < 255u) {
                 row[xs + i] = blend_edge(row[xs + i], s, base, geo, opaque);

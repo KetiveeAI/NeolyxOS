@@ -86,6 +86,11 @@ int32_t nxui_height(void);
 
 /* Seconds since nxui_init (monotonic, millisecond resolution). */
 float nxui_time(void);
+/* Milliseconds until floor(nxui_time() * steps_per_s) next changes, e.g.
+ * the next flip of a caret drawn when (int)(nxui_time() * 1.8f) % 2 == 0.
+ * Includes a 2 ms margin past the boundary. At least 1; 1000 when
+ * steps_per_s is not a positive number (or above 1000). */
+uint32_t nxui_ms_to_next_step(float steps_per_s);
 /* Seconds elapsed since the previous nxui_frame_begin (clamped 0..0.1). */
 float nxui_frame_dt(void);
 

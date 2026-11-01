@@ -1958,7 +1958,10 @@ void shell_view_render(desktop_window_t *win, void *ctx) {
             float cy = tr.y + (float)crow * g_lh;
             nxc_rect_t cr = nxc_rect(cx, cy + 1.0f, 2.0f, g_lh - 2.0f);
             if (!win->focused) nxc_stroke_rrect(c, nxc_rect(cx, cy + 1.0f, g_cw, g_lh - 2.0f), 1.0f, 1.0f, sh_color(C_DIM));
-            else if ((int)(nxui_time() * 1.8f) % 2 == 0) nxc_fill_rect(c, cr, th->accent);
+            else {
+                if ((int)(nxui_time() * 1.8f) % 2 == 0) nxc_fill_rect(c, cr, th->accent);
+                desktop_window_redraw_in(win->id, nxui_ms_to_next_step(1.8f));   /* next blink */
+            }
         }
     }
     nxc_restore(c);

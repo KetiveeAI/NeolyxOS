@@ -278,6 +278,21 @@ int desktop_window_info(uint32_t window_id, desktop_window_info_t *out);
 void desktop_damage_window_content(uint32_t window_id, int32_t x, int32_t y, uint32_t w, uint32_t h);
 
 /*
+ * Redraw policy for windows whose content the shell draws (app views):
+ * such a window is redrawn when the shell sees activity (input, a running
+ * nxui animation, a window change), when a frame redraws the part of the
+ * screen it covers, when it asked for it here, and at least once every
+ * DESKTOP_VIEW_REFRESH_MS. Content that changes on its own (a blinking
+ * caret, a refresh timer, a message that expires) asks for its next redraw
+ * from its render callback: delay_ms after now (0 = the next frame tick).
+ * The earliest request wins; a request is used up by the redraw it causes,
+ * so a view that keeps changing asks again each time it draws. Nothing
+ * happens for an unknown window or one whose content a client draws.
+ */
+#define DESKTOP_VIEW_REFRESH_MS 1000u
+void desktop_window_redraw_in(uint32_t window_id, uint32_t delay_ms);
+
+/*
  * The window whose content area is under the pointer, or 0 (title bar, no
  * window, or a shell overlay such as the app drawer or a menu is open).
  * *mx, *my receive the pointer on screen, *lx, *ly the content-local
