@@ -35,14 +35,24 @@ mcopy -i neolyx_new.img kernel/kernel.bin ::/kernel.bin
 echo "[IMG] Copying desktop..."
 mcopy -i neolyx_new.img desktop/bin/neolyx-desktop ::/EFI/BOOT/desktop.elf
 
-echo "[IMG] Installing user programs into /apps..."
+echo "[IMG] Installing programs from config/image-apps.list..."
+# shellcheck source=scripts/lib/image_apps.sh
+. "$(dirname "${BASH_SOURCE[0]}")/scripts/lib/image_apps.sh"
+if ! image_apps_load "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; then
+    echo "[ERROR] config/image-apps.list is invalid"
+    rm -f neolyx_new.img
+    exit 1
+fi
 mmd -i neolyx_new.img ::/apps
-for prog in ticker fdtest shmtest ipc_test fbtest wintest nxwtest nxuitest memstress cpuhog classtest nettest; do
-    if [ -f "tests/userland/$prog/$prog" ]; then
-        mcopy -i neolyx_new.img "tests/userland/$prog/$prog" "::/apps/$prog"
-        echo "  ✓ /apps/$prog"
+for i in "${!IMAGE_APP_DESTS[@]}"; do
+    src="${IMAGE_APP_DIRS[$i]}/${IMAGE_APP_FILES[$i]}"
+    dest="${IMAGE_APP_DESTS[$i]}"
+    if [ -f "$src" ]; then
+        image_apps_mkdirs neolyx_new.img "$dest" || { echo "[ERROR] cannot create the folder for $dest"; rm -f neolyx_new.img; exit 1; }
+        mcopy -i neolyx_new.img "$src" "::$dest" || { echo "[ERROR] cannot copy $src"; rm -f neolyx_new.img; exit 1; }
+        echo "  ✓ $dest"
     else
-        echo "  (tests/userland/$prog/$prog not built - run build_all.sh)"
+        echo "  ✗ $src not built - run build_all.sh ($dest left out)"
     fi
 done
 
@@ -58,6 +68,18 @@ for font in NXSans-Text.ttf; do
     else
         echo "  ✗ resources/fonts/NXSans/$font missing - NxUI apps will use the bitmap font"
     fi
+done
+
+echo "[IMG] Creating user-writable folders..."
+# System Integrity Protection lets ordinary processes write only under
+# /tmp, /Users and /home; without these folders no app can save a file.
+for dir in /tmp /Users /Users/Shared; do
+    if ! mmd -i neolyx_new.img "::$dir"; then
+        echo "[ERROR] cannot create $dir in the image"
+        rm -f neolyx_new.img
+        exit 1
+    fi
+    echo "  ✓ $dir"
 done
 
 echo "[IMG] Creating installation marker..."

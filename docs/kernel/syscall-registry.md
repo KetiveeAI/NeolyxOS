@@ -40,27 +40,31 @@ number at or above `NX_SYSCALL_MAX` fails to compile.
 
 State: **in use** means registered in `syscall_table.def` on `main`;
 **declared** means a `#define` exists in `syscall.h` but nothing is
-registered (calls return `-ENOSYS`); **reserved** means allocated to a stream,
-nothing in the code yet.
+registered (calls return `-ENOSYS`); **approved** means the owner signed off
+the stream's proposal and the code may merge; **proposed** means the
+proposal waits for the owner in an ABI batch; **reserved** means allocated
+to a stream, nothing decided yet. The stream's proposal is the spec:
+S3 `docs/kernel/proposals/beta-process-abi.md`, N `docs/desktop/proposals/net.md`,
+S6 `docs/kernel/proposals/random.md`.
 
 | Numbers | Owner | Use | State on `main` |
 |---------|-------|-----|-----------------|
 | 0 | existing | `abi.query` | in use |
 | 1-10 | existing | exit, sleep, time, yield, getpid, getppid, fork, exec, wait, brk | in use |
-| 11-12 | S3 | `mmap`, `munmap` (anonymous memory) | declared |
+| 11-12 | S3 | `mmap`, `munmap` (anonymous memory) | approved, declared |
 | 13 | existing | `spawn` | in use |
-| 14-19 | S3 | `dup`, `dup2`, `pipe`, `spawn_ex` (fd map, argv, envp), spares | reserved |
+| 14-19 | S3 | `dup`, `dup2`, `pipe`, `spawn_ex`, `fd.ctl`, `wait_ex` | approved |
 | 20-25 | existing | open, close, read, write, seek, stat | in use |
-| 26-29 | S3 | `fstat` (26, declared), `unlink`, `ftruncate`, spare | 26 declared, rest reserved |
+| 26-29 | S3 | `fstat`, `unlink`, `ftruncate`, spare (29) | 26-28 approved, 29 reserved |
 | 30-35 | existing | readdir, mkdir, rmdir, chdir, getcwd, rename | in use |
-| 36-39 | S3 | `fsync`, `statfs`, spares | reserved |
+| 36-39 | S3 | `fsync`, `statfs`, spares (38-39) | 36-37 approved, 38-39 reserved |
 | 40-47 | existing (N) | socket, bind, listen, accept, connect, send, recv, closesock | in use |
-| 48-49 | N | socket options or poll, if needed | reserved |
+| 48-49 | N | `sock.setopt`, `sock.poll` | proposed (beta batch) |
 | 50 | existing | `info` | in use |
-| 51-56 | S3 | `uname` (51, declared), `proc.list`, `sys.stats`, `proc.kill`, `proc.setprio`, spare | 51 declared, rest reserved |
-| 57 | S6 | `random.get` (kernel entropy, `kernel/src/security/random.c`) | reserved |
+| 51-56 | S3 | `uname`, `sys.stats`, `proc.list`, `proc.info`, `proc.kill`, `proc.setprio` | approved |
+| 57 | S6 | `random.get` (kernel entropy, `kernel/src/security/random.c`) | proposed (beta batch) |
 | 58-59 | S3 | spares | reserved |
-| 60-69 | S3 | PTY (60-67 as declared in `syscall.h`), spares | 60-67 declared, rest reserved |
+| 60-69 | S3 | `pty.open`, `pty.set_size`, `pty.get_size`, `pty.set_mode`, `pty.get_mode`, `pty.set_fg` (60-65), spares (66-69) | 60-65 approved (replace the old declarations), 66-69 reserved |
 | 70-89 | unallocated | threads and later work, not used in the beta | free |
 | 90-99 | S3 | process capabilities (`docs/desktop/proposals/sys-capabilities.md`), stretch | reserved |
 | 100-101 | existing | `reboot`, `shutdown` | in use |
@@ -72,7 +76,7 @@ nothing in the code yet.
 | 129 | S1 | input focus or routing, if needed | reserved |
 | 130-132 | existing | `rtc.get`, `rtc.set`, `rtc.unix` | in use |
 | 133 | N | `net.if_list` (ABI 1.4) | in use (see note 1) |
-| 134-139 | N | DNS resolve, later network calls | reserved |
+| 134-139 | N | `net.resolve` (134), later network calls | 134 proposed (beta batch), rest reserved |
 | 140-156 | existing | handles, shm, channels, `obj.wait`, `fb.flip_rects`, ports, app classes, memory pressure, `mem.stats` | in use |
 | 157-167 | S1 | display and input security, compositor | reserved (note 1) |
 | 168-175 | S9 | display backend and GPU (virtio-gpu stretch) | reserved |
@@ -95,12 +99,12 @@ kernel ever had `net.if_list` at 157, so rule 9 (no reuse) does not apply.
 | 0x0002 | existing | `NX_ABI_FLAG_IPC`: channels, `obj.wait`, ports (`nx_ipc.h`) | in use |
 | 0x0004 | existing | `NX_ABI_FLAG_FB_RECTS`: `fb.flip_rects` (`nx_fb.h`) | in use |
 | 0x0008 | existing | `NX_ABI_FLAG_MEMCLASS`: app classes and memory pressure (`nx_mem.h`) | in use |
-| 0x0010 | S1 | display and input security | reserved |
+| 0x0010 | S1 | `NX_ABI_FLAG_DISPLAY_SECURE`: display and input security (`nx_fb.h`) | proposed (beta batch) |
 | 0x0020 | N | `NX_ABI_FLAG_NET`: network info (`net.if_list`, resolve) | in use (`nx_net.h`) |
-| 0x0040 | S3 | FILEIO: mmap, fstat, unlink, dup, pipe, spawn_ex | reserved |
-| 0x0080 | S3 | PTY | reserved |
-| 0x0100 | S3 | PROC: proc.list, sys.stats, proc.kill, setprio | reserved |
-| 0x0200 | S6 | RANDOM | reserved |
+| 0x0040 | S3 | FILEIO: mmap, fstat, unlink, dup, pipe, spawn_ex | approved |
+| 0x0080 | S3 | PTY | approved |
+| 0x0100 | S3 | PROC: uname, sys.stats, proc.list, proc.info, proc.kill, proc.setprio | approved |
+| 0x0200 | S6 | RANDOM: random.get | proposed (beta batch) |
 | 0x0400 | S9 | PLATFORM: mount, power, boot volume | reserved |
 | 0x0800-0x8000 | unallocated | S10 allocates on request | free |
 

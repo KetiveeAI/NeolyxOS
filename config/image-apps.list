@@ -1,0 +1,34 @@
+# NeolyxOS boot image program list
+#
+# Every program installed on the boot image is listed here, one per line:
+#
+#   <build folder>   <built file in that folder>   <path on the image>
+#
+# build_all.sh runs `make -C <build folder>` and checks the built file;
+# rebuild_image.sh copies it to <path on the image>. Streams add their own
+# programs here (append-only, see the beta plan, section 3.4) instead of
+# editing the scripts.
+#
+# Rules (checked by scripts/lib/image_apps.sh; a bad line stops the build):
+#   - folders and files are relative to the repository root, with no "..",
+#     no leading "/" and only letters, digits, "_", "-", ".", "/";
+#   - image paths start with /apps/ or /System/ and use the same characters;
+#   - an image path appears only once.
+#
+# Owner of this file: stream S10. Lines below the S10 block are owned by
+# the stream that added them.
+
+# --- S10: tests installed for in-QEMU regression runs ---
+tests/userland/ticker      ticker      /apps/ticker
+tests/userland/fdtest      fdtest      /apps/fdtest
+tests/userland/shmtest     shmtest     /apps/shmtest
+tests/userland/ipc_test    ipc_test    /apps/ipc_test
+tests/userland/fbtest      fbtest      /apps/fbtest
+tests/userland/wintest     wintest     /apps/wintest
+tests/userland/nxwtest     nxwtest     /apps/nxwtest
+tests/userland/nxuitest    nxuitest    /apps/nxuitest
+tests/userland/memstress   memstress   /apps/memstress
+tests/userland/cpuhog      cpuhog      /apps/cpuhog
+tests/userland/classtest   classtest   /apps/classtest
+tests/userland/nettest     nettest     /apps/nettest
+tests/userland/memprobe    memprobe    /apps/memprobe
