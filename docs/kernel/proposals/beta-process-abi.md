@@ -673,6 +673,13 @@ apps it lists. Proposed (decision Q2):
 #define NX_SPAWN_GRANT_PROC_ADMIN  0x8   /* spawn_ex flag; only a system caller may set it */
 ```
 
+Privilege in this document always means `PROC_FLAG_SYSTEM` checked in the
+handler, as `fb.flip_rects` does. The table's `PRIV_SYSTEM` column and the
+global `current_priv` in `syscall.c` (which nothing raises, so `PRIV_SYSTEM`
+entries refuse everyone) are left alone; replacing them is the job of the
+capabilities proposal (90-99). `PROC_FLAG_SYSTEM` must keep meaning "a
+system process such as the desktop" only.
+
 A process started with it may end and lower any non-system process, as a
 system process may. It is stored as one bit in the PCB, never inherited,
 logged at spawn and on every use, and folds into the capability set of
@@ -723,7 +730,7 @@ and keeps `fdtest`, `ipc_test`, `shmtest` and `classtest` passing.
 
 | PR | Content | Test | Target |
 |----|---------|------|--------|
-| 0 | No ABI: open-file object, 64-entry fd table behind a pointer, VFS table 1024, errno mapping helper, pipe and PTY ring buffers and line discipline as kernel-independent code with host tests | `tests/host/nx_pty_ldisc_test.c`, `fdtest` | before sign-off |
+| 0 | No ABI: open-file object, 64-entry fd table behind a pointer, VFS table 1024, errno mapping helper, pipe and PTY ring buffers and line discipline as kernel-independent code with host tests; `nxtask_kdrv_suspend` stops using `PROC_FLAG_SYSTEM` as its "suspended" marker (it would hand a suspended app system rights; found by S1) and uses an internal `PROC_FLAG_SUSPENDED` (0x0020) instead | `tests/host/nx_pty_ldisc_test.c`, `fdtest` | before sign-off |
 | 1 | Section 4 (cwd, errors, flags, `wait` errno), `dup`, `dup2`, `fd.ctl`, `fstat`, `unlink`, `ftruncate`, `fsync`, `statfs` | `fdtest` extended | 2026-11-10 |
 | 2 | `mmap`, `munmap` | `tests/userland/mmaptest` | 2026-11-12 |
 | 3 | `pipe`, `spawn_ex`, jobs, `wait_ex`, exec envp, `obj.wait` fd items; sets FILEIO | `tests/userland/pipetest` | 2026-11-17 |
