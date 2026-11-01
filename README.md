@@ -23,10 +23,10 @@ Neolyx OS is a modern operating system designed from the ground up with a focus 
 - **64-bit UEFI Bootloader** - Modern boot process with UEFI support
 - **Custom C Kernel** - Multitasking, memory management, and process scheduling
 - **NXFS File System** - Custom file system optimized for performance
-- **Graphical Desktop** - Full desktop environment with window management
+- **Graphical Desktop** - Desktop environment with window management (single process today; a window server for separate app processes is planned)
 - **Network Stack** - TCP/IP implementation with network manager
 - **Package Manager** - nxpkg for software installation and .app support
-- **Hardware Support** - Modular drivers for GPU (NVIDIA), storage, input, and network
+- **Hardware Support** - Drivers for storage, PS/2 input, USB enumeration and e1000 network; display through the UEFI GOP framebuffer (no GPU acceleration yet, see [docs/STATUS.md](docs/STATUS.md))
 - **Custom UI** - Icon library and file explorer
 - **Extensible Design** - Built for customization and expansion
 

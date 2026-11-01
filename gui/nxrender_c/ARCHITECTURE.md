@@ -1,3 +1,5 @@
+> **Status (2026-11-01):** this is the original design target, not a description of the code. The Rust crates, Vulkan/OpenGL backends, FreeType and HarfBuzz listed below do not exist in this repository. The C implementation in `src/` is not used by the desktop today. See [docs/STATUS.md](../../docs/STATUS.md).
+
 ┌─────────────────────────────────────────────────────────┐
 │                   USER APPLICATIONS                      │
 │  Calculator | Notes | Settings | File Manager | etc.    │
