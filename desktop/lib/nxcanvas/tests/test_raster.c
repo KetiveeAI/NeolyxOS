@@ -143,8 +143,17 @@ static double poly_pixel_area(const double (*q)[2], int n, int px, int py) {
     return fabs(0.5 * ar);
 }
 
-/* Surface "coverage": the white channel of white-on-black, 0..1. */
+/* Surface "coverage": the light of the white channel of white-on-black,
+ * 0..1. R2 blends edge coverage in linear light, so coverage is the
+ * decoded (linear) value, not the sRGB byte. */
 static double surf_cov(const nxc_surface_t *s, int32_t x, int32_t y) {
+    double v = (double)((nxc_test_pixel(s, x, y) >> 8) & 0xFF) / 255.0;
+    return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4);
+}
+
+/* The raw sRGB value of the white channel, 0..1. Alpha (paint and global
+ * alpha) still composites in sRGB, so alpha checks read this. */
+static double surf_srgb(const nxc_surface_t *s, int32_t x, int32_t y) {
     return (double)((nxc_test_pixel(s, x, y) >> 8) & 0xFF) / 255.0;
 }
 
@@ -540,9 +549,9 @@ static void test_strokes(void) {
         NXC_CHECK_OK(nxc_surface_clear(&s, NXC_RGB(0, 0, 0)));
         stroke_one(&s, &c, &p, 8, NXC_CAP_BUTT, (nxc_join_t)join, NXC_ARGB(128, 255, 255, 255));
         double mx = 0;
-        for (int y = 0; y < 80; y++) for (int x = 0; x < 120; x++) mx = fmax(mx, surf_cov(&s, x, y));
+        for (int y = 0; y < 80; y++) for (int x = 0; x < 120; x++) mx = fmax(mx, surf_srgb(&s, x, y));
         NXC_CHECK(mx <= 129.0 / 255.0);
-        NXC_CHECK(surf_cov(&s, 50, 40) >= 127.0 / 255.0);
+        NXC_CHECK(surf_srgb(&s, 50, 40) >= 127.0 / 255.0);
     }
 
     /* Square outline: miter fills the corner, bevel cuts it, round between. */
@@ -707,7 +716,7 @@ static void test_clipping(void) {
     NXC_CHECK_OK(nxc_path_add_rect(&p, nxc_rect(-10, -10, 200, 200)));
     NXC_CHECK_OK(nxc_fill_path(&ca, &p, NXC_FILL_NONZERO, NXC_RGB(255, 255, 255)));
     NXC_CHECK_OK(nxc_restore(&ca));
-    NXC_CHECK(surf_cov(&a, 6, 6) == 0.0 && fabs(surf_cov(&a, 50, 40) - 0.5) < 0.01);
+    NXC_CHECK(surf_srgb(&a, 6, 6) == 0.0 && fabs(surf_srgb(&a, 50, 40) - 0.5) < 0.01);
     nxc_surface_destroy(&a);
     nxc_surface_destroy(&b);
     nxc_path_destroy(&p);

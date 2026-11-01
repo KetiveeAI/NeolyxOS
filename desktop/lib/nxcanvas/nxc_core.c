@@ -10,6 +10,7 @@
  */
 
 #include "nxc_internal.h"
+#include "nxc_srgb_lut.h"
 
 /* ============ Engine state ============ */
 
@@ -497,8 +498,48 @@ static inline uint32_t blend_px(uint32_t dst, uint32_t src_premul, uint32_t k, i
     return opaque ? (out | 0xFF000000u) : out;
 }
 
-void nxc__span_solid(nxc_canvas_t *c, int32_t y, int32_t x0, int32_t x1,
-                     uint32_t premul, uint32_t coverage) {
+/*
+ * R2: linear-light edges. Anti-aliased coverage says how much of a pixel a
+ * shape covers, which is a fraction of *light*, so the edge pixel is mixed
+ * between "untouched" and "fully covered" in linear light, not in the
+ * gamma-encoded sRGB values. Mixing in sRGB makes edges look too dark on
+ * light backgrounds and too thin/bright on dark ones (light text-like
+ * fringes on colored fills). Alpha (paint and global alpha) still
+ * composites in sRGB, as before, so fully covered pixels are unchanged.
+ *
+ * Only used where dst is opaque: the lerp is defined on display colors,
+ * and a premultiplied translucent pixel has no single display color.
+ */
+static inline uint32_t lerp_linear(uint32_t dst, uint32_t full, uint32_t cov) {
+    uint32_t inv = 255u - cov;
+    uint32_t out = 0xFF000000u;
+    for (int sh = 0; sh <= 16; sh += 8) {
+        uint32_t ld = nxc__srgb_to_lin16[(dst >> sh) & 0xFFu];
+        uint32_t lf = nxc__srgb_to_lin16[(full >> sh) & 0xFFu];
+        uint32_t l = (lf * cov + ld * inv + 127u) / 255u;          /* 0..65535 */
+        out |= (uint32_t)nxc__lin12_to_srgb[l >> 4] << sh;
+    }
+    return out;
+}
+
+/*
+ * Blend premultiplied `premul` with alpha `ga` (global alpha or extra
+ * coverage that is not geometric, 0..255) and geometric edge coverage
+ * `geo` (1..255). Falls back to the plain sRGB blend for full coverage
+ * (identical to blend_px) and for translucent destinations.
+ */
+static inline uint32_t blend_edge(uint32_t dst, uint32_t premul, uint32_t ga, uint32_t geo,
+                                  int opaque) {
+    uint32_t k = (ga >= 255u) ? geo : nxc__div255(geo * ga);
+    if (geo >= 255u || (dst >> 24) != 255u) return blend_px(dst, premul, k, opaque);
+    uint32_t s = (ga >= 255u) ? premul : nxc__mul_px(premul, ga);
+    if (s == 0) return dst;
+    uint32_t full = nxc__over(s, dst) | 0xFF000000u;      /* dst is opaque */
+    return lerp_linear(dst, full, geo);
+}
+
+static void span_solid_impl(nxc_canvas_t *c, int32_t y, int32_t x0, int32_t x1,
+                            uint32_t premul, uint32_t coverage, int linear) {
     if (!c || x1 <= x0 || coverage == 0 || premul == 0) return;
     int32_t first = 0;
     int32_t n = clip_span(c, y, x0, x1 - x0, &first);
@@ -511,10 +552,22 @@ void nxc__span_solid(nxc_canvas_t *c, int32_t y, int32_t x0, int32_t x1,
     uint32_t *row = t->pixels + (uint64_t)y * (uint64_t)t->stride;
 
     if (c->st.rclip_radius > 0.0f && !rclip_row_interior(&c->st, y, xs, xs + n)) {
+        uint32_t cv = coverage > 255u ? 255u : coverage;
         for (int32_t i = 0; i < n; i++) {
             uint32_t rk = rclip_coverage(&c->st, xs + i, y);
             if (rk == 0) continue;
-            row[xs + i] = blend_px(row[xs + i], premul, nxc__div255(rk * k), opaque);
+            if (linear) {
+                uint32_t geo = nxc__div255(rk * cv);
+                if (geo) row[xs + i] = blend_edge(row[xs + i], premul, c->st.alpha, geo, opaque);
+            } else {
+                row[xs + i] = blend_px(row[xs + i], premul, nxc__div255(rk * k), opaque);
+            }
+        }
+        return;
+    }
+    if (linear && coverage < 255u) {
+        for (int32_t i = 0; i < n; i++) {
+            row[xs + i] = blend_edge(row[xs + i], premul, c->st.alpha, coverage, opaque);
         }
         return;
     }
@@ -530,8 +583,18 @@ void nxc__span_solid(nxc_canvas_t *c, int32_t y, int32_t x0, int32_t x1,
     }
 }
 
-void nxc__span_cov(nxc_canvas_t *c, int32_t y, int32_t x0, const uint8_t *cov,
-                   int32_t n, uint32_t premul) {
+void nxc__span_solid(nxc_canvas_t *c, int32_t y, int32_t x0, int32_t x1,
+                     uint32_t premul, uint32_t coverage) {
+    span_solid_impl(c, y, x0, x1, premul, coverage, 1);
+}
+
+void nxc__span_solid_gamma(nxc_canvas_t *c, int32_t y, int32_t x0, int32_t x1,
+                           uint32_t premul, uint32_t coverage) {
+    span_solid_impl(c, y, x0, x1, premul, coverage, 0);
+}
+
+static void span_cov_impl(nxc_canvas_t *c, int32_t y, int32_t x0, const uint8_t *cov,
+                          int32_t n, uint32_t premul, int linear) {
     if (!c || !cov || n <= 0 || premul == 0) return;
     int32_t first = 0;
     int32_t m = clip_span(c, y, x0, n, &first);
@@ -548,6 +611,14 @@ void nxc__span_cov(nxc_canvas_t *c, int32_t y, int32_t x0, const uint8_t *cov,
     for (int32_t i = 0; i < m; i++) {
         uint32_t k = cv[i];
         if (k == 0) continue;
+        if (linear) {
+            /* geometric coverage stays apart from the global alpha */
+            if (rclip) k = nxc__div255(k * rclip_coverage(&c->st, xs + i, y));
+            if (k == 0) continue;
+            if (k == 255u && full) row[xs + i] = premul;
+            else row[xs + i] = blend_edge(row[xs + i], premul, ga, k, opaque);
+            continue;
+        }
         if (ga != 255u) k = nxc__div255(k * ga);
         if (rclip) k = nxc__div255(k * rclip_coverage(&c->st, xs + i, y));
         if (k == 0) continue;
@@ -557,6 +628,16 @@ void nxc__span_cov(nxc_canvas_t *c, int32_t y, int32_t x0, const uint8_t *cov,
             row[xs + i] = blend_px(row[xs + i], premul, k, opaque);
         }
     }
+}
+
+void nxc__span_cov(nxc_canvas_t *c, int32_t y, int32_t x0, const uint8_t *cov,
+                   int32_t n, uint32_t premul) {
+    span_cov_impl(c, y, x0, cov, n, premul, 1);
+}
+
+void nxc__span_cov_gamma(nxc_canvas_t *c, int32_t y, int32_t x0, const uint8_t *cov,
+                         int32_t n, uint32_t premul) {
+    span_cov_impl(c, y, x0, cov, n, premul, 0);
 }
 
 void nxc__span_pixels(nxc_canvas_t *c, int32_t y, int32_t x0, const uint32_t *src,
@@ -578,13 +659,18 @@ void nxc__span_pixels(nxc_canvas_t *c, int32_t y, int32_t x0, const uint32_t *sr
     for (int32_t i = 0; i < m; i++) {
         uint32_t s = sp[i];
         if (s == 0) continue;
-        uint32_t kk = base;
-        if (cv) {
-            if (cv[i] == 0) continue;
-            kk = nxc__div255(kk * cv[i]);
+        if (cv || rclip) {
+            /* R2: shape edges (shader coverage, rounded clip) in linear light */
+            uint32_t geo = cv ? cv[i] : 255u;
+            if (geo == 0) continue;
+            if (rclip) geo = nxc__div255(geo * rclip_coverage(&c->st, xs + i, y));
+            if (geo == 0) continue;
+            if (geo < 255u) {
+                row[xs + i] = blend_edge(row[xs + i], s, base, geo, opaque);
+                continue;
+            }
         }
-        if (rclip) kk = nxc__div255(kk * rclip_coverage(&c->st, xs + i, y));
-        if (kk == 0) continue;
+        uint32_t kk = base;
         if (kk == 255u && (s >> 24) == 255u) {
             row[xs + i] = s;
         } else {
@@ -636,7 +722,7 @@ nxc_status_t nxc_draw_mask(nxc_canvas_t *c, const uint8_t *mask, int32_t w, int3
         int32_t yy = dy + row;
         if (yy < cl.y) continue;
         if (yy >= cl.y + cl.h) break;
-        nxc__span_cov(c, yy, dx, mask + (uint64_t)row * (uint64_t)stride, w, premul);
+        nxc__span_cov_gamma(c, yy, dx, mask + (uint64_t)row * (uint64_t)stride, w, premul);
     }
     return NXC_OK;
 }

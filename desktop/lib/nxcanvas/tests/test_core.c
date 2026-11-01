@@ -137,6 +137,81 @@ static void test_copy(void) {
     nxc_surface_destroy(&b);
 }
 
+/* R2: geometric edge coverage blends in linear light on opaque pixels;
+ * alpha, full coverage, translucent targets and the _gamma spans keep the
+ * sRGB blend. */
+static double srgb_decode(uint32_t v) {
+    double x = v / 255.0;
+    return x <= 0.04045 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4);
+}
+
+static void test_linear_edges(void) {
+    nxc_surface_t s;
+    NXC_CHECK_OK(nxc_surface_create(&s, 256, 8, NXC_SURFACE_OPAQUE));
+    nxc_canvas_t c;
+    NXC_CHECK_OK(nxc_canvas_init(&c, &s));
+
+    /* White at coverage k over black: the pixel's light is k/255 */
+    NXC_CHECK_OK(nxc_surface_clear(&s, NXC_RGB(0, 0, 0)));
+    uint8_t ramp[256];
+    for (int i = 0; i < 256; i++) ramp[i] = (uint8_t)i;
+    nxc__span_cov(&c, 0, 0, ramp, 256, 0xFFFFFFFFu);
+    double worst = 0;
+    int monotonic = 1;
+    uint32_t prev = 0;
+    for (int i = 0; i < 256; i++) {
+        uint32_t g = (nxc_test_pixel(&s, i, 0) >> 8) & 0xFFu;
+        double err = fabs(srgb_decode(g) - i / 255.0);
+        if (err > worst) worst = err;
+        if (g < prev) monotonic = 0;
+        prev = g;
+    }
+    fprintf(stderr, "linear edges: worst light error %.4f over the coverage ramp\n", worst);
+    NXC_CHECK(worst < 0.0105);             /* within one sRGB step at the top end */
+    NXC_CHECK(monotonic);
+    NXC_CHECK(((nxc_test_pixel(&s, 128, 0) >> 8) & 0xFFu) >= 186u);   /* not the sRGB 128 */
+    NXC_CHECK(nxc_test_pixel(&s, 255, 0) == 0xFFFFFFFFu && nxc_test_pixel(&s, 0, 0) == 0xFF000000u);
+
+    /* The _gamma span keeps the old sRGB mix (text, shadows, masks) */
+    nxc__span_cov_gamma(&c, 1, 0, ramp, 256, 0xFFFFFFFFu);
+    NXC_CHECK(nxc_test_color_near(nxc_test_pixel(&s, 128, 1), 0xFF808080u, 1));
+    nxc__span_solid_gamma(&c, 2, 0, 4, 0xFFFFFFFFu, 128);
+    NXC_CHECK(nxc_test_color_near(nxc_test_pixel(&s, 1, 2), 0xFF808080u, 1));
+    nxc__span_solid(&c, 3, 0, 4, 0xFFFFFFFFu, 128);
+    NXC_CHECK(nxc_test_color_near(nxc_test_pixel(&s, 1, 3), 0xFFBCBCBCu, 1));
+
+    /* A color blended with itself is unchanged, at every value and coverage */
+    int same = 1;
+    for (uint32_t v = 0; v < 256 && same; v++) {
+        uint32_t col = 0xFF000000u | (v << 16) | (v << 8) | v;
+        NXC_CHECK_OK(nxc_surface_clear(&s, col));
+        nxc__span_cov(&c, 4, 0, ramp, 256, col);
+        for (int i = 0; i < 256; i++) if (nxc_test_pixel(&s, i, 4) != col) same = 0;
+    }
+    NXC_CHECK(same);
+
+    /* Global alpha still composites in sRGB: full coverage at alpha 128 */
+    NXC_CHECK_OK(nxc_surface_clear(&s, NXC_RGB(0, 0, 0)));
+    NXC_CHECK_OK(nxc_save(&c));
+    NXC_CHECK_OK(nxc_set_alpha(&c, 128));
+    nxc__span_cov(&c, 5, 0, ramp, 256, 0xFFFFFFFFu);
+    NXC_CHECK(nxc_test_color_near(nxc_test_pixel(&s, 255, 5), 0xFF808080u, 1));
+    /* and at half coverage the light is half of that pixel's light */
+    double half = srgb_decode((nxc_test_pixel(&s, 128, 5) >> 8) & 0xFFu);
+    NXC_CHECK(fabs(half - 0.5 * srgb_decode(128)) < 0.004);
+    NXC_CHECK_OK(nxc_restore(&c));
+    nxc_surface_destroy(&s);
+
+    /* Translucent target: no display color, so the plain blend is kept */
+    nxc_surface_t t;
+    NXC_CHECK_OK(nxc_surface_create(&t, 16, 2, 0));
+    NXC_CHECK_OK(nxc_canvas_init(&c, &t));
+    NXC_CHECK_OK(nxc_surface_clear(&t, 0));
+    nxc__span_solid(&c, 0, 0, 4, 0xFFFFFFFFu, 128);
+    NXC_CHECK(nxc_test_color_near(nxc_test_pixel(&t, 1, 0), 0x80FFFFFFu, 1));   /* white at alpha 128 */
+    nxc_surface_destroy(&t);
+}
+
 int main(void) {
     nxc_test_init(256, 256);
     test_math();
@@ -144,6 +219,7 @@ int main(void) {
     test_canvas();
     test_rclip();
     test_copy();
+    test_linear_edges();
     nxc_shutdown();
     return nxc_test_finish("core");
 }

@@ -154,6 +154,14 @@ void nxc__zero(void *dst, uint64_t bytes);
  * All coordinates are DEVICE space (translation already applied). Each
  * function clips to the canvas clip rect, applies the rounded clip and the
  * global alpha, and blends src-over into c->target. Coverage is 0..255.
+ *
+ * R2: coverage is geometric (how much of the pixel a shape covers), so on
+ * opaque pixels nxc__span_solid, nxc__span_cov, nxc__span_pixels and
+ * nxc__span_shade mix partly covered pixels in linear light. Alpha (paint
+ * and global alpha) still composites in sRGB, so fully covered pixels are
+ * unchanged. The _gamma variants keep the plain sRGB blend for coverage
+ * that is not geometry: text (which has its own per-polarity correction),
+ * blurred shadows and caller masks.
  */
 
 /* Constant color, constant coverage over [x0, x1). */
@@ -162,6 +170,12 @@ void nxc__span_solid(nxc_canvas_t *c, int32_t y, int32_t x0, int32_t x1,
 /* Constant color, per-pixel coverage cov[0..n) starting at x0. */
 void nxc__span_cov(nxc_canvas_t *c, int32_t y, int32_t x0, const uint8_t *cov,
                    int32_t n, uint32_t premul);
+/* As nxc__span_solid / nxc__span_cov, blending coverage in sRGB (pre-R2
+ * behavior, bit for bit). For text, shadows and masks. */
+void nxc__span_solid_gamma(nxc_canvas_t *c, int32_t y, int32_t x0, int32_t x1,
+                           uint32_t premul, uint32_t coverage);
+void nxc__span_cov_gamma(nxc_canvas_t *c, int32_t y, int32_t x0, const uint8_t *cov,
+                         int32_t n, uint32_t premul);
 /* Per-pixel premultiplied colors src[0..n) with optional per-pixel
  * coverage (NULL = 255) and a constant extra coverage k (0..255). */
 void nxc__span_pixels(nxc_canvas_t *c, int32_t y, int32_t x0, const uint32_t *src,
