@@ -730,7 +730,7 @@ and keeps `fdtest`, `ipc_test`, `shmtest` and `classtest` passing.
 
 | PR | Content | Test | Target |
 |----|---------|------|--------|
-| 0 | No ABI: open-file object, 64-entry fd table behind a pointer, VFS table 1024, errno mapping helper, pipe and PTY ring buffers and line discipline as kernel-independent code with host tests; `nxtask_kdrv_suspend` stops using `PROC_FLAG_SYSTEM` as its "suspended" marker (it would hand a suspended app system rights; found by S1) and uses an internal `PROC_FLAG_SUSPENDED` (0x0020) instead | `tests/host/nx_pty_ldisc_test.c`, `fdtest` | before sign-off |
+| 0 | No ABI: open-file object, 64-entry fd table behind a pointer, VFS table 1024, errno mapping helper, pipe and PTY ring buffers and line discipline as kernel-independent code with host tests; `nxtask_kdrv_suspend` stops using `PROC_FLAG_SYSTEM` as its "suspended" marker (it would hand a suspended app system rights; found by S1). It also changed the state without touching the run queues, and nothing calls it, so suspend and resume now refuse and log until the scheduler supports them | `tests/host/nx_pty_ldisc_test.c`, `fdtest` | before sign-off |
 | 1 | Section 4 (cwd, errors, flags, `wait` errno), `dup`, `dup2`, `fd.ctl`, `fstat`, `unlink`, `ftruncate`, `fsync`, `statfs` | `fdtest` extended | 2026-11-10 |
 | 2 | `mmap`, `munmap` | `tests/userland/mmaptest` | 2026-11-12 |
 | 3 | `pipe`, `spawn_ex`, jobs, `wait_ex`, exec envp, `obj.wait` fd items; sets FILEIO | `tests/userland/pipetest` | 2026-11-17 |

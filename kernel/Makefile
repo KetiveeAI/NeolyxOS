@@ -81,6 +81,8 @@ obj-y += nx_chan.o
 obj-y += nx_fb.o
 obj-y += process.o
 obj-y += sched_queue.o
+obj-y += nx_ring.o
+obj-y += nx_ldisc.o
 obj-y += boot_image.o
 obj-y += elf.o
 obj-y += runtime.o
@@ -308,6 +310,12 @@ process.o: src/core/process.c include/core/process.h include/core/sched_queue.h 
 
 sched_queue.o: src/core/sched_queue.c include/core/sched_queue.h include/core/process.h include/core/nx_mem.h
 	$(CC) $(CFLAGS) -c src/core/sched_queue.c -o sched_queue.o
+
+nx_ring.o: src/core/nx_ring.c include/core/nx_ring.h
+	$(CC) $(CFLAGS) -c src/core/nx_ring.c -o nx_ring.o
+
+nx_ldisc.o: src/core/nx_ldisc.c include/core/nx_ldisc.h include/core/nx_ring.h
+	$(CC) $(CFLAGS) -c src/core/nx_ldisc.c -o nx_ldisc.o
 
 elf.o: src/core/elf.c include/core/elf.h
 	$(CC) $(CFLAGS) -c src/core/elf.c -o elf.o
