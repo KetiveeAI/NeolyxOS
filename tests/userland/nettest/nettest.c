@@ -2,7 +2,7 @@
  * NeolyxOS nettest - end-to-end network test over the socket syscalls
  *
  *   0. Status: abi.query reports ABI 1.4 with NX_ABI_FLAG_NET, and
- *      net.if_list (157) lists every interface; eth0 is connected.
+ *      net.if_list (133) lists every interface; eth0 is connected.
  *
  * Runs in the QEMU setup of boot_test.sh (e1000 on "-netdev user"), where
  * QEMU's built-in NAT puts the DNS proxy at 10.0.2.3 and the host at
@@ -41,7 +41,7 @@
 #define SYS_CLOSESOCK   47
 #define SYS_DEBUG_PRINT 127
 #define SYS_ABI_QUERY   0
-#define SYS_NET_IF_LIST 157
+#define SYS_NET_IF_LIST 133
 
 #define SOCK_STREAM     1
 #define SOCK_DGRAM      2

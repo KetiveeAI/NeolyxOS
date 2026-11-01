@@ -130,6 +130,10 @@
 #define SYS_RTC_SET             131 /* int sys_rtc_set(rtc_time_t* time) - Set real time */
 #define SYS_RTC_UNIX            132 /* uint64_t sys_rtc_unix(void) - Get Unix timestamp */
 
+/* --- N: Networking (133-139) --- */
+/* ============ Network Status (ABI v1.4, core/nx_net.h) ============ */
+#define SYS_NET_IF_LIST         133 /* int sys_net_if_list(nx_net_if_info_t *buf, uint32_t cap, uint32_t elem_size) */
+
 /* ============ Handles, Shared Memory and IPC (ABI v1.1) ============ */
 /* Spec: docs/desktop/proposals/kernel-shm-ipc.md. Types: core/nx_ipc.h.
  * 148 (fb.flip_rects, ABI v1.2) is in core/nx_fb.h and
@@ -153,9 +157,6 @@
 #define SYS_MEM_PRESSURE_OPEN   154 /* nx_handle_t sys_mem_pressure_open(uint32_t flags) */
 #define SYS_MEM_PRESSURE_READ   155 /* int sys_mem_pressure_read(nx_handle_t h) */
 #define SYS_MEM_STATS           156 /* int sys_mem_stats(nx_mem_stats_t *buf, uint32_t size) */
-
-/* ============ Network Status (ABI v1.4, core/nx_net.h) ============ */
-#define SYS_NET_IF_LIST         157 /* int sys_net_if_list(nx_net_if_info_t *buf, uint32_t cap, uint32_t elem_size) */
 
 /* Maximum syscall number */
 #define SYS_MAX         160

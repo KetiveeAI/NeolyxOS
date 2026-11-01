@@ -2,7 +2,7 @@
  * NeolyxOS Network Status ABI (public)
  *
  * ABI 1.4:
- *   157 net.if_list   int net_if_list(nx_net_if_info_t *buf, uint32_t cap,
+ *   133 net.if_list   int net_if_list(nx_net_if_info_t *buf, uint32_t cap,
  *                                     uint32_t elem_size)
  *
  * Read-only: reports each network interface's link, IPv4 configuration
@@ -71,7 +71,7 @@ typedef struct {
 #define NX_NET_IF_INFO_V1_SIZE  120u
 
 /* nx_abi_info_t.flags: net.if_list is available */
-#define NX_ABI_FLAG_NET         0x0010u
+#define NX_ABI_FLAG_NET         0x0020u
 
 _Static_assert(sizeof(nx_net_if_info_t) == 120, "nx_net_if_info_t v1 layout is frozen at 120 bytes");
 

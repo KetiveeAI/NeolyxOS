@@ -58,7 +58,7 @@ The numbers and arguments are unchanged. These are the results:
   after a reset. A UDP `recv` returns one datagram.
 - `listen` and `accept` return `-ENOSYS`, because there is no server-side TCP yet.
 
-## Network status for the desktop: `net.if_list` (syscall 157, ABI 1.4)
+## Network status for the desktop: `net.if_list` (syscall 133, ABI 1.4)
 
 ```c
 int64_t net.if_list(nx_net_if_info_t *buf, uint32_t cap, uint32_t elem_size);
@@ -80,7 +80,7 @@ capability flag are in `kernel/include/core/nx_net.h`.
   lease, and byte, packet and error counters. `primary` marks the interface
   that carries the default route.
 - Programs check for it first: `abi.query` must report version 1.4 or later
-  and `NX_ABI_FLAG_NET` (0x10) in `flags`. `desktop/lib/nxnet.c` does this,
+  and `NX_ABI_FLAG_NET` (0x20) in `flags`. `desktop/lib/nxnet.c` does this,
   so on an older kernel Settings still shows "unavailable" instead of
   calling an unknown syscall number.
 

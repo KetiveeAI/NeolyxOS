@@ -4,7 +4,7 @@
  * Structure:
  *   1. Pure helpers: validation, parsing, formatting. Always available.
  *   2. Backend: the only code that talks to the system.
- *        - OS build: interface status from net.if_list (syscall 157,
+ *        - OS build: interface status from net.if_list (syscall 133,
  *          ABI 1.4) once abi.query reports NX_ABI_FLAG_NET. Hostname,
  *          Wi-Fi and IPv4 configuration have no syscall yet and return
  *          NXNET_ERR_UNSUPPORTED; they are specified in
@@ -308,7 +308,7 @@ static void bump(void) { g_generation++; if (g_generation == 0) g_generation = 1
 
 #ifndef NX_HOST_PREVIEW
 /* ---- OS build: kernel backend --------------------------------------
- * Interface status comes from net.if_list (syscall 157, ABI 1.4,
+ * Interface status comes from net.if_list (syscall 133, ABI 1.4,
  * kernel/include/core/nx_net.h). Hostname, Wi-Fi and IPv4 configuration
  * have no syscall yet (docs/desktop/proposals/net.md), so those requests
  * are answered with UNSUPPORTED. Nothing is guessed. */
@@ -317,7 +317,7 @@ static nxnet_status_t kb_probe(void) {
     nx_abi_info_t abi;
     nn_zero(&abi, sizeof(abi));
     if (nx_abi_query(&abi) != 0) return NXNET_ERR_UNSUPPORTED;
-    /* An older kernel has no syscall 157: never call it there */
+    /* An older kernel has no syscall 133: never call it there */
     if (abi.major != 1 || abi.minor < 4 || !(abi.flags & NX_ABI_FLAG_NET)) {
         return NXNET_ERR_UNSUPPORTED;
     }

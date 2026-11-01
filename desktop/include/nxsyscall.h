@@ -468,7 +468,7 @@ static inline int nx_mem_stats(nx_mem_stats_t *st) {
  */
 #include "nx_net.h"
 
-#define SYS_NET_IF_LIST        157
+#define SYS_NET_IF_LIST        133
 
 /* Copies up to cap entries and returns the total number of interfaces
  * (more than cap when buf was too small), or a negative errno. */
