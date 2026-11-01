@@ -293,6 +293,16 @@ void process_unblock(process_t *proc);
  */
 int process_kill(uint32_t pid, int signal);
 
+/**
+ * End another user process with an exact exit code (K2 memory reclaim).
+ * Refuses system and kernel processes and the running process. Must run
+ * where the kernel is not in the middle of other work: a syscall, or a
+ * timer tick that interrupted user mode.
+ *
+ * @return 0 on success, -1 if the process cannot be ended
+ */
+int process_end(process_t *proc, int exit_code);
+
 /* ============ Scheduler API ============ */
 
 /**

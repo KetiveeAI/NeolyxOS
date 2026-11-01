@@ -10,6 +10,9 @@
  * Spec: docs/kernel/app-classes-and-memory-pressure.md (K1, approved by the
  * owner 2026-11-01). Layouts here are frozen once 1.0 ships.
  *
+ * K2 part 3 added NX_EXIT_RECLAIMED (docs/kernel/memory-policy.md). It is
+ * an exit status value only, with no new call, so NX_ABI_MINOR stays 3.
+ *
  * Copyright (c) 2025 KetiveeAI
  * SPDX-License-Identifier: MIT
  */
@@ -48,6 +51,11 @@ typedef struct {
 } nx_mem_stats_t;
 
 #define NX_MEM_STATS_V1_SIZE    80u
+
+/* Exit status of an app the kernel ended to free memory (K2 part 3):
+ * a BACKGROUND app, chosen when the desktop or the kernel would otherwise
+ * run out. Reserved: apps should not exit with this value themselves. */
+#define NX_EXIT_RECLAIMED       251
 
 /* nx_abi_info_t.flags: proc.set_class and mem.* are available */
 #define NX_ABI_FLAG_MEMCLASS    0x0008u

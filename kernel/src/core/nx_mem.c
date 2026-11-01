@@ -22,6 +22,7 @@
  */
 
 #include "core/nx_mem.h"
+#include "core/mem_reclaim.h"
 #include "core/nx_handle.h"
 #include "core/process.h"
 #include "core/syscall.h"
@@ -30,6 +31,7 @@
 #include "mm/pmm.h"
 
 extern void serial_puts(const char *s);
+extern uint64_t pit_get_ticks(void);
 /* The linked kernel heap (src/mm/heap.c); its header clashes with kheap.h */
 extern void heap_stats(size_t *total_size, size_t *used_size, size_t *free_size);
 
@@ -95,6 +97,102 @@ void nx_mem_tick(void) {
     serial_puts(" MB\n");
 
     nx_ipc_wake_waiters();
+}
+
+/* ============ Reclaim (K2 part 3) ============ */
+
+/*
+ * The owner chose option A: when the desktop or the kernel would take free
+ * memory below R/2, end the BACKGROUND app with the most private pages,
+ * at most one every NX_RECLAIM_INTERVAL_MS. The app's windows close as its
+ * channels go away, and its parent sees NX_EXIT_RECLAIMED.
+ *
+ * Callers run with interrupts masked (a syscall, or a timer tick that
+ * interrupted user mode), so the process table is stable here.
+ */
+static nx_reclaim_cand_t g_cands[MAX_PROCESSES];
+static uint64_t g_last_reclaim = 0;
+static int g_have_reclaimed = 0;
+static uint64_t g_last_none_log = 0;
+static int g_have_none_log = 0;
+static uint64_t g_reclaims = 0;
+
+static int reclaim_eligible(const process_t *p) {
+    if (!p || p == process_current()) return 0;
+    if (p->state == PROC_STATE_ZOMBIE || p->state == PROC_STATE_DEAD) return 0;
+    if (!(p->flags & PROC_FLAG_USER)) return 0;
+    if (p->flags & (PROC_FLAG_SYSTEM | PROC_FLAG_KERNEL)) return 0;
+    if (p->sched_class != NX_CLASS_BACKGROUND) return 0;
+    return p->as != NULL;
+}
+
+/* End one app if the interval allows. why: who ran short, for the log. */
+static int reclaim_one(const char *why) {
+    uint64_t now = pit_get_ticks();
+    if (!nx_reclaim_due(now, g_last_reclaim, g_have_reclaimed)) return 0;
+
+    uint32_t n = 0;
+    for (uint32_t pid = 1; pid < MAX_PROCESSES; pid++) {
+        process_t *p = process_get(pid);
+        if (!p) continue;
+        g_cands[n].pid = pid;
+        g_cands[n].eligible = (uint32_t)reclaim_eligible(p);
+        g_cands[n].pages = p->as ? p->as->pages_mapped : 0;
+        n++;
+    }
+
+    pmm_stats_t st;
+    pmm_get_stats(&st);
+    int i = nx_reclaim_pick(g_cands, n);
+    if (i < 0) {
+        /* Log at most once per interval: this can repeat every tick */
+        if (!g_have_none_log || now - g_last_none_log >= NX_RECLAIM_INTERVAL_MS) {
+            g_last_none_log = now;
+            g_have_none_log = 1;
+            serial_puts("[MEM] ");
+            serial_puts(why);
+            serial_puts(" short of memory (");
+            m_dec(st.free_pages * PAGE_SIZE / (1024 * 1024));
+            serial_puts(" MB free) and no background app to reclaim\n");
+        }
+        return 0;
+    }
+
+    process_t *victim = process_get(g_cands[i].pid);
+    uint64_t victim_mb = g_cands[i].pages * PAGE_SIZE / (1024 * 1024);
+    if (!victim || process_end(victim, NX_EXIT_RECLAIMED) != 0) {
+        serial_puts("[MEM] ERROR: could not end PID ");
+        m_dec(g_cands[i].pid);
+        serial_puts(" to reclaim memory\n");
+        return 0;
+    }
+    g_last_reclaim = now;
+    g_have_reclaimed = 1;
+    g_reclaims++;
+
+    serial_puts("[MEM] reclaimed PID ");
+    m_dec(g_cands[i].pid);
+    serial_puts(" (");
+    serial_puts(victim->name);
+    serial_puts("): ");
+    m_dec(victim_mb);
+    serial_puts(" MB, free was ");
+    m_dec(st.free_pages * PAGE_SIZE / (1024 * 1024));
+    serial_puts(" MB (");
+    serial_puts(why);
+    serial_puts(" short)\n");
+    return 1;
+}
+
+int nx_mem_reclaim_for_system(void) {
+    return reclaim_one("desktop");
+}
+
+void nx_mem_reclaim_tick(void) {
+    pmm_stats_t st;
+    pmm_get_stats(&st);
+    if (st.free_pages >= pmm_user_floor_pages(PMM_USER_SYSTEM)) return;
+    (void)reclaim_one("kernel");
 }
 
 /* ============ Syscalls ============ */
