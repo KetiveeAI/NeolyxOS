@@ -72,6 +72,11 @@ typedef struct {
 /* Draw an icon tile (rounded square, white glyph) centered at cx, cy. */
 void settings_draw_tile(nxc_canvas_t *c, const settings_tile_t *t, float cx, float cy, float size);
 
+/* Draw only the glyph of a tile (no tile fill) in color, centered at cx, cy;
+ * size is the tile size the glyph is proportioned to (rails use this). */
+void settings_draw_glyph(nxc_canvas_t *c, const settings_tile_t *t, float cx, float cy, float size,
+                         nxc_color_t color);
+
 /* Tile of a pane by id (never NULL; a neutral tile if unknown). */
 const settings_tile_t *settings_tile_for(const char *pane_id);
 

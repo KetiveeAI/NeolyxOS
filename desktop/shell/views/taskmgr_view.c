@@ -19,6 +19,7 @@
 #include "app_view.h"
 #include "nxui.h"
 #include "nxglass.h"
+#include "nxframe.h"
 #include "nxicons.h"
 #include "nxproc.h"
 #include "nxsyscall.h"
@@ -610,24 +611,23 @@ static void tm_header(nxc_canvas_t *c, const tm_table_t *T, const tm_col_t *cols
         int hover = sortable && g_tm.pointer_in && !g_tm.sheet_open &&
                     nxglass_hit(nxc_rect(T->colx[i], T->head.y, T->colw[i], T->head.h), g_tm.mx, g_tm.my);
         nxc_color_t col = active ? th->text_primary : (hover ? th->text_primary : th->text_secondary);
-        nxui_text_in_rect(c, active ? NXUI_TEXT_HEADLINE : NXUI_TEXT_BODY_MEDIUM, cr, cols[i].title, col,
-                          cols[i].right ? NXC_ALIGN_RIGHT : NXC_ALIGN_LEFT);
+        /* Neolyx column header: uppercase caption, saffron when sorted */
+        float tw = nxframe_caps(NULL, 0.0f, 0.0f, cols[i].title, 0);
+        float base = cr.y + cr.h * 0.5f + 4.0f;
+        nxframe_caps(c, cols[i].right ? cr.x + cr.w - tw : cr.x, base, cols[i].title,
+                     active ? th->accent : col);
         if (active) {
-            float tw = nxui_text_width(NXUI_TEXT_HEADLINE, cols[i].title);
             float ax = cols[i].right ? cr.x + cr.w - tw - 9.0f : cr.x + tw + 9.0f;
             nxsym_draw(c, sort_desc ? NXSYM_CHEVRON_DOWN : NXSYM_CHEVRON_UP, ax, cr.y + cr.h * 0.5f,
                        10.0f, th->accent, 0.0f);
         }
-        if (i > 0)
-            nxc_fill_rect(c, nxc_rect(T->colx[i], T->head.y + 8.0f, 1.0f, T->head.h - 16.0f),
-                          tm_fade(th->separator, 0.8f));
     }
     nxglass_separator(c, T->head.x, T->head.y + T->head.h, T->head.w);
 }
 
 static void tm_row_bg(nxc_canvas_t *c, nxc_rect_t r, int selected, int hover) {
     const nxui_theme_t *th = nxui_theme();
-    if (selected) nxc_fill_rrect(c, r, th->radius_control, th->selection);
+    if (selected) nxframe_selection(c, r);
     else if (hover) nxc_fill_rrect(c, r, th->radius_control, tm_fade(th->control_fill_hover, 0.75f));
 }
 
@@ -668,10 +668,9 @@ static void tm_unavailable(nxc_canvas_t *c, nxc_rect_t r, const char *title, con
 static void tm_tile(nxc_canvas_t *c, nxc_rect_t r, const char *label, const char *value,
                     const char *sub, nxc_color_t accent, float bar, const float *hist, int hn) {
     const nxui_theme_t *th = nxui_theme();
-    nxglass_card(c, r, 10.0f);
+    nxframe_panel(c, r);
     nxc_fill_circle(c, r.x + 15.0f, r.y + 16.0f, 3.5f, accent);
-    nxui_text_in_rect(c, NXUI_TEXT_CAPTION, nxc_rect(r.x + 24.0f, r.y + 8.0f, r.w - 32.0f, 16.0f),
-                      label, th->text_secondary, NXC_ALIGN_LEFT);
+    nxframe_caps(c, r.x + 24.0f, r.y + 20.0f, label, th->text_secondary);
     nxui_text_in_rect(c, NXUI_TEXT_TITLE2, nxc_rect(r.x + 12.0f, r.y + 24.0f, r.w * 0.62f, 24.0f),
                       value, th->text_primary, NXC_ALIGN_LEFT);
     if (sub)
@@ -741,7 +740,7 @@ static void tm_draw_processes(nxc_canvas_t *c, const tm_layout_t *L) {
 
     if (g_tm.snap_st != NXPROC_OK && g_tm.snap_st != NXPROC_ERR_TRUNCATED) {
         nxc_rect_t r = nxc_rect(L->body.x, L->body.y + 70.0f, L->body.w, L->body.h - 74.0f);
-        nxglass_card(c, r, 12.0f);
+        nxframe_panel(c, r);
         if (g_tm.snap_st == NXPROC_ERR_UNSUPPORTED)
             tm_unavailable(c, r, "Process information unavailable",
                 "This NeolyxOS kernel does not yet let apps read its process table, so no "
@@ -779,7 +778,7 @@ static void tm_draw_processes(nxc_canvas_t *c, const tm_layout_t *L) {
         tm_row_bg(c, rr, sel, hov);
         int sys = (p->flags & (NXPROC_F_SYSTEM | NXPROC_F_KERNEL)) != 0;
         nxc_color_t tc = th->text_primary, dim = th->text_secondary;
-        if (sel) { tc = th->text_on_accent; dim = NXC_WITH_ALPHA(th->text_on_accent, 215); }
+        (void)sel;   /* Neolyx selection keeps normal ink */
 
         /* CPU heat behind the CPU cell */
         if (p->cpu_pct_x10 >= 30 && !sel) {
@@ -793,7 +792,7 @@ static void tm_draw_processes(nxc_canvas_t *c, const tm_layout_t *L) {
         if (p->flags & NXPROC_F_SELF) {
             nxui_text_in_rect(c, NXUI_TEXT_BODY, nr, p->name, tc, NXC_ALIGN_LEFT);
             float tw = nxui_text_width(NXUI_TEXT_BODY, p->name);
-            nxglass_badge(c, nr.x + tw + 8.0f, y + 4.0f, "This app", sel ? th->text_on_accent : th->accent);
+            nxglass_badge(c, nr.x + tw + 8.0f, y + 4.0f, "This app", th->accent);
         } else {
             nxui_text_in_rect(c, NXUI_TEXT_BODY, nr, p->name, tc, NXC_ALIGN_LEFT);
         }
@@ -818,7 +817,7 @@ static void tm_graph_card(nxc_canvas_t *c, nxc_rect_t r, const char *title, cons
                           const char *sub, const float *hist, int hn, int valid, nxc_color_t col,
                           const char *missing) {
     const nxui_theme_t *th = nxui_theme();
-    nxglass_card(c, r, 12.0f);
+    nxframe_panel(c, r);
     nxui_text_in_rect(c, NXUI_TEXT_HEADLINE, nxc_rect(r.x + 16.0f, r.y + 12.0f, 200.0f, 18.0f),
                       title, th->text_primary, NXC_ALIGN_LEFT);
     if (sub)
@@ -892,7 +891,7 @@ static void tm_draw_performance(nxc_canvas_t *c, const tm_layout_t *L) {
     /* Cores */
     float sx = L->body.x + gw + gap;
     nxc_rect_t cr = nxc_rect(sx, L->body.y, side, 166.0f);
-    nxglass_card(c, cr, 12.0f);
+    nxframe_panel(c, cr);
     nxui_text_in_rect(c, NXUI_TEXT_HEADLINE, nxc_rect(cr.x + 14.0f, cr.y + 10.0f, 120.0f, 18.0f),
                       "Cores", th->text_primary, NXC_ALIGN_LEFT);
     if (ok && (s->valid & NXPROC_SYS_PER_CORE) && s->cpu_count) {
@@ -920,7 +919,7 @@ static void tm_draw_performance(nxc_canvas_t *c, const tm_layout_t *L) {
 
     /* Details */
     nxc_rect_t dr = nxc_rect(sx, cr.y + cr.h + gap, side, L->body.h - cr.h - gap - 4.0f);
-    nxglass_card(c, dr, 12.0f);
+    nxframe_panel(c, dr);
     nxui_text_in_rect(c, NXUI_TEXT_HEADLINE, nxc_rect(dr.x + 14.0f, dr.y + 10.0f, 120.0f, 18.0f),
                       "System", th->text_primary, NXC_ALIGN_LEFT);
     float x = dr.x + 14.0f, w = dr.w - 28.0f, y = dr.y + 34.0f;
@@ -975,12 +974,12 @@ static void tm_draw_apps(nxc_canvas_t *c, const tm_layout_t *L) {
         tm_row_bg(c, rr, sel, g_tm.pointer_in && !g_tm.sheet_open && nxglass_hit(rr, g_tm.mx, g_tm.my));
         tm_initial_icon(c, T.colx[AC_NAME] + 6.0f, y + TM_ROW_H * 0.5f, 16.0f, w->title, 0);
         nxc_rect_t nr = nxc_rect(T.colx[AC_NAME] + 30.0f, y, T.colw[AC_NAME] - 36.0f, TM_ROW_H);
-        nxc_color_t tc = sel ? th->text_on_accent : th->text_primary;
-        nxc_color_t dim = sel ? NXC_WITH_ALPHA(th->text_on_accent, 215) : th->text_secondary;
+        nxc_color_t tc = th->text_primary;
+        nxc_color_t dim = th->text_secondary;
         nxui_text_in_rect(c, NXUI_TEXT_BODY, nr, w->title, tc, NXC_ALIGN_LEFT);
         if (w->id == g_tm.win_id) {
             float tw = nxui_text_width(NXUI_TEXT_BODY, w->title);
-            nxglass_badge(c, nr.x + tw + 8.0f, y + 4.0f, "This app", sel ? th->text_on_accent : th->accent);
+            nxglass_badge(c, nr.x + tw + 8.0f, y + 4.0f, "This app", th->accent);
         }
         const char *stt = w->minimized ? "Minimized" : (w->id == focused ? "Active" : "Running");
         tm_cell(c, &T, k_acols, AC_STATUS, y, stt, (w->minimized && !sel) ? th->text_tertiary : dim);
@@ -995,7 +994,7 @@ static void tm_draw_apps(nxc_canvas_t *c, const tm_layout_t *L) {
 static void tm_draw_startup(nxc_canvas_t *c, const tm_layout_t *L) {
     const nxui_theme_t *th = nxui_theme();
     if (g_tm.startup_st != NXPROC_OK) {
-        nxglass_card(c, nxc_rect(L->body.x, L->body.y, L->body.w, L->body.h - 4.0f), 12.0f);
+        nxframe_panel(c, nxc_rect(L->body.x, L->body.y, L->body.w, L->body.h - 4.0f));
         tm_unavailable(c, L->body, "Startup items unavailable",
             g_tm.startup_st == NXPROC_ERR_UNSUPPORTED
                 ? "This NeolyxOS build has no registry of login items that apps can read yet. "
@@ -1044,7 +1043,7 @@ static uint32_t tm_btn_state(nxc_rect_t r, int enabled, int id) {
 
 static void tm_draw_footer(nxc_canvas_t *c, const tm_layout_t *L) {
     const nxui_theme_t *th = nxui_theme();
-    nxglass_separator(c, L->footer.x, L->footer.y, L->footer.w);
+    nxframe_strip(c, L->footer, NULL);   /* Neolyx status strip */
     nxc_rect_t tr = nxc_rect(L->footer.x + TM_PAD, L->footer.y, L->footer.w - 2.0f * TM_PAD - 240.0f, L->footer.h);
     char msg[128];
     tm_sb_t b; sb_init(&b, msg, sizeof(msg));
@@ -1287,9 +1286,10 @@ void taskmgr_view_render(desktop_window_t *win, void *ctx) {
     g_tm.sheet_t = nxui_approach(g_tm.sheet_t, g_tm.sheet_open ? 1.0f : 0.0f, 0.06f, dt);
 
     tm_layout_t L = tm_layout(win);
+    if (g_tm.tab >= 0 && g_tm.tab < TAB_COUNT) desktop_set_window_place(win->id, k_tabs[g_tm.tab]);
     g_tm.hover_tab = (g_tm.pointer_in && !g_tm.sheet_open)
                    ? nxglass_segment_at(L.tabs, TAB_COUNT, g_tm.mx, g_tm.my) : -1;
-    nxglass_segmented(c, L.tabs, k_tabs, TAB_COUNT, g_tm.tab, g_tm.hover_tab);
+    nxframe_tabs(c, L.tabs, k_tabs, TAB_COUNT, g_tm.tab, g_tm.hover_tab);
     if (tm_has_search()) {
         const char *ph = g_tm.tab == TAB_APPS ? "Search windows"
                        : (g_tm.tab == TAB_START ? "Search startup items" : "Search name or PID");

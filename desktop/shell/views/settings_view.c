@@ -25,6 +25,7 @@
 #include "app_view.h"
 #include "control_center.h"
 #include "settings_internal.h"
+#include "nxframe.h"
 
 extern int desktop_launch_app(const char *name);
 
@@ -62,6 +63,12 @@ static const pane_entry_t g_panes[] = {
     { &settings_pane_developer,     5, TILE_TXT("{ }",           0xFF3A3A3C), "debug logs task manager diagnostics" },
 };
 #define PANE_COUNT ((int)(sizeof(g_panes) / sizeof(g_panes[0])))
+
+/* Rail group labels, indexed by pane_entry_t.group. */
+static const char *const g_group_names[] = {
+    "This system", "Attention", "Look and feel", "People and privacy", "Input and time", "Maintenance",
+};
+#define GROUP_COUNT ((int)(sizeof(g_group_names) / sizeof(g_group_names[0])))
 
 /* Accepted aliases for settings_view_show_pane / control center ids. */
 static const struct { const char *alias; const char *id; } g_aliases[] = {
@@ -172,7 +179,7 @@ static float list_layout(float *ys) {
     int last_group = -1, any = 0;
     for (int i = 0; i < PANE_COUNT; i++) {
         if (!pane_matches(i)) { ys[i] = -1.0f; continue; }
-        if (any && g_panes[i].group != last_group) y += 14.0f;
+        if (g_panes[i].group != last_group) y += (any ? 6.0f : 0.0f) + NXFRAME_RAIL_GROUP_H;
         ys[i] = y;
         y += rh;
         last_group = g_panes[i].group;
@@ -372,7 +379,7 @@ static nxc_rect_t at(nxc_rect_t content, nxc_rect_t local) {
 
 static void render_sidebar(nxc_canvas_t *c, nxc_rect_t R) {
     const nxui_theme_t *th = nxui_theme();
-    nxglass_sidebar(c, nxc_rect(R.x, R.y, SIDEBAR_W, R.h));
+    nxframe_rail(c, nxc_rect(R.x, R.y, SIDEBAR_W, R.h));
 
     uint32_t fst = (V.focus == FOCUS_SEARCH) ? NXGLASS_FOCUSED : 0;
     if (V.hover_valid && nxglass_hit(search_rect(), V.mx, V.my)) fst |= NXGLASS_HOVER;
@@ -387,33 +394,38 @@ static void render_sidebar(nxc_canvas_t *c, nxc_rect_t R) {
 
     nxc_save(c);
     nxc_clip_rect(c, nxc_irect((int32_t)lr.x, (int32_t)lr.y, (int32_t)lr.w, (int32_t)lr.h));
-    int shown = 0;
+    int shown = 0, last_group = -1;
     for (int i = 0; i < PANE_COUNT; i++) {
         if (ys[i] < 0.0f) continue;
         shown++;
         float y = lr.y + ys[i] - V.list_scroll;
+        int g = g_panes[i].group;
+        if (g != last_group) {
+            last_group = g;
+            if (g >= 0 && g < GROUP_COUNT)
+                nxframe_rail_group(c, lr.x + NXFRAME_RAIL_PAD + 12.0f, y - NXFRAME_RAIL_GROUP_H,
+                                   lr.w - 2.0f * NXFRAME_RAIL_PAD, g_group_names[g]);
+        }
         if (y + rh < lr.y || y > lr.y + lr.h) continue;
-        nxc_rect_t row = nxc_rect(lr.x + 10.0f, y, lr.w - 20.0f, rh);
+        nxc_rect_t row = nxc_rect(lr.x + NXFRAME_RAIL_PAD, y, lr.w - 2.0f * NXFRAME_RAIL_PAD, rh);
         int sel = (i == V.current);
-        uint32_t st = sel ? NXGLASS_SELECTED : (i == hover ? NXGLASS_HOVER : 0);
-        if (i == V.pressed_row && V.capture == CAP_LIST && !V.list_dragging && !sel) st |= NXGLASS_PRESSED;
-        nxglass_row(c, row, (int)NXSYM_COUNT, NULL, NULL, st);
-        if (sel && V.focus != FOCUS_SIDEBAR)   /* unfocused selection: soften */
-            nxc_fill_rrect(c, row, th->radius_control, NXC_WITH_ALPHA(th->window_bg, 70));
-        settings_draw_tile(c, &g_panes[i].tile, row.x + 8.0f + ts * 0.5f, y + rh * 0.5f, ts);
-        nxui_text_in_rect(c, NXUI_TEXT_BODY, nxc_rect(row.x + ts + 18.0f, y, row.w - ts - 24.0f, rh),
-                          g_panes[i].pane->title, sel ? th->text_on_accent : th->text_primary, NXC_ALIGN_LEFT);
+        uint32_t st = sel ? NXFRAME_SELECTED : (i == hover ? NXFRAME_HOVER : 0);
+        if (i == V.pressed_row && V.capture == CAP_LIST && !V.list_dragging && !sel) st |= NXFRAME_PRESSED;
+        nxframe_rail_item(c, row, NXFRAME_SYM_SLOT, g_panes[i].pane->title, NULL, st);
+        /* Monochrome glyph in the item's glyph slot (accent when selected) */
+        settings_draw_glyph(c, &g_panes[i].tile, row.x + NXFRAME_GLYPH_CX, y + rh * 0.5f, ts,
+                            sel ? th->accent : th->text_secondary);
     }
     if (shown == 0)
         nxui_text_in_rect(c, NXUI_TEXT_BODY, nxc_rect(lr.x, lr.y + 20.0f, lr.w, 24.0f), "No Results",
                           th->text_tertiary, NXC_ALIGN_CENTER);
     nxc_restore(c);
 
-    /* Edge fade when the list is scrolled */
+    /* Edge rule when the list is scrolled */
     if (V.list_scroll > 0.5f)
-        nxglass_separator(c, R.x + 12.0f, lr.y - 1.0f, SIDEBAR_W - 24.0f);
+        nxframe_rule(c, R.x + 12.0f, lr.y - 1.0f, SIDEBAR_W - 24.0f);
     if (total - V.list_scroll > lr.h + 1.0f)
-        nxglass_separator(c, R.x + 12.0f, lr.y + lr.h, SIDEBAR_W - 24.0f);
+        nxframe_rule(c, R.x + 12.0f, lr.y + lr.h, SIDEBAR_W - 24.0f);
 }
 
 static void render_toolbar(nxc_canvas_t *c, nxc_rect_t R, const settings_pane_t *p) {
@@ -462,6 +474,7 @@ void settings_view_render(desktop_window_t *win, void *ctx) {
     render_sidebar(c, R);
 
     const settings_pane_t *p = (V.current >= 0 && V.current < PANE_COUNT) ? g_panes[V.current].pane : 0;
+    desktop_set_window_place(win->id, p ? p->title : NULL);
     nxc_rect_t pa = at(R, pane_area_local());
     if (p && p->render) {
         nxc_save(c);

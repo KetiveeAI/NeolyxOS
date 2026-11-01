@@ -88,10 +88,14 @@ typedef struct {
 
 #define MAX_WINDOWS 16
 #define WINDOW_TITLE_MAX 64
+#define WINDOW_PLACE_MAX 48
 
 typedef struct desktop_shell_window {
     uint32_t id;
     char title[WINDOW_TITLE_MAX];
+    /* Where the app is ("Network", "Documents"); shown after the title as
+     * "App / Place" by the Neolyx frame. Empty when the app sets none. */
+    char place[WINDOW_PLACE_MAX];
     
     /* Bounds */
     int32_t x, y;
@@ -178,6 +182,15 @@ int desktop_destroy_window(uint32_t window_id);
  * desktop_focus_window - Bring window to front
  */
 void desktop_focus_window(uint32_t window_id);
+
+/**
+ * desktop_set_window_place - Set the place shown after the window title
+ *
+ * @window_id: Window ID
+ * @place: Short place name (copied, truncated to WINDOW_PLACE_MAX - 1),
+ *         or NULL / "" to show the app name alone
+ */
+void desktop_set_window_place(uint32_t window_id, const char *place);
 
 /**
  * desktop_set_window_render - Set window content render callback
