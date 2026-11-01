@@ -4,7 +4,9 @@ Status: **approved by the project owner on 2026-11-01 ("approve as
 written").** Changing it needs the owner's sign-off again. Implemented so
 far: step 1, `fb.flip_rects` (148, ABI 1.2); step 2, nxserver in the
 desktop (`desktop/shell/nxserver`), the protocol header and
-`tests/userland/wintest`.
+`tests/userland/wintest`; step 3, damage-driven frames
+(`desktop/shell/nxserver/nxs_damage.c`, the frame loop in
+`desktop/shell/desktop_shell.c`).
 Plan: week 3 of the 1.0 Preview plan ("desktop becomes the nxserver
 compositor, with damage tracking"). Builds on the approved kernel interface in
 `kernel-shm-ipc.md` (ABI 1.1, merged in PRs #22 and #23).

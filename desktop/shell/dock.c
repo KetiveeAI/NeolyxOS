@@ -775,6 +775,14 @@ void dock_tick(void) {
     }
 }
 
+int dock_is_animating(void) {
+    if (!g_dock_initialized) return 0;
+    for (int i = 0; i < DOCK_MAX_ITEMS; i++) {
+        if (g_anim[i].used && g_anim[i].bounce >= 0.0f) return 1;
+    }
+    return 0;
+}
+
 /* ============ Geometry helpers (dock layout) ============ */
 
 /* Pointer coordinates in dock space: main axis, and distance from edge. */

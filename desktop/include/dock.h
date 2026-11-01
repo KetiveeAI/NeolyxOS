@@ -113,6 +113,8 @@ void dock_init(uint32_t screen_w, uint32_t screen_h);
 
 /* Advance animations (call once per frame before dock_render). */
 void dock_tick(void);
+/* 1 while a time-driven dock animation (launch bounce) runs. */
+int dock_is_animating(void);
 
 /* Draw the dock or taskbar, its tooltip and its context menu. */
 void dock_render(nxc_canvas_t *c, int mouse_x, int mouse_y);

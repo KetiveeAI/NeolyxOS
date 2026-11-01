@@ -41,14 +41,35 @@ static void di_strcpy(char *d, const char *s, int cap) {
     d[i] = '\0';
 }
 
-/* Current ~/Desktop listing (cached by the relay; re-asked every 5 s). */
-static const nxrelay_listing_t *di_listing(char *dir, int cap) {
+/* Current ~/Desktop listing (cached by the relay). may_reload re-asks the
+ * file system when the last reload is DI_POLL_MS old; drawing never does,
+ * so the same state always draws the same pixels (damage-driven frames:
+ * desktop_items_poll reloads and tells the frame loop). */
+static const nxrelay_listing_t *di_listing(char *dir, int cap, int may_reload) {
     if (nxrelay_location(NXRELAY_LOC_DESKTOP, dir, cap) != NXRELAY_OK) return 0;
     uint64_t now = nx_gettime();
-    uint32_t flags = 0;
-    if (now - D.last_poll >= DI_POLL_MS) { flags = NXRELAY_REFRESH; D.last_poll = now; }
+    uint32_t flags = may_reload ? 0 : NXRELAY_CACHED;
+    if (may_reload && now - D.last_poll >= DI_POLL_MS) { flags = NXRELAY_REFRESH; D.last_poll = now; }
     const nxrelay_listing_t *l = nxrelay_list(dir, flags);
     return (l && l->status == NXRELAY_OK) ? l : 0;
+}
+
+uint32_t desktop_items_poll(void) {
+    char dir[NXRELAY_PATH_MAX];
+    const nxrelay_listing_t *l = di_listing(dir, (int)sizeof(dir), 1);
+    if (!l) return 1;
+    /* FNV-1a over what the icons show: names, kinds, order */
+    uint32_t h = 2166136261u;
+    uint32_t n = l->count < DI_MAX ? l->count : (uint32_t)DI_MAX;
+    h = (h ^ n) * 16777619u;
+    for (uint32_t i = 0; i < n && l->entries; i++) {
+        const nxrelay_entry_t *e = &l->entries[i];
+        h = (h ^ e->kind) * 16777619u;
+        for (int k = 0; k < NXRELAY_NAME_MAX && e->name[k]; k++) h = (h ^ (uint8_t)e->name[k]) * 16777619u;
+        h = (h ^ 0xFFu) * 16777619u;
+    }
+    h = (h ^ (uint32_t)D.selected[0]) * 16777619u;
+    return h | 2u;      /* never 0 or 1 */
 }
 
 /* Cell of item slot i (column-major from the top right). */
@@ -65,7 +86,7 @@ void desktop_items_render(nxc_canvas_t *c, int32_t sw, int32_t sh, int reserve_f
     if (!c || sw <= 0 || sh <= 0) return;
     D.reserve_first = reserve_first ? 1 : 0;
     char dir[NXRELAY_PATH_MAX];
-    const nxrelay_listing_t *l = di_listing(dir, (int)sizeof(dir));
+    const nxrelay_listing_t *l = di_listing(dir, (int)sizeof(dir), 0);
     if (!l) return;
     const nxui_theme_t *th = nxui_theme();
     int n = (int)l->count < DI_MAX ? (int)l->count : DI_MAX;
@@ -100,7 +121,7 @@ void desktop_items_render(nxc_canvas_t *c, int32_t sw, int32_t sh, int reserve_f
 
 int desktop_items_click(int32_t x, int32_t y, int32_t sw, int32_t sh) {
     char dir[NXRELAY_PATH_MAX];
-    const nxrelay_listing_t *l = di_listing(dir, (int)sizeof(dir));
+    const nxrelay_listing_t *l = di_listing(dir, (int)sizeof(dir), 1);
     if (!l) { D.selected[0] = '\0'; return 0; }
     int n = (int)l->count < DI_MAX ? (int)l->count : DI_MAX;
     for (int i = 0; i < n; i++) {

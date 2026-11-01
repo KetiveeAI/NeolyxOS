@@ -1,5 +1,5 @@
 /*
- * nxserver - the window server inside the desktop process (week 3, step 2)
+ * nxserver - the window server inside the desktop process (week 3, steps 2 and 3)
  *
  * Spec: docs/desktop/proposals/nxserver-window-protocol.md (approved by the
  * project owner on 2026-11-01). Listens on port "nx.display", speaks window
@@ -8,7 +8,11 @@
  * buffer, mapped read-only and drawn without a copy.
  *
  * The shell calls these from its frame loop and from its window actions.
- * Nothing here blocks: every syscall it makes returns at once.
+ * Nothing here blocks except nxserver_wait, which the frame loop uses to
+ * sleep until the next frame tick or the next client message.
+ *
+ * Commits damage the screen through desktop_damage_window_content
+ * (desktop_shell.h), so a frame redraws only what clients changed.
  *
  * Copyright (c) 2025 KetiveeAI
  * SPDX-License-Identifier: MIT
@@ -34,9 +38,24 @@ int nxserver_init(uint32_t screen_w, uint32_t screen_h);
  */
 void nxserver_poll(void);
 
-/* Once per frame, after the frame reached the screen: FRAME_DONE for every
- * commit drawn in it, then flush queued events. */
+/* Once per frame tick, after the frame reached the screen (or the tick drew
+ * nothing): FRAME_DONE for every commit since the last tick, then flush
+ * queued events. A commit always damages the screen, so a visible window's
+ * commit is drawn in the tick that answers it. */
 void nxserver_frame_presented(void);
+
+/*
+ * Sleep until the port or a client channel has something to read, or
+ * timeout_ms passes. Messages are not handled here (nxserver_poll does).
+ * @return > 0 woken by a message, 0 timeout, -1 not listening or obj.wait
+ *         failed (the caller sleeps instead; logged once)
+ */
+int nxserver_wait(uint32_t timeout_ms);
+
+/* 1 if shell window shell_id shows a client's buffer. Such a window's
+ * content changes only by COMMIT, so the shell need not redraw it each
+ * frame the way it does for windows drawn by the shell's own views. */
+int nxserver_owns_window(uint32_t shell_id);
 
 /*
  * The user asked to close shell window shell_id (close button, NX+W, dock).

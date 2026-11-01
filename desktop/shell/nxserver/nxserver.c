@@ -667,30 +667,43 @@ static void req_commit(nxs_client_t *c, const nxw_commit_t *m) {
         send_error(c, seq, NXW_OP_COMMIT, -NXW_EINVAL, w->id);
         return;
     }
+    int new_buffer = 0;
     if (w->pending.map) {
         buf_release(&w->cur);
         w->cur = w->pending;
         s_zero(&w->pending, sizeof(w->pending));
+        new_buffer = 1;
     }
-    /* Damage is clipped to the buffer here; frames still redraw the whole
-     * screen until damage-driven frames (step 3) use it. */
-    uint32_t damaged = 0;
-    for (uint32_t i = 0; i < m->count; i++) {
-        nxw_rect_t r;
-        if (nxw_clip_rect(&m->rects[i], w->cur.width, w->cur.height, &r)) damaged++;
-    }
-    (void)damaged;
-#ifdef NXSERVER_TRACE
-    lg_begin(); lg_client(c); lg_str(" commit window "); lg_dec(w->id); lg_str(", rects ");
-    lg_dec(m->count); lg_str(" ("); lg_dec(damaged); lg_str(" inside the buffer)"); lg_end();
-#endif
     if (!w->shell_id) {
         int r = win_show(w);
         if (r != 0) {
             send_error(c, seq, NXW_OP_COMMIT, r, w->id);
             return;
         }
+        /* A new window damages its whole frame through the shell */
     }
+    /* Damage, clipped to the buffer, then mapped to the screen by the shell
+     * (which clips it to the window's content). A new buffer may differ in
+     * size from the old one, so the whole content area is redrawn; so is
+     * count 0 ("the whole buffer changed"). */
+    uint32_t damaged = 0;
+    if (new_buffer || m->count == 0) {
+        desktop_damage_window_content(w->shell_id, 0, 0, NXW_SIZE_MAX, NXW_SIZE_MAX);
+        damaged = 1;
+    } else {
+        for (uint32_t i = 0; i < m->count; i++) {
+            nxw_rect_t r;
+            if (!nxw_clip_rect(&m->rects[i], w->cur.width, w->cur.height, &r)) continue;
+            desktop_damage_window_content(w->shell_id, r.x, r.y, r.w, r.h);
+            damaged++;
+        }
+    }
+#ifdef NXSERVER_TRACE
+    lg_begin(); lg_client(c); lg_str(" commit window "); lg_dec(w->id); lg_str(", rects ");
+    lg_dec(m->count); lg_str(" ("); lg_dec(damaged); lg_str(" inside the buffer)"); lg_end();
+#else
+    (void)damaged;
+#endif
     w->frame_owed = 1;
     w->commit_seq = seq;
 }
@@ -824,10 +837,9 @@ int nxserver_init(uint32_t screen_w, uint32_t screen_h) {
     return 0;
 }
 
-void nxserver_poll(void) {
-    if (!g_ready) return;
-    nx_wait_item_t items[1 + NXS_CLIENTS];
-    int who[1 + NXS_CLIENTS];
+/* The port and every client channel, for obj.wait. who[k] is the client
+ * index of items[k], or -1 for the port. Returns the item count. */
+static uint32_t wait_items(nx_wait_item_t *items, int *who) {
     uint32_t n = 0;
     items[n].handle = g_port;
     items[n].signals = NX_SIGNAL_READABLE;
@@ -842,6 +854,33 @@ void nxserver_poll(void) {
         items[n].reserved = 0;
         who[n++] = i;
     }
+    return n;
+}
+
+int nxserver_wait(uint32_t timeout_ms) {
+    if (!g_ready) return -1;
+    nx_wait_item_t items[1 + NXS_CLIENTS];
+    int who[1 + NXS_CLIENTS];
+    uint32_t n = wait_items(items, who);
+    int ready = nx_obj_wait(items, n, timeout_ms);
+    if (ready == -NXS_ETIMEDOUT) return 0;
+    if (ready < 0) {
+        static int s_logged;
+        if (!s_logged) { s_logged = 1; lg_begin(); lg_str("obj.wait (pacing) failed: "); lg_dec(ready); lg_end(); }
+        return -1;
+    }
+    return ready;
+}
+
+int nxserver_owns_window(uint32_t shell_id) {
+    return g_ready && shell_id != 0 && win_by_shell(shell_id) != NULL;
+}
+
+void nxserver_poll(void) {
+    if (!g_ready) return;
+    nx_wait_item_t items[1 + NXS_CLIENTS];
+    int who[1 + NXS_CLIENTS];
+    uint32_t n = wait_items(items, who);
     int ready = nx_obj_wait(items, n, 0);
     if (ready == -NXS_ETIMEDOUT) ready = 0;     /* nothing ready: the usual case */
     if (ready < 0) {

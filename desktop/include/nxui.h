@@ -30,6 +30,7 @@
 #include <stdint.h>
 #include "nxcanvas.h"
 #include "nxicons.h"
+#include "nx_fb.h"          /* nx_fb_rect_t (kernel public header) */
 
 /* ============ Lifecycle ============ */
 
@@ -43,6 +44,40 @@ void nxui_frame_begin(void);
 /* Finish a frame: draws the cursor at (cursor_x, cursor_y) and presents
  * the backbuffer through the kernel flip syscall. */
 nxc_status_t nxui_frame_end(int32_t cursor_x, int32_t cursor_y);
+
+/*
+ * Damage-driven frames (desktop_shell.c): a frame is drawn as one or more
+ * passes, each with the canvas clipped to one damaged rectangle, then the
+ * damaged rectangles are presented. Pixels outside every pass keep the
+ * previous frame, so a component must draw the same pixels whenever it is
+ * drawn with the same state.
+ *
+ *   nxui_pass_begin(r, first)   reset canvas, clip to r, wallpaper in r;
+ *                               first = 0 makes nxui_frame_dt() 0 so the
+ *                               same frame drawn again does not animate
+ *   ... components draw ...
+ *   nxui_draw_cursor(r, mx, my) cursor, clipped to r (after every pass)
+ *   nxui_present(rects, n)      fb.flip_rects (n = 0: whole frame)
+ *
+ * Returns 1, or 0 when r is empty after clamping to the screen.
+ */
+int nxui_pass_begin(int32_t x, int32_t y, int32_t w, int32_t h, int first_pass);
+void nxui_draw_cursor(int32_t x, int32_t y, int32_t w, int32_t h, int32_t cursor_x, int32_t cursor_y);
+nxc_status_t nxui_present(const nx_fb_rect_t *rects, uint32_t count);
+/* A tick drew nothing: keeps the next nxui_frame_dt() at one tick. */
+void nxui_frame_skipped(void);
+/* Screen rect the cursor bitmap covers with its tip at (x, y). */
+nxc_irect_t nxui_cursor_bounds(int32_t cursor_x, int32_t cursor_y);
+/*
+ * 1 if an nxui_approach or nxui_spring_step since the last call has not
+ * settled (the frame loop then keeps drawing), and clears the flag.
+ * nxui_motion_note sets it for animations driven some other way.
+ */
+int nxui_motion_take(void);
+void nxui_motion_note(void);
+/* Debug builds only (DESKTOP_DAMAGE_VERIFY): render into another buffer of
+ * the same size. Returns the previous pixels, or NULL. */
+uint32_t *nxui_retarget(uint32_t *pixels);
 
 /* The frame canvas (valid after nxui_init). */
 nxc_canvas_t *nxui_canvas(void);

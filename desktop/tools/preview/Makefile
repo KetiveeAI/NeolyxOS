@@ -15,7 +15,8 @@ include $(DESKTOP)/sources.mk
 HOSTCC  ?= gcc
 OBJ     ?= out/default
 SAN     ?= -fsanitize=address,undefined
-CFLAGS  := -std=gnu11 -O1 -g -fno-omit-frame-pointer $(SAN) -DNX_HOST_PREVIEW -D__NEOLYXOS__ \
+EXTRA_CFLAGS ?=
+CFLAGS  := -std=gnu11 -O1 -g -fno-omit-frame-pointer $(SAN) -DNX_HOST_PREVIEW -D__NEOLYXOS__ $(EXTRA_CFLAGS) \
            -Wall -Wextra -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable \
            -I$(DESKTOP)/include -I$(DESKTOP)/lib/nximage -idirafter $(DESKTOP)/../kernel/include \
            -idirafter $(DESKTOP)/../kernel/include/drivers -idirafter $(DESKTOP)/../kernel/include/core -I$(DESKTOP)/../config

@@ -22,10 +22,14 @@ INCLUDES = -I./include \
            -I../kernel/include/core \
            -I../config
 
+# Extra defines, e.g. EXTRA_CFLAGS=-DDESKTOP_DAMAGE_VERIFY for the frame
+# damage self-check (debug only; costs a full redraw every tick)
+EXTRA_CFLAGS ?=
 CFLAGS = -Wall -Wextra -std=c11 -O2 \
          -ffreestanding -fno-stack-protector \
          -mno-red-zone \
          -D__NEOLYXOS__ \
+         $(EXTRA_CFLAGS) \
          $(INCLUDES)
 
 LDFLAGS = -nostdlib -T user.ld

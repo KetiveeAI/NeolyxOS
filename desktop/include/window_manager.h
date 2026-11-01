@@ -307,8 +307,10 @@ void wm_snapshot_keep_fresh(uint32_t window_id, uint32_t max_age_ms);
 /* The window's content changed: the next keep_fresh/request recaptures. */
 void wm_window_content_changed(uint32_t window_id);
 /* Run pending captures (urgent requests all, periodic ones at most one).
- * Must be called before the frame's wallpaper is drawn. */
-void wm_snapshot_service(nxc_canvas_t *frame);
+ * Must be called before the frame's wallpaper is drawn. Returns the number
+ * of captures run: when it is not 0 the backbuffer was drawn over, so the
+ * frame must redraw the whole screen. */
+int wm_snapshot_service(nxc_canvas_t *frame);
 /* Snapshot of a window. Returns 1 and sets *surf and *src (the used
  * region) when one is available, else 0. */
 int  wm_snapshot_get(uint32_t window_id, const nxc_surface_t **surf, nxc_irect_t *src);

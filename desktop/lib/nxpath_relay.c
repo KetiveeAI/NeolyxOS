@@ -451,7 +451,8 @@ const nxrelay_listing_t *nxrelay_list(const char *path, uint32_t flags) {
     }
     relay_slot_t *s = hit ? hit : victim;
     s->last_use = ++g_use_clock;
-    if (!hit || (flags & NXRELAY_REFRESH) || now - s->view.loaded_ms > RELAY_TTL_MS)
+    if (!hit || (flags & NXRELAY_REFRESH) ||
+        (!(flags & NXRELAY_CACHED) && now - s->view.loaded_ms > RELAY_TTL_MS))
         load_slot(s, canon, flags);
     return &s->view;
 }
