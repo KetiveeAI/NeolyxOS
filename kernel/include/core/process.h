@@ -28,7 +28,7 @@
 #define USER_STACK_SIZE     (64 * 1024)  /* 64 KB */
 #define PROCESS_ARGV_MAX    16           /* Max argv entries for spawn/exec */
 #define PROCESS_ARG_LEN     256          /* Max length of one argument */
-#define PROCESS_FD_MAX      16           /* Open files per process (fd 0-15) */
+#define PROCESS_FD_MAX      64           /* Open files per process (= NX_FD_MAX, core/nx_file.h) */
 
 /* Process states */
 typedef enum {
@@ -48,6 +48,7 @@ typedef enum {
 #define PROC_FLAG_DETACHED  0x0008  /* No parent waiting */
 
 struct nx_proc_ipc;                     /* core/nx_handle.h */
+struct nx_fdtab;                        /* core/nx_fdtab.h */
 
 /* ============ CPU Context ============ */
 
@@ -100,11 +101,13 @@ typedef struct process {
     /* CPU Context */
     cpu_context_t context;
     
-    /* File descriptors: private to this process (vfs_file_t *, NULL = free).
-     * Closed by terminate(); kept across exec; empty for a new process. */
-    void *fd_table[PROCESS_FD_MAX];
+    /* File descriptors (core/nx_fdtab.h): PROCESS_FD_MAX entries, allocated
+     * on first use. Closed by terminate(); kept across exec except those
+     * marked close-on-exec; empty for a process created by spawn. */
+    struct nx_fdtab *fdtab;
     
-    /* Working directory */
+    /* Working directory: absolute, normalised; inherited at spawn, kept
+     * across exec, changed by chdir (core/nx_file.c) */
     char cwd[256];
     
     /* Linked list for scheduler */

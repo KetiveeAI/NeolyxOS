@@ -180,6 +180,10 @@ New open flags (existing values unchanged):
 #define NX_O_NONBLOCK  0x2000   /* new: pipes and PTYs return -EAGAIN instead of blocking */
 ```
 
+An access mode of 0 (no RDONLY or WRONLY bit) opens for reading, as it always
+has; existing callers such as `nximage.c` pass flags 0. Any bit outside the
+list above is -EINVAL.
+
 ### 4.4 `exec` (8) and the program entry
 
 - `exec` honours `envp` and closes fds marked close-on-exec.
@@ -417,7 +421,7 @@ typedef struct {
     uint64_t free_blocks;     /* UINT64_MAX when the filesystem cannot tell */
     char     fs_type[16];     /* "fat32", "nxfs", "ramfs", NUL-terminated */
     char     mount_path[64];  /* NUL-terminated */
-} nx_statfs_t;                /* v1: 120 bytes */
+} nx_statfs_t;                /* v1: 112 bytes (the fields above; "120" was an arithmetic slip) */
 
 int statfs(const char *path, nx_statfs_t *buf);
 ```

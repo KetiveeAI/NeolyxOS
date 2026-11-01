@@ -51,6 +51,11 @@
 /* sys_spawn flags */
 #define SPAWN_WAITABLE  0x1 /* Keep the child for sys_wait(); default is detached */
 
+/* --- S3: descriptors (core/nx_file.h, beta-process-abi.md section 6) --- */
+#define SYS_DUP         14  /* int32_t sys_dup(int32_t fd) */
+#define SYS_DUP2        15  /* int32_t sys_dup2(int32_t fd, int32_t new_fd) */
+#define SYS_FD_CTL      18  /* int64_t sys_fd_ctl(int32_t fd, uint32_t cmd, uint64_t arg) */
+
 /* File I/O (VFS-backed) */
 #define SYS_OPEN        20  /* int sys_open(const char* path, int flags, int mode) */
 #define SYS_CLOSE       21  /* int sys_close(int fd) */
@@ -58,12 +63,13 @@
 #define SYS_WRITE       23  /* ssize_t sys_write(int fd, const void* buf, size_t count) */
 #define SYS_SEEK        24  /* off_t sys_seek(int fd, off_t offset, int whence) */
 #define SYS_STAT        25  /* int sys_stat(const char* path, struct stat* st) */
-#define SYS_FSTAT       26  /* int sys_fstat(int fd, struct stat* st) */
+#define SYS_FSTAT       26  /* int sys_fstat(int32_t fd, stat_t* st) */
+#define SYS_UNLINK      27  /* int sys_unlink(const char* path) - files only */
 
 /* Directory Operations */
 #define SYS_READDIR     30  /* int sys_readdir(int fd, struct dirent* entry) */
 #define SYS_MKDIR       31  /* int sys_mkdir(const char* path, int mode) */
-#define SYS_RMDIR       32  /* int sys_rmdir(const char* path) */
+#define SYS_RMDIR       32  /* int sys_rmdir(const char* path) - directories only */
 #define SYS_CHDIR       33  /* int sys_chdir(const char* path) */
 #define SYS_GETCWD      34  /* int sys_getcwd(char* buf, size_t size) */
 #define SYS_RENAME      35  /* int sys_rename(const char* old_path, const char* new_path) */
