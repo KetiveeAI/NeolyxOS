@@ -25,6 +25,7 @@
 
 #define IMG_FMT_PREMUL32  0     /* nxc_surface_t pixels (premultiplied ARGB) */
 #define IMG_FMT_RGBA8     1     /* straight-alpha bytes r, g, b, a */
+#define IMG_FMT_XRGB32    2     /* opaque 32-bit pixels, top byte ignored */
 
 /* Coordinates beyond this magnitude are rejected (as in nxc_clip_rect). */
 #define IMG_COORD_MAX     1.0e8f
@@ -102,6 +103,7 @@ static inline const uint8_t *img_row(const img_src_t *s, int32_t y) {
 /* Premultiplied pixel x of a source row. */
 static inline uint32_t img_px(const uint8_t *row, int32_t x, int32_t fmt) {
     if (fmt == IMG_FMT_PREMUL32) return ((const uint32_t *)(const void *)row)[x];
+    if (fmt == IMG_FMT_XRGB32) return ((const uint32_t *)(const void *)row)[x] | 0xFF000000u;
     return img_rgba8_premul(row + (int64_t)x * 4);
 }
 
@@ -205,7 +207,12 @@ static void img_blit(nxc_canvas_t *c, const img_src_t *src, const img_job_t *j,
         for (int32_t x = j->vx0; x < j->vx1; x += cap) {
             int32_t n = nxc__mini(cap, j->vx1 - x);
             const uint8_t *sp = row + (int64_t)(sx0 + (x - j->vx0)) * 4;
-            for (int32_t i = 0; i < n; i++) line[i] = img_rgba8_premul(sp + (int64_t)i * 4);
+            if (src->fmt == IMG_FMT_XRGB32) {
+                const uint32_t *sp32 = (const uint32_t *)(const void *)sp;
+                for (int32_t i = 0; i < n; i++) line[i] = sp32[i] | 0xFF000000u;
+            } else {
+                for (int32_t i = 0; i < n; i++) line[i] = img_rgba8_premul(sp + (int64_t)i * 4);
+            }
             img_write_row(c, py, x, line, n, j->alpha);
         }
     }
@@ -539,5 +546,26 @@ nxc_status_t nxc_draw_rgba8(nxc_canvas_t *c, const uint8_t *rgba, int32_t w, int
     s.w = w;
     s.h = h;
     s.fmt = IMG_FMT_RGBA8;
+    return img_draw(c, &s, nxc_irect(0, 0, w, h), dst, alpha, filter, where);
+}
+
+nxc_status_t nxc_draw_xrgb32(nxc_canvas_t *c, const uint32_t *px, int32_t w, int32_t h,
+                             int32_t stride_bytes, nxc_rect_t dst, uint8_t alpha,
+                             nxc_filter_t filter) {
+    static const char where[] = "nxc_draw_xrgb32";
+    if (!c || !img_surface_ok(c->target) || !px || ((uintptr_t)px & 3u) != 0 || w <= 0 ||
+        h <= 0 || w > IMG_DIM_MAX || h > IMG_DIM_MAX || (stride_bytes & 3) != 0 ||
+        (int64_t)stride_bytes < (int64_t)w * 4 || !img_rect_ok(dst) || !img_filter_ok(filter)) {
+        return nxc__fail(NXC_ERR_INVALID_ARG, where);
+    }
+    if (!nxc__ready()) return nxc__fail(NXC_ERR_STATE, where);
+    uint64_t bytes = (uint64_t)(h - 1) * (uint64_t)stride_bytes + (uint64_t)w * 4u;
+    if (img_overlaps_target(c, px, bytes)) return nxc__fail(NXC_ERR_UNSUPPORTED, where);
+    img_src_t s;
+    s.base = (const uint8_t *)(const void *)px;
+    s.stride = stride_bytes;
+    s.w = w;
+    s.h = h;
+    s.fmt = IMG_FMT_XRGB32;
     return img_draw(c, &s, nxc_irect(0, 0, w, h), dst, alpha, filter, where);
 }
