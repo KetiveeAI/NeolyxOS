@@ -5,7 +5,8 @@
 # from the desktop's app drawer.
 #
 # The X.509 part uses a real certificate chain taken from the x509-limbo
-# vectors at build time (gen_x509_fixture.py), so the published vectors
+# vectors, and the TLS part the RFC 8448 example handshake, both at build
+# time (gen_x509_fixture.py, gen_tls_fixture.py), so the published vectors
 # are downloaded first (tests/host/crypto_fetch_vectors.sh).
 
 CC = gcc
@@ -40,7 +41,10 @@ $(NXTLS)/build/libnxtls.a:
 x509_fixture.h: gen_x509_fixture.py
 	V=$$($(FETCH)) && python3 -I gen_x509_fixture.py "$$V/x509-limbo/limbo.json" $@
 
-cryptotest.o: x509_fixture.h
+tls_fixture.h: gen_tls_fixture.py
+	V=$$($(FETCH)) && python3 -I gen_tls_fixture.py "$$V/rfc8448/transcripts.vec" $@
+
+cryptotest.o: x509_fixture.h tls_fixture.h $(NXTLS)/src/tls13.h
 
 $(TARGET): $(OBJS) linker.ld $(LIBS)
 	$(LD) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)
@@ -50,4 +54,4 @@ $(TARGET): $(OBJS) linker.ld $(LIBS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(TARGET) x509_fixture.h
+	rm -f $(OBJS) $(TARGET) x509_fixture.h tls_fixture.h
