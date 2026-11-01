@@ -10,9 +10,11 @@
 #include <stdint.h>
 #include <stddef.h>
 
-/* Use the existing nx_malloc implementation */
+/* Heap: desktop/lib/nx_malloc.c */
 extern void* nx_malloc(uint64_t size);
 extern void nx_mfree(void *ptr);
+extern void* nx_calloc(uint64_t count, uint64_t size);
+extern void* nx_realloc(void *ptr, uint64_t size);
 
 /* Standard malloc wrapper */
 void* malloc(size_t size) {
@@ -24,24 +26,14 @@ void free(void *ptr) {
     nx_mfree(ptr);
 }
 
-/* Standard calloc */
+/* Standard calloc: zeroed, NULL on count * size overflow */
 void* calloc(size_t num, size_t size) {
-    size_t total = num * size;
-    void *ptr = nx_malloc(total);
-    if (ptr) {
-        /* Zero memory */
-        uint8_t *p = (uint8_t*)ptr;
-        for (size_t i = 0; i < total; i++) {
-            p[i] = 0;
-        }
-    }
-    return ptr;
+    return nx_calloc((uint64_t)num, (uint64_t)size);
 }
 
-/* Standard realloc - simple implementation */
+/* Standard realloc: keeps the contents; on failure the old block stays valid */
 void* realloc(void *ptr, size_t size) {
-    (void)ptr;  /* Can't actually reallocate with simple allocator */
-    return nx_malloc(size);  /* Just allocate new block */
+    return nx_realloc(ptr, (uint64_t)size);
 }
 
 /* String length */

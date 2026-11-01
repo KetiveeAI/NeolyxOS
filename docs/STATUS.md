@@ -49,7 +49,7 @@ None of the rows below has been verified on real hardware yet.
 
 | Area | State | What the code shows |
 | --- | --- | --- |
-| Desktop shell | Real | One userspace process (`desktop/`) draws everything with NXCanvas on the CPU: menu bar, dock, windows, overlays. |
+| Desktop shell | Real | One userspace process (`desktop/`) draws everything with NXCanvas on the CPU: menu bar, dock, windows, overlays. Its heap (`desktop/lib/nx_malloc.c`) reuses and merges freed blocks and the panel cache is capped at 16 MiB, so memory stays flat across app launches (host test `tests/host/nx_malloc_test.c`). |
 | Shell-hosted apps | Real | Settings, Path, Shell, Task Manager, Fonts and Setup are views inside the desktop process (`desktop/shell/views/`). |
 | Window manager | Real, single process | Windows, z-order, snap, Overview, Stage, switcher, all inside the desktop process. |
 | nxrender (`gui/nxrender_c`) | Not used | About 12k lines. `desktop/shell/nxrender_bridge.c` has empty draw functions. `nxserver_compositor.c` is designed for shared-memory windows; kernel shared memory and channels now exist (ABI 1.1) but it does not use them yet. `gpu_driver.c` reports a fake GPU and needs hosted libc. |
