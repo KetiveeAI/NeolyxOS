@@ -1,7 +1,8 @@
 # Proposal: kernel shared memory and IPC (ABI v1.1)
 
-Status: **proposal, not implemented. Needs the project owner's sign-off.**
-No kernel code changes until it is approved.
+Status: **approved by the project owner on 2026-11-01, not implemented yet.**
+This document is the spec the kernel code must follow; changing it needs the
+owner's sign-off again.
 Plan: weeks 1 and 2 of the 1.0 Preview plan (nxserver window server).
 Audited against `main` at f6bfc76 (2026-11-01).
 
