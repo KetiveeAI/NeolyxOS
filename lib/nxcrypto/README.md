@@ -33,8 +33,14 @@ generator.
 | `nxcrypto/hmac.h` | HMAC-SHA-256/384/512, HKDF extract and expand | RFC 4231 (all three hashes), RFC 5869 |
 | `nxcrypto/curve25519.h` | X25519, Ed25519 key, sign and verify | RFC 7748 section 5.2 (including 1000 iterations) and section 6.1, the 1024-entry Ed25519 reference set (includes RFC 8032 section 7.1) |
 | `nxcrypto/aead.h` | ChaCha20, Poly1305, ChaCha20-Poly1305, AES-128/256 (encrypt), AES-GCM (96-bit nonces) | RFC 8439 appendix A and section 2.8.2, the BoringSSL and OpenSSL ChaCha20-Poly1305 files (including must-fail cases), NIST CAVP AESAVS ECB KAT/MMT, NIST CAVP GCMVS encrypt and decrypt (including FAIL cases) |
+| `nxcrypto/pubkey.h` | ECDSA P-256/P-384 verify (raw r, s or strict DER), RSA PKCS#1 v1.5 and PSS verify, 1024 to 4096-bit keys | NIST CAVP ECDSA SigVer (FIPS 186-3), NIST CAVP RSA SigVer15 and SigVerPSS (FIPS 186-3), all with valid and invalid cases |
 
-Coming next: ECDSA P-256/P-384 and RSA verification, then X.509.
+Signature verification works on public data only (the certificate, the
+signature, the hash), so the bignum and curve code in `bn.c`, `ecdsa.c` and
+`rsa.c` is not constant time and must never be given a private key. Signing
+with ECDSA or RSA is deliberately not provided.
+
+Coming next: X.509 parsing and chain validation (`lib/nxtls`).
 
 ### Speed
 
@@ -44,6 +50,8 @@ Coming next: ECDSA P-256/P-384 and RSA verification, then X.509.
 | AES-128-GCM | 2.5 MB/s | 0.3 MB/s |
 | SHA-256 | 162 MB/s | |
 | Ed25519 sign / verify | | 4 ms / 3 ms |
+| ECDSA P-256 / P-384 verify | | 36 ms / 48 ms |
+| RSA-2048 verify (e = 65537) | | 3 ms |
 
 AES is slow because its S-box is computed (field inversion) rather than
 looked up, to stay constant-time without AES-NI. For that reason the TLS
