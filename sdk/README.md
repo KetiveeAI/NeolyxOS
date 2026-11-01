@@ -15,6 +15,8 @@ sdk/
   crt/rx_crt0_neolyx.c   _start for REOX apps (calls int main(void))
   crt/rx_mem_neolyx.c    memset/memcpy/memmove/strdup/... for freestanding apps
   nxui/nxui.h, nxui.c    NxUI: the REOX-visible UI API over gui/nxrender_c
+  nxwindow/nxwin_proto.h window protocol 1.0 (wire format, nxserver <-> apps)
+  nxwindow/nxwindow.h    libnxwindow: open windows, draw, read events (C)
 ```
 
 ## The pipeline

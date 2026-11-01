@@ -418,6 +418,27 @@ static inline nx_handle_t nx_port_listen(const char *name) {
 static inline nx_handle_t nx_port_accept(nx_handle_t port, uint32_t *out_pid) {
     return (nx_handle_t)syscall2(SYS_PORT_ACCEPT, (int64_t)port, (int64_t)out_pid);
 }
+/* Client side (libnxwindow and apps). Handles are > 0; failures are a
+ * negative errno. */
+#define SYS_HANDLE_DUP    149
+static inline nx_handle_t nx_shm_create(uint64_t size, uint32_t flags) {
+    return (nx_handle_t)syscall2(SYS_SHM_CREATE, (int64_t)size, (int64_t)flags);
+}
+static inline nx_handle_t nx_port_connect(const char *name) {
+    return (nx_handle_t)syscall2(SYS_PORT_CONNECT, (int64_t)name, 0);
+}
+static inline nx_handle_t nx_handle_dup(nx_handle_t h, uint32_t rights) {
+    return (nx_handle_t)syscall2(SYS_HANDLE_DUP, (int64_t)h, (int64_t)rights);
+}
+
+/* ============ ABI query (syscall 0) ============ */
+#include "nx_abi.h"
+#define SYS_ABI_QUERY     0
+/* Fills *info (kernel version and NX_ABI_FLAG_* capabilities). 0 or a
+ * negative errno. */
+static inline int nx_abi_query(nx_abi_info_t *info) {
+    return (int)syscall1(SYS_ABI_QUERY, (int64_t)info);
+}
 
 /* ============ RTC (Real-Time Clock) ============ */
 /* Syscall numbers - MUST MATCH kernel */

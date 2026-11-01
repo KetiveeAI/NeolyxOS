@@ -1,8 +1,9 @@
 # Proposal: libnxwindow, the client window library (week 4)
 
-Status: **proposed, waiting for the project owner's sign-off.** No code is
-written until it is approved; changing it after approval needs sign-off
-again.
+Status: **approved by the project owner on 2026-11-01 ("approve as
+written").** Changing it needs the owner's sign-off again. Implemented so
+far: step 1, libnxwindow in C (`sdk/nxwindow/nxwindow.{h,c}`, host test
+`tests/host/nxwindow_test.c`, QEMU test `tests/userland/nxwtest`).
 Plan: week 4 of the 1.0 Preview plan ("libnxwindow, C and REOX"). Builds on
 the approved window protocol 1.0 (`nxserver-window-protocol.md`, merged in
 PRs #24, #27 and #28) and the kernel IPC interface (`kernel-shm-ipc.md`,
