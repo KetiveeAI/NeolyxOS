@@ -255,6 +255,21 @@ void process_sleep(uint32_t ms);
 void process_block(void);
 
 /**
+ * Sleep until the PIT reaches deadline_tick (absolute; UINT64_MAX means no
+ * deadline) or process_wake_sleeper() is called for this process. Used by
+ * obj.wait.
+ * @return 0 after sleeping, -1 (without sleeping) when the scheduler is not
+ *         running or the caller is the idle process
+ */
+int process_sleep_until(uint64_t deadline_tick);
+
+/**
+ * Wake a process sleeping in process_sleep() / process_sleep_until()
+ * before its deadline. No effect on a process in any other state.
+ */
+void process_wake_sleeper(process_t *proc);
+
+/**
  * Unblock a process.
  */
 void process_unblock(process_t *proc);

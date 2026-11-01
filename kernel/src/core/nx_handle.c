@@ -5,6 +5,7 @@
  * docs/desktop/proposals/kernel-shm-ipc.md for the ABI.
  *
  * Syscalls: handle.close (140), handle.dup (149).
+ * Channels, obj.wait and ports live in nx_chan.c, shared memory in nx_shm.c.
  *
  * Copyright (c) 2025 KetiveeAI
  * SPDX-License-Identifier: MIT
@@ -55,6 +56,10 @@ void nx_object_ref(nx_object_t *obj) {
     obj->refs++;
 }
 
+/* Objects whose last reference is gone, waiting for destroy() */
+static nx_object_t *g_destroy_head = NULL;
+static int g_destroying = 0;
+
 void nx_object_unref(nx_object_t *obj) {
     if (!obj) return;
     if (obj->refs == 0) {
@@ -62,9 +67,22 @@ void nx_object_unref(nx_object_t *obj) {
         return;
     }
     obj->refs--;
-    if (obj->refs == 0 && obj->destroy) {
-        obj->destroy(obj);
+    if (obj->refs != 0 || !obj->destroy) return;
+
+    /* Queue it; the outermost call drains the queue. A destroy() that drops
+     * more last references only appends to the queue. */
+    obj->dnext = g_destroy_head;
+    g_destroy_head = obj;
+    if (g_destroying) return;
+
+    g_destroying = 1;
+    while (g_destroy_head) {
+        nx_object_t *o = g_destroy_head;
+        g_destroy_head = o->dnext;
+        o->dnext = NULL;
+        o->destroy(o);
     }
+    g_destroying = 0;
 }
 
 /* ============ Handle table ============ */
@@ -143,6 +161,32 @@ int nx_handle_close(struct process *proc, int32_t handle) {
     return 0;
 }
 
+int nx_handle_take(struct process *proc, int32_t handle, nx_object_t **obj, uint32_t *rights) {
+    nx_handle_slot_t *slot = handle_slot(proc, handle);
+    if (!slot) return -EBADF;
+    if (obj) *obj = slot->obj;
+    if (rights) *rights = slot->rights;
+    slot->obj = NULL;
+    slot->rights = 0;
+    nx_proc_ipc_t *ipc = (nx_proc_ipc_t *)proc->ipc;
+    if (ipc->handle_count) ipc->handle_count--;
+    return 0;
+}
+
+uint32_t nx_handle_free_slots(struct process *proc) {
+    nx_proc_ipc_t *ipc = nx_ipc_state(proc, 0);
+    if (!ipc) return NX_HANDLE_MAX;
+    return NX_HANDLE_MAX - ipc->handle_count;
+}
+
+void nx_ipc_wake_waiters(void) {
+    for (uint32_t pid = 1; pid < MAX_PROCESSES; pid++) {
+        process_t *p = process_get(pid);
+        if (!p || !p->ipc) continue;
+        if (((nx_proc_ipc_t *)p->ipc)->waiting) process_wake_sleeper(p);
+    }
+}
+
 void nx_ipc_release(struct process *proc) {
     if (!proc) return;
     nx_proc_ipc_t *ipc = (nx_proc_ipc_t *)proc->ipc;
@@ -180,6 +224,7 @@ void nx_ipc_release(struct process *proc) {
 
     /* Objects it created may outlive it (held by others): stop charging it */
     nx_shm_forget_creator(proc);
+    nx_chan_forget_sender(proc);
 }
 
 /* ============ Syscalls ============ */

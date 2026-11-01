@@ -1,8 +1,8 @@
 # Proposal: kernel shared memory and IPC (ABI v1.1)
 
-Status: **approved by the project owner on 2026-11-01.** Implemented so far:
-handles (140, 149) and shared memory (141 to 143). Channels, `obj.wait` and
-ports (144 to 147, 150 to 152) are next.
+Status: **approved by the project owner on 2026-11-01. Implemented in full**
+(140 to 147, 149 to 152; 148 stays reserved). Tests: `tests/userland/shmtest`
+and `tests/userland/ipc_test`.
 This document is the spec the kernel code must follow; changing it needs the
 owner's sign-off again.
 Plan: weeks 1 and 2 of the 1.0 Preview plan (nxserver window server).
@@ -195,7 +195,8 @@ only: a port cannot be sent or duplicated.
   returns `-EAGAIN` and the sender waits for `NX_SIGNAL_WRITABLE`.
   Errors: `-EBADF`, `-EACCES` (no WRITE right, or a carried handle lacks
   TRANSFER), `-EINVAL` (too much data, too many handles, a handle listed
-  twice, `h` itself in the list, nonzero `sender_pid` or `flags`), `-EFAULT`,
+  twice, `h` itself or its own peer endpoint in the list, nonzero
+  `sender_pid` or `flags`), `-EFAULT`,
   `-EAGAIN` (peer queue full, or the sender's `NX_CHAN_PROC_QUEUED` budget is
   used), `-EPIPE` (peer closed).
 - **146 `chan.recv(h, msg)`**: takes the oldest message. Data is copied into
