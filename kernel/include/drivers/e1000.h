@@ -49,10 +49,12 @@
 #define E1000_TDLEN     0x3808  /* TX Descriptor Length */
 #define E1000_TDH       0x3810  /* TX Descriptor Head */
 #define E1000_TDT       0x3818  /* TX Descriptor Tail */
+#define E1000_TIPG      0x0410  /* TX Inter-Packet Gap */
 
 /* MAC Address */
 #define E1000_RAL       0x5400  /* Receive Address Low */
 #define E1000_RAH       0x5404  /* Receive Address High */
+#define E1000_RAH_AV    0x80000000u  /* Address Valid */
 #define E1000_MTA       0x5200  /* Multicast Table Array */
 
 /* ============ Control Register Bits ============ */
@@ -113,6 +115,11 @@ typedef struct {
 /* Descriptor Status */
 #define E1000_RXD_STAT_DD   0x01    /* Descriptor Done */
 #define E1000_RXD_STAT_EOP  0x02    /* End of Packet */
+#define E1000_RXD_ERR_MASK  0x97    /* CE | SE | SEQ | CXE | RXE */
+
+/* Device Status */
+#define E1000_STATUS_LU         0x00000002  /* Link Up */
+#define E1000_STATUS_SPEED_MASK 0x000000C0  /* 00 = 10, 01 = 100, 1x = 1000 Mb/s */
 
 #define E1000_TXD_CMD_EOP   0x01    /* End of Packet */
 #define E1000_TXD_CMD_IFCS  0x02    /* Insert FCS */
@@ -124,6 +131,7 @@ typedef struct {
 #define E1000_NUM_RX_DESC   32
 #define E1000_NUM_TX_DESC   32
 #define E1000_RX_BUF_SIZE   2048
+#define E1000_TX_BUF_SIZE   2048    /* one full Ethernet frame (1514) fits */
 
 typedef struct {
     volatile uint8_t *mmio_base;
@@ -134,8 +142,18 @@ typedef struct {
     uint32_t rx_cur;
     uint32_t tx_cur;
     
-    /* RX Buffers */
+    /* RX / TX Buffers (identity-mapped kernel heap, so virtual == DMA) */
     uint8_t *rx_buffers[E1000_NUM_RX_DESC];
+    uint8_t *tx_buffers[E1000_NUM_TX_DESC];
+    
+    /* Link (refreshed by e1000_link_poll) */
+    volatile uint8_t link_up;
+    volatile uint8_t link_changed;  /* set by the IRQ handler, cleared by the poller */
+    uint16_t speed_mbps;
+    
+    /* Driver-level error counters */
+    uint64_t rx_dropped;            /* bad, oversized or multi-buffer frames */
+    uint64_t tx_ring_full;          /* send refused: no free TX descriptor */
     
     /* PCI info */
     uint8_t bus;
@@ -173,6 +191,12 @@ int e1000_receive(e1000_device_t *dev, void *buf, uint32_t max_len);
  * Get MAC address.
  */
 void e1000_get_mac(e1000_device_t *dev, mac_addr_t *mac);
+
+/**
+ * Re-read the link state. Returns 1 if the link is up, 0 if down.
+ * Logs a line when the state differs from the last poll.
+ */
+int e1000_link_poll(e1000_device_t *dev);
 
 /**
  * Handle interrupt.

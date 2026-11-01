@@ -468,6 +468,14 @@ void nx_kernel_start(void) {
         }
         
         if (launched) {
+            /* Wired networking: the network service thread brings up the
+             * e1000 interfaces and runs DHCP once the scheduler starts, so
+             * a missing cable or DHCP server never delays the desktop. */
+            extern int network_service_start(void);
+            if (network_service_start() < 0) {
+                serial_puts("[KERNEL] WARNING: network service not started; no networking\n");
+            }
+
             /* The scheduler needs a steady tick: program the PIT for ~1000Hz
              * (sleep(), time slices and SYS_TIME are all in PIT ticks).
              * Firmware leaves it at an unknown rate. */

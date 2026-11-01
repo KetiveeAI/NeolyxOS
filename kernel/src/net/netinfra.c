@@ -338,242 +338,161 @@ int dns_add_server(ipv4_addr_t address, int priority) {
     return 0;
 }
 
-int dns_resolve(const char *hostname, ipv4_addr_t *result) {
-    if (!hostname || !result) return -1;
-    if (!dns_servers) return -1;  /* No DNS servers configured */
-    
-    serial_puts("[DNS] Resolving ");
-    serial_puts(hostname);
-    serial_puts("...\n");
-    
-    /* Get network interface */
-    net_interface_t *iface = network_get_interface_by_index(0);
-    if (!iface) {
-        serial_puts("[DNS] No network interface\n");
-        return -1;
-    }
-    
-    /* ============ Build DNS Query Packet ============ */
-    /* DNS header (12 bytes) + question section */
-    uint8_t query[512];
+/*
+ * Resolve an A record. Asks the DNS servers DHCP gave the default
+ * interface, then any configured with netinfra (dns_servers list), each
+ * twice with a 2 s timeout. Returns 0 and the address in *result, or -1.
+ * Must not be called on the network input path.
+ */
+#define DNS_TIMEOUT_MS  2000u
+#define DNS_TRIES       2
+
+static int dns_build_query(const char *hostname, uint16_t txid, uint8_t *q, int cap) {
     int pos = 0;
-    
-    /* DNS Header */
-    /* Transaction ID */
-    uint16_t txid = 0x1234;  /* Random ID for real implementation */
-    query[pos++] = (txid >> 8) & 0xFF;
-    query[pos++] = txid & 0xFF;
-    
-    /* Flags: Standard query, recursion desired */
-    query[pos++] = 0x01;  /* QR=0, OPCODE=0, AA=0, TC=0, RD=1 */
-    query[pos++] = 0x00;  /* RA=0, Z=0, RCODE=0 */
-    
-    /* QDCOUNT = 1 */
-    query[pos++] = 0x00;
-    query[pos++] = 0x01;
-    
-    /* ANCOUNT = 0 */
-    query[pos++] = 0x00;
-    query[pos++] = 0x00;
-    
-    /* NSCOUNT = 0 */
-    query[pos++] = 0x00;
-    query[pos++] = 0x00;
-    
-    /* ARCOUNT = 0 */
-    query[pos++] = 0x00;
-    query[pos++] = 0x00;
-    
-    /* ============ Question Section ============ */
-    /* QNAME: Convert hostname to DNS label format */
-    /* "www.example.com" -> "\x03www\x07example\x03com\x00" */
+    if (cap < 12 + 2 + 4) return -1;
+    q[pos++] = (uint8_t)(txid >> 8);
+    q[pos++] = (uint8_t)txid;
+    q[pos++] = 0x01;    /* RD */
+    q[pos++] = 0x00;
+    q[pos++] = 0x00; q[pos++] = 0x01;   /* QDCOUNT 1 */
+    for (int i = 0; i < 6; i++) q[pos++] = 0;
+
     const char *p = hostname;
+    int total = 0;
     while (*p) {
-        /* Find next dot or end */
         const char *dot = p;
         int label_len = 0;
-        while (*dot && *dot != '.') { dot++; label_len++; }
-        
-        if (label_len > 63 || label_len == 0) {
-            serial_puts("[DNS] Invalid label length\n");
+        while (*dot && *dot != '.') {
+            char c = *dot;
+            int ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                     (c >= '0' && c <= '9') || c == '-' || c == '_';
+            if (!ok) return -1;
+            dot++;
+            label_len++;
+        }
+        if (label_len == 0 || label_len > 63) return -1;
+        total += label_len + 1;
+        if (total > 253 || pos + label_len + 1 + 5 > cap) return -1;
+        q[pos++] = (uint8_t)label_len;
+        for (int i = 0; i < label_len; i++) q[pos++] = (uint8_t)p[i];
+        p = dot;
+        if (*p == '.') {
+            p++;
+            if (*p == '\0') break;  /* trailing dot */
+        }
+    }
+    if (total == 0) return -1;
+    q[pos++] = 0x00;
+    q[pos++] = 0x00; q[pos++] = 0x01;   /* QTYPE A */
+    q[pos++] = 0x00; q[pos++] = 0x01;   /* QCLASS IN */
+    return pos;
+}
+
+/* Skip a (possibly compressed) name. Returns the new offset or -1. */
+static int dns_skip_name(const uint8_t *r, int len, int pos) {
+    int guard = 0;
+    while (pos < len && guard++ < 128) {
+        uint8_t b = r[pos];
+        if (b == 0) return pos + 1;
+        if ((b & 0xC0) == 0xC0) return (pos + 2 <= len) ? pos + 2 : -1;
+        if (b & 0xC0) return -1;
+        pos += b + 1;
+    }
+    return -1;
+}
+
+static int dns_parse_a(const uint8_t *r, int len, uint16_t txid, ipv4_addr_t *out) {
+    if (len < 12) return -1;
+    if (r[0] != (uint8_t)(txid >> 8) || r[1] != (uint8_t)txid) return -1;
+    if (!(r[2] & 0x80)) return -1;                 /* not a response */
+    if ((r[3] & 0x0F) != 0) {
+        serial_puts("[DNS] Server returned error code ");
+        serial_putc((char)('0' + (r[3] & 0x0F)));
+        serial_puts("\n");
+        return -1;
+    }
+    int qd = (r[4] << 8) | r[5];
+    int an = (r[6] << 8) | r[7];
+
+    int pos = 12;
+    for (int i = 0; i < qd; i++) {
+        pos = dns_skip_name(r, len, pos);
+        if (pos < 0 || pos + 4 > len) return -1;
+        pos += 4;
+    }
+    for (int i = 0; i < an; i++) {
+        pos = dns_skip_name(r, len, pos);
+        if (pos < 0 || pos + 10 > len) return -1;
+        uint16_t type = (uint16_t)((r[pos] << 8) | r[pos + 1]);
+        uint16_t klass = (uint16_t)((r[pos + 2] << 8) | r[pos + 3]);
+        uint16_t rdlen = (uint16_t)((r[pos + 8] << 8) | r[pos + 9]);
+        pos += 10;
+        if (pos + rdlen > len) return -1;
+        if (type == 1 && klass == 1 && rdlen == 4) {
+            for (int k = 0; k < 4; k++) out->bytes[k] = r[pos + k];
+            return 0;
+        }
+        pos += rdlen;   /* CNAME and others: keep looking */
+    }
+    return -1;
+}
+
+static int dns_ask(net_interface_t *iface, ipv4_addr_t server, const char *hostname,
+                   ipv4_addr_t *result) {
+    uint8_t query[300];
+    uint8_t resp[512];
+
+    for (int attempt = 0; attempt < DNS_TRIES; attempt++) {
+        uint16_t txid = (uint16_t)net_random32();
+        int qlen = dns_build_query(hostname, txid, query, sizeof(query));
+        if (qlen < 0) {
+            serial_puts("[DNS] Invalid host name\n");
             return -1;
         }
-        
-        /* Write length byte */
-        query[pos++] = label_len;
-        
-        /* Write label characters */
-        for (int i = 0; i < label_len; i++) {
-            query[pos++] = p[i];
+        int n = net_udp_query(iface, server, PORT_DNS, query, (uint32_t)qlen,
+                              resp, sizeof(resp), DNS_TIMEOUT_MS);
+        if (n > 0) {
+            return dns_parse_a(resp, n, txid, result);
         }
-        
-        /* Move past dot */
-        p = dot;
-        if (*p == '.') p++;
     }
-    
-    /* Null terminator for QNAME */
-    query[pos++] = 0x00;
-    
-    /* QTYPE = A (1) - Request IPv4 address */
-    query[pos++] = 0x00;
-    query[pos++] = 0x01;
-    
-    /* QCLASS = IN (1) - Internet class */
-    query[pos++] = 0x00;
-    query[pos++] = 0x01;
-    
-    /* ============ Send Query via UDP ============ */
-    ipv4_addr_t dns_ip = dns_servers->address;
-    
-    serial_puts("[DNS] Sending query to ");
-    serial_ip(dns_ip);
-    serial_puts(":53\n");
-    
-    /* Build UDP/IP packet manually and send */
-    uint8_t udp_pkt[8 + 512];
-    
-    /* UDP header */
-    udp_pkt[0] = 0xC0;  /* Source port high (49152) */
-    udp_pkt[1] = 0x00;  /* Source port low */
-    udp_pkt[2] = 0x00;  /* Dest port high (53) */
-    udp_pkt[3] = 0x35;  /* Dest port low */
-    
-    uint16_t udp_len = 8 + pos;
-    udp_pkt[4] = (udp_len >> 8) & 0xFF;
-    udp_pkt[5] = udp_len & 0xFF;
-    udp_pkt[6] = 0x00;  /* Checksum high (optional for IPv4) */
-    udp_pkt[7] = 0x00;  /* Checksum low */
-    
-    /* Copy DNS query */
-    for (int i = 0; i < pos; i++) {
-        udp_pkt[8 + i] = query[i];
-    }
-    
-    /* Send via IP layer */
-    extern int ip_send(net_interface_t *iface, ipv4_addr_t dst, uint8_t proto,
-                       const void *data, uint32_t len);
-    
-    int ret = ip_send(iface, dns_ip, 17 /* UDP */, udp_pkt, udp_len);
-    if (ret < 0) {
-        serial_puts("[DNS] Send failed\n");
-        return -1;
-    }
-    
-    /* ============ Wait for Response ============ */
-    /* In a cooperative kernel, we poll for response */
-    /* This is synchronous - wait up to ~500ms */
-    volatile int timeout = 500000;
-    
-    /* Check for DNS response in UDP receive buffer */
-    /* For now, use static buffer that UDP input fills */
-    extern uint8_t dns_response_buffer[512];
-    extern volatile int dns_response_ready;
-    extern volatile int dns_response_len;
-    
-    dns_response_ready = 0;
-    
-    while (timeout-- > 0 && !dns_response_ready) {
-        __asm__ volatile("pause");
-    }
-    
-    if (!dns_response_ready) {
-        serial_puts("[DNS] Timeout waiting for response\n");
-        /* Fall back to well-known IP for common domains */
-        /* This helps in QEMU emulation without real network */
-        if (hostname[0] == 'g' && hostname[1] == 'o') {  /* google */
-            result->bytes[0] = 8; result->bytes[1] = 8;
-            result->bytes[2] = 8; result->bytes[3] = 8;
-            return 0;
-        }
-        return -1;
-    }
-    
-    /* ============ Parse DNS Response ============ */
-    uint8_t *resp = dns_response_buffer;
-    int rlen = dns_response_len;
-    
-    if (rlen < 12) return -1;  /* Too short for header */
-    
-    /* Check transaction ID matches */
-    if (resp[0] != (txid >> 8) || resp[1] != (txid & 0xFF)) {
-        serial_puts("[DNS] Transaction ID mismatch\n");
-        return -1;
-    }
-    
-    /* Check response bit and no error */
-    if (!(resp[2] & 0x80)) return -1;  /* Not a response */
-    if ((resp[3] & 0x0F) != 0) {
-        serial_puts("[DNS] Server returned error\n");
-        return -1;
-    }
-    
-    /* Get answer count */
-    uint16_t ancount = (resp[6] << 8) | resp[7];
-    if (ancount == 0) {
-        serial_puts("[DNS] No answers in response\n");
-        return -1;
-    }
-    
-    /* Skip question section */
-    int rpos = 12;
-    
-    /* Skip QNAME */
-    while (rpos < rlen && resp[rpos] != 0) {
-        if ((resp[rpos] & 0xC0) == 0xC0) {
-            rpos += 2;  /* Compressed pointer */
-            break;
-        }
-        rpos += resp[rpos] + 1;
-    }
-    if (resp[rpos] == 0) rpos++;  /* Skip null terminator */
-    rpos += 4;  /* Skip QTYPE and QCLASS */
-    
-    /* Parse answers looking for A record */
-    for (int i = 0; i < ancount && rpos + 12 <= rlen; i++) {
-        /* Skip NAME (may be compressed) */
-        if ((resp[rpos] & 0xC0) == 0xC0) {
-            rpos += 2;
-        } else {
-            while (rpos < rlen && resp[rpos] != 0) {
-                rpos += resp[rpos] + 1;
-            }
-            rpos++;  /* Skip null */
-        }
-        
-        /* TYPE (2 bytes) */
-        uint16_t rtype = (resp[rpos] << 8) | resp[rpos + 1];
-        rpos += 2;
-        
-        /* CLASS (2 bytes) */
-        rpos += 2;
-        
-        /* TTL (4 bytes) */
-        rpos += 4;
-        
-        /* RDLENGTH (2 bytes) */
-        uint16_t rdlen = (resp[rpos] << 8) | resp[rpos + 1];
-        rpos += 2;
-        
-        /* Check if this is an A record (type 1) with 4 bytes */
-        if (rtype == 1 && rdlen == 4) {
-            result->bytes[0] = resp[rpos];
-            result->bytes[1] = resp[rpos + 1];
-            result->bytes[2] = resp[rpos + 2];
-            result->bytes[3] = resp[rpos + 3];
-            
-            serial_puts("[DNS] Resolved to ");
-            serial_ip(*result);
-            serial_puts("\n");
-            
-            return 0;
-        }
-        
-        rpos += rdlen;  /* Skip RDATA */
-    }
-    
-    serial_puts("[DNS] No A record found\n");
+    serial_puts("[DNS] No answer from ");
+    serial_ip(server);
+    serial_puts("\n");
     return -1;
+}
+
+int dns_resolve(const char *hostname, ipv4_addr_t *result) {
+    if (!hostname || !result) return -1;
+
+    net_interface_t *iface = network_default_iface();
+    if (!iface) {
+        serial_puts("[DNS] No configured network interface\n");
+        return -1;
+    }
+
+    serial_puts("[DNS] Resolving ");
+    serial_puts(hostname);
+    serial_puts("\n");
+
+    for (int i = 0; i < iface->dns_count && i < 3; i++) {
+        if (dns_ask(iface, iface->dns_servers[i], hostname, result) == 0) goto resolved;
+    }
+    for (dns_server_t *d = dns_servers; d; d = d->next) {
+        if (dns_ask(iface, d->address, hostname, result) == 0) goto resolved;
+    }
+
+    serial_puts("[DNS] Could not resolve ");
+    serial_puts(hostname);
+    serial_puts("\n");
+    return -1;
+
+resolved:
+    serial_puts("[DNS] ");
+    serial_puts(hostname);
+    serial_puts(" -> ");
+    serial_ip(*result);
+    serial_puts("\n");
+    return 0;
 }
 
 /* ============ Routing API ============ */

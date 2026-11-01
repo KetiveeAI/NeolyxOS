@@ -191,15 +191,14 @@ void kernel_drivers_deinit(void) {
 int network_drivers_init(void) {
     klog("Initializing network drivers...");
     
-    // Initialize Ethernet driver
-    kernel_driver_t* ethernet = kernel_driver_find("ethernet");
-    if (ethernet && ethernet->init) {
-        if (ethernet->init(ethernet) == 0) {
-            klog("Ethernet driver initialized successfully");
-        } else {
-            klog("Ethernet driver initialization failed");
-        }
-    }
+    /*
+     * Wired Ethernet is owned by the network stack (net/network.c), which
+     * the network service thread starts: it drives the e1000 directly.
+     * The generic "ethernet" driver (drivers/network/ethernet.c) talks to
+     * no real device (it writes to a fixed I/O port), so it is no longer
+     * started here; starting it reported success without any hardware.
+     */
+    klog("Wired Ethernet: started by the network service (netd)");
     
     // Initialize WiFi driver
     kernel_driver_t* wifi = kernel_driver_find("wifi");
