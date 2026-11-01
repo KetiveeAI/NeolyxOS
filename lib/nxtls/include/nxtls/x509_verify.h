@@ -3,20 +3,26 @@
  * servers (RFC 5280 section 6, RFC 6125 / RFC 9525).
  *
  * Policy (the "web PKI" profile, close to what browsers enforce):
- *  - The server's certificate must be valid now, must not be a CA, must
- *    allow digitalSignature if it has keyUsage, must allow serverAuth if
- *    it has extKeyUsage, and must name the host in subjectAltName
- *    (dNSName or iPAddress). The subject common name is never used as a
- *    host name.
- *  - Intermediates must be valid now, be CAs (basicConstraints cA), allow
- *    keyCertSign if they have keyUsage, and allow serverAuth (or any) if
- *    they have extKeyUsage. pathLenConstraint is enforced.
+ *  - The server's certificate must be valid now and must not be a CA. If
+ *    it has keyUsage, that must include digitalSignature and not
+ *    keyCertSign. It must have a non-critical extKeyUsage that includes
+ *    serverAuth and not anyExtendedKeyUsage, an authorityKeyIdentifier, a
+ *    non-zero serial number and no name constraints. It must name the
+ *    host in subjectAltName (dNSName or iPAddress). The subject common
+ *    name is never used as a host name.
+ *  - Intermediates must be valid now and be CAs with a critical
+ *    basicConstraints, a subjectKeyIdentifier, an authorityKeyIdentifier
+ *    and a non-zero serial number. If they have keyUsage it must include
+ *    keyCertSign; if they have extKeyUsage it must include serverAuth (or
+ *    any). pathLenConstraint is enforced.
  *  - A trust anchor contributes its subject, its key and its name
- *    constraints; its own dates and other extensions are not checked
- *    (RFC 5280 6.1.1 (d)). Anchor and intermediate name constraints on
- *    dNSName and iPAddress are enforced; a constraint of any other type
- *    that would apply to a certificate on the path makes the path fail
- *    (it is never ignored).
+ *    constraints. It must also be valid now and be a well-formed CA
+ *    certificate (as for intermediates, without the serial and AKI rules)
+ *    with no extKeyUsage.
+ *  - Name constraints on dNSName and iPAddress, from anchors and
+ *    intermediates, are enforced. A constraint of any other type that
+ *    would apply to a certificate on the path makes the path fail (it is
+ *    never ignored).
  *  - Revocation (CRL, OCSP) and certificate policies are not checked.
  *
  * Path building tries every candidate issuer (anchors first, then the
