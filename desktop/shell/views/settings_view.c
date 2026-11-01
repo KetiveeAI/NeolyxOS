@@ -483,6 +483,8 @@ void settings_view_render(desktop_window_t *win, void *ctx) {
         nxc_restore(c);
     }
     render_toolbar(c, R, p);
+    uint32_t ms = sui_take_redraw_ms();
+    if (ms != SUI_NO_REDRAW) desktop_window_redraw_in(win->id, ms);
 }
 
 /* ============ Pointer ============ */

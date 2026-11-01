@@ -1275,12 +1275,34 @@ int taskmgr_view_open(uint32_t win_id) {
     return 0;
 }
 
+/* Ask for the next redraw: every tick on the tabs whose graphs scroll
+ * smoothly between samples (Processes, Performance), otherwise at the next
+ * sample, when a status message expires or when an app being ended runs
+ * out of its grace period (all handled while drawing). */
+static void tm_redraw_at(uint32_t win_id, uint64_t at, uint64_t now) {
+    if (at <= now) at = now;
+    uint64_t d = at - now;
+    desktop_window_redraw_in(win_id, d > 60000u ? 60000u : (uint32_t)d);
+}
+
+static void tm_redraw_timers(desktop_window_t *win) {
+    if (g_tm.tab == TAB_PROC || g_tm.tab == TAB_PERF) {
+        desktop_window_redraw_in(win->id, 0);
+        return;
+    }
+    uint64_t now = nx_gettime();
+    tm_redraw_at(win->id, g_tm.next_refresh_ms, now);
+    if (g_tm.status[0] && now < g_tm.status_until_ms) tm_redraw_at(win->id, g_tm.status_until_ms, now);
+    if (g_tm.pending_pid) tm_redraw_at(win->id, g_tm.pending_deadline_ms, now);
+}
+
 void taskmgr_view_render(desktop_window_t *win, void *ctx) {
     (void)ctx;
     if (!win) return;
     nxc_canvas_t *c = nxui_canvas();
     if (!c) return;
     if (nx_gettime() >= g_tm.next_refresh_ms) tm_sample();
+    tm_redraw_timers(win);
 
     float dt = nxui_frame_dt();
     g_tm.sheet_t = nxui_approach(g_tm.sheet_t, g_tm.sheet_open ? 1.0f : 0.0f, 0.06f, dt);

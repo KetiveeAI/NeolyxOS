@@ -1406,6 +1406,7 @@ static void nv_draw_editor(nxc_canvas_t *c, const nv_layout_t *L, int focused) {
         if (focused) {
             if (has_sel || (int)(nxui_time() * 1.8f) % 2 == 0)
                 nxc_fill_rect(c, nxc_rect(cx, cyy + 3.0f, 2.0f, lh - 6.0f), th->accent);
+            if (!has_sel && N.win_id) desktop_window_redraw_in(N.win_id, nxui_ms_to_next_step(1.8f));
         } else {
             nxc_fill_rect(c, nxc_rect(cx, cyy + 3.0f, 1.0f, lh - 6.0f), th->text_tertiary);
         }
@@ -1470,6 +1471,25 @@ static void nv_draw_status(nxc_canvas_t *c, const nv_layout_t *L) {
                       220.0f, NV_STATUS_H), right, th->text_tertiary, NXC_ALIGN_RIGHT);
 }
 
+/* Ask for a redraw when something drawn here changes with time: the
+ * autosave (done while drawing), a notice leaving the status bar, an
+ * error notice being cleared. Only future times: whatever is already due
+ * was handled by this draw. */
+static void nv_redraw_at(uint32_t win_id, uint64_t at, uint64_t now) {
+    if (at <= now) return;
+    uint64_t d = at - now;
+    desktop_window_redraw_in(win_id, d > 60000u ? 60000u : (uint32_t)d);
+}
+
+static void nv_redraw_timers(desktop_window_t *win) {
+    uint64_t now = nx_gettime();
+    if (N.dirty && !N.save_failed && !N.readonly && win->focused)
+        nv_redraw_at(win->id, N.edit_ms + NV_AUTOSAVE_MS, now);
+    if (N.status[0] && !N.status_err) nv_redraw_at(win->id, N.status_ms + NV_STATUS_MS, now);
+    if (N.status_err && !N.save_failed && !N.dirty && N.status[0])
+        nv_redraw_at(win->id, N.status_ms + NV_STATUS_MS * 2, now);
+}
+
 void notes_view_render(desktop_window_t *win, void *ctx) {
     (void)ctx;
     nxc_canvas_t *c = nxui_canvas();
@@ -1483,6 +1503,7 @@ void notes_view_render(desktop_window_t *win, void *ctx) {
     if (N.status_err && !N.save_failed && !N.dirty && N.status[0] && nx_gettime() - N.status_ms >= NV_STATUS_MS * 2)
         N.status[0] = '\0';
 
+    nv_redraw_timers(win);
     nv_layout_t L = nv_rects(win);
     nv_draw_sidebar(c, &L);
     nv_draw_toolbar(c, &L);

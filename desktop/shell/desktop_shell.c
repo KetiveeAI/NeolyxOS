@@ -985,6 +985,7 @@ static void serial_hex64(uint64_t val);
 
 /* Title bar height shared with the hit tests in desktop_handle_mouse. */
 #define WIN_TITLE_H WM_TITLEBAR_H
+#define WIN_SHADOW_MARGIN   116     /* deepest window shadow reach (nxui level 4) */
 
 /* ============ Windows: z-order, animation and drawing ============ */
 /*
@@ -1093,6 +1094,159 @@ static int traffic_light_at(const desktop_window_t *w, int32_t x, int32_t y) {
     return nxglass_winctl_at(window_titlebar_rect(w), x, y);
 }
 
+/* ============ Pass culling ============ */
+/*
+ * Each frame pass draws every component clipped to one damaged rectangle.
+ * Clipping keeps the pixels right but not the work: a window's content
+ * callback still lays out and draws everything. Before a component is
+ * drawn, the pass checks whether any of it can show:
+ *   - its bounds (frame plus deepest shadow) miss the pass rectangle, or
+ *   - the part inside the pass rectangle lies within the opaque interior
+ *     of a window drawn later (above it): it would be painted over.
+ * A window is opaque when it is drawn normally (no open/close/minimize
+ * animation, full opacity, not PiP or a sidebar tab) and the theme's window
+ * background is opaque: draw_window_body fills its rounded frame with that
+ * background before anything else. Its interior is the frame inset past the
+ * rounded corners. The debug self-check (DESKTOP_DAMAGE_VERIFY) draws its
+ * reference frame with culling off, so a wrong skip shows as a mismatch.
+ */
+static int g_cull_off = 0;                  /* draw everything (verify reference) */
+
+static int irect_empty(nxc_irect_t r) { return r.w <= 0 || r.h <= 0; }
+
+static nxc_irect_t irect_and(nxc_irect_t a, nxc_irect_t b) {
+    int64_t x0 = a.x > b.x ? a.x : b.x, y0 = a.y > b.y ? a.y : b.y;
+    int64_t x1 = (int64_t)a.x + a.w, y1 = (int64_t)a.y + a.h;
+    int64_t bx1 = (int64_t)b.x + b.w, by1 = (int64_t)b.y + b.h;
+    if (bx1 < x1) x1 = bx1;
+    if (by1 < y1) y1 = by1;
+    if (x1 <= x0 || y1 <= y0) return nxc_irect(0, 0, 0, 0);
+    return nxc_irect((int32_t)x0, (int32_t)y0, (int32_t)(x1 - x0), (int32_t)(y1 - y0));
+}
+
+static int irect_inside(nxc_irect_t in, nxc_irect_t out) {
+    return !irect_empty(out) && in.x >= out.x && in.y >= out.y &&
+           (int64_t)in.x + in.w <= (int64_t)out.x + out.w && (int64_t)in.y + in.h <= (int64_t)out.y + out.h;
+}
+
+/* The pass rectangle: the canvas clip set by nxui_pass_begin. */
+static nxc_irect_t pass_rect(void) {
+    nxc_canvas_t *c = nxui_canvas();
+    return c ? c->st.clip : nxc_irect(0, 0, 0, 0);
+}
+
+/* Corner radius draw_window_body uses for w. */
+static float window_radius(const desktop_window_t *w) {
+    wm_window_state_t *ws = wm_get_window_state(w->id);
+    int flush = ws && (ws->is_tiled || ws->is_maximized);
+    return flush ? 8.0f : nxui_theme()->radius_window;
+}
+
+/* Interior of the rounded frame: inset past the corners' curve (a circle
+ * of radius r stays inside its square inset by r(1 - 1/sqrt 2) < 0.3r),
+ * plus a pixel for the anti-aliased edge. */
+static nxc_irect_t window_interior(const desktop_window_t *w) {
+    int32_t in = (int32_t)(window_radius(w) * 0.3f) + 2;
+    int64_t ww = (int64_t)w->width - 2 * in, hh = (int64_t)w->height + WIN_TITLE_H - 2 * in;
+    if (ww <= 0 || hh <= 0) return nxc_irect(0, 0, 0, 0);
+    return nxc_irect(w->x + in, w->y + in, (int32_t)ww, (int32_t)hh);
+}
+
+/* 1 if w is drawn as an opaque rounded frame this frame (see above). */
+static int window_opaque(const desktop_window_t *w) {
+    if (!w || w->id == 0 || !w->visible || w->minimized) return 0;
+    if (w->width < 8 || w->height < 2) return 0;
+    win_anim_t *a = anim_of(w);
+    if (a && a->phase != WA_NONE) return 0;
+    if (wm_is_pip(w->id)) return 0;
+    wm_window_state_t *ws = wm_get_window_state(w->id);
+    if (ws && ws->opacity < 1.0f) return 0;
+    if (ws && ws->mode == WIN_MODE_SIDEBAR && !ws->sidebar_expanded) return 0;
+    return (nxui_theme()->window_bg >> 24) == 0xFFu;
+}
+
+/* Screen area window w can touch this frame, or the whole screen when its
+ * animation moves it outside its frame (close, minimize, restore). */
+static nxc_irect_t window_reach(const desktop_window_t *w) {
+    win_anim_t *a = anim_of(w);
+    int phase = a ? a->phase : WA_NONE;
+    if (phase != WA_NONE && phase != WA_OPEN) {
+        return nxc_irect(0, 0, (int32_t)g_desktop.width, (int32_t)g_desktop.height);
+    }
+    int64_t open_slide = (phase == WA_OPEN) ? 16 : 0;      /* opening slides up 14 px */
+    int64_t x = (int64_t)w->x - WIN_SHADOW_MARGIN, y = (int64_t)w->y - WIN_SHADOW_MARGIN;
+    int64_t ww = (int64_t)w->width + 2 * WIN_SHADOW_MARGIN;
+    int64_t hh = (int64_t)w->height + WIN_TITLE_H + 2 * WIN_SHADOW_MARGIN + open_slide;
+    if (x < -0x40000000LL || y < -0x40000000LL || ww > 0x40000000LL || hh > 0x40000000LL) {
+        return nxc_irect(0, 0, (int32_t)g_desktop.width, (int32_t)g_desktop.height);
+    }
+    return nxc_irect((int32_t)x, (int32_t)y, (int32_t)ww, (int32_t)hh);
+}
+
+/* 1 if area (already inside the pass) is painted over by an opaque normal
+ * window above z-order position zi (zi = -1: above everything drawn before
+ * the windows). */
+static int covered_above(nxc_irect_t area, int zi) {
+    if (irect_empty(area)) return 1;
+    for (int k = g_zcount - 1; k > zi; k--) {
+        desktop_window_t *o = window_by_id(g_zorder[k]);
+        if (!o || !window_opaque(o)) continue;
+        if (irect_inside(area, window_interior(o))) return 1;
+    }
+    return 0;
+}
+
+/* Should the component with bounds b, drawn before the windows, be skipped
+ * in this pass? */
+static int pass_skips_below_windows(nxc_irect_t b) {
+    if (g_cull_off || overview_active()) return 0;
+    nxc_irect_t vis = irect_and(b, pass_rect());
+    if (irect_empty(vis)) return 1;
+    return covered_above(vis, -1);
+}
+
+/* Should the normal window at z-order position zi be skipped in this pass? */
+static int pass_skips_window(const desktop_window_t *w, int zi) {
+    if (g_cull_off) return 0;
+    nxc_irect_t vis = irect_and(window_reach(w), pass_rect());
+    if (irect_empty(vis)) return 1;
+    return covered_above(vis, zi);
+}
+
+/*
+ * A window's drop shadow. The shadow is drawn under the whole frame, but an
+ * opaque window body paints over its interior right away, so when the body
+ * is opaque (theme background opaque, no fade) only the four bands around
+ * the interior are drawn: each band is a clip, the shadow itself is the
+ * same cached mask, and every pixel that stays visible gets the same value.
+ */
+static void window_shadow(nxc_canvas_t *c, const desktop_window_t *win, nxc_rect_t frame,
+                          float radius, int32_t level) {
+    nxc_irect_t in = window_interior(win);
+    if (g_cull_off || c->st.alpha != 255u || (nxui_theme()->window_bg >> 24) != 0xFFu ||
+        irect_empty(in) || frame.x != (float)win->x || frame.y != (float)win->y) {
+        nxui_elevation(c, frame, radius, level);
+        return;
+    }
+    nxc_irect_t reach = window_reach(win);
+    int64_t rx1 = (int64_t)reach.x + reach.w, ry1 = (int64_t)reach.y + reach.h;
+    int64_t ix1 = (int64_t)in.x + in.w, iy1 = (int64_t)in.y + in.h;
+    nxc_irect_t band[4] = {
+        nxc_irect(reach.x, reach.y, reach.w, in.y - reach.y),                          /* above */
+        nxc_irect(reach.x, (int32_t)iy1, reach.w, (int32_t)(ry1 - iy1)),               /* below */
+        nxc_irect(reach.x, in.y, in.x - reach.x, in.h),                                /* left */
+        nxc_irect((int32_t)ix1, in.y, (int32_t)(rx1 - ix1), in.h),                     /* right */
+    };
+    nxc_irect_t pass = c->st.clip;
+    for (int i = 0; i < 4; i++) {
+        if (irect_empty(band[i]) || irect_empty(irect_and(band[i], pass))) continue;
+        nxc_save(c);
+        nxc_clip_rect(c, band[i]);
+        nxui_elevation(c, frame, radius, level);
+        nxc_restore(c);
+    }
+}
+
 /*
  * Draw a window's chrome and content at its current position.
  * shadow: draw the drop shadow; hover_ok: traffic light hover glyphs.
@@ -1107,7 +1261,7 @@ static void draw_window_body(desktop_window_t *win, int shadow, int hover_ok) {
     nxc_rect_t frame = window_frame_rect(win);
     int focused = win->focused || g_snapshot_pass;
 
-    if (shadow) nxui_elevation(c, frame, radius, focused ? 4 : 3);
+    if (shadow) window_shadow(c, win, frame, radius, focused ? 4 : 3);
 
     /* Body and title bar, clipped to the rounded frame */
     nxc_fill_rrect(c, frame, radius, th->window_bg);
@@ -1286,14 +1440,18 @@ static void render_windows(void) {
         if (!w || wm_is_pip(w->id)) continue;
         wm_window_state_t *ws = wm_get_window_state(w->id);
         if (ws && ws->mode == WIN_MODE_SIDEBAR && !ws->sidebar_expanded) {
-            render_sidebar_tab(w, ws);
+            render_sidebar_tab(w, ws);      /* drawn at the screen edge, not its frame */
             continue;
         }
+        if (pass_skips_window(w, zi)) continue;
         render_window(w);
     }
     for (int zi = 0; zi < g_zcount; zi++) {
         desktop_window_t *w = window_by_id(g_zorder[zi]);
-        if (w && wm_is_pip(w->id)) render_window(w);
+        if (!w || !wm_is_pip(w->id)) continue;
+        /* PiP windows are drawn over every normal window: only the bounds test */
+        if (!g_cull_off && irect_empty(irect_and(window_reach(w), pass_rect()))) continue;
+        render_window(w);
     }
 }
 
@@ -1461,7 +1619,8 @@ static void render_resize_hint(nxc_canvas_t *c) {
  *     - client commits damage their rectangles (desktop_damage_window_content);
  *     - a window that only moved or resized damages its old and new frame
  *       plus shadow; windows drawn by the shell's own views damage their
- *       frame every tick (their content may animate);
+ *       frame when they ask (desktop_window_redraw_in: caret blink,
+ *       timers) and at least once a second;
  *     - the cursor's old and new rectangles; the clock widget each second,
  *       the menu bar strip each second (clock, network, volume, battery);
  *  3. draw: nothing when the damage is empty; else one pass per damaged
@@ -1476,12 +1635,13 @@ static void render_resize_hint(nxc_canvas_t *c) {
  */
 #define FRAME_TICK_MS       16
 #define SETTLE_MS           1000u   /* full frames after the last shell activity */
-#define WIN_SHADOW_MARGIN   116     /* deepest window shadow reach (nxui level 4) */
 #define CLOCK_WIDGET_X      24
 #define CLOCK_WIDGET_Y      44
 #define CLOCK_WIDGET_W      240
 #define CLOCK_WIDGET_H      112
+#define CLOCK_SHADOW_REACH  80      /* panel elevation 2 reaches 3 sigma + offset = 64 px */
 #define FRAME_LOG_TICKS     300u    /* summary line every ~5 s */
+#define FRAME_LOG_MS        5000u   /* ... and at least every 5 s */
 #define CURSOR_NOT_DRAWN    (-0x7FFFFFFF - 1)
 #define BBOX_NONE           0x7FFFFFFF
 
@@ -1559,6 +1719,40 @@ void desktop_damage_window_content(uint32_t window_id, int32_t x, int32_t y, uin
     if (y1 > (int64_t)win->height) y1 = (int64_t)win->height;
     if (x0 >= x1 || y0 >= y1) return;
     damage_rect((int64_t)win->x + x0, (int64_t)win->y + WIN_TITLE_H + y0, x1 - x0, y1 - y0);
+}
+
+/*
+ * App views (windows whose content the shell draws) are redrawn on demand
+ * (desktop_window_redraw_in in desktop_shell.h): when they ask, and at
+ * least every DESKTOP_VIEW_REFRESH_MS as a safety net for content that
+ * changes without asking. Indexed like g_windows; 0 = no request.
+ */
+static uint64_t g_view_redraw_at[MAX_WINDOWS];
+static uint64_t g_view_refreshed_at[MAX_WINDOWS];
+
+void desktop_window_redraw_in(uint32_t window_id, uint32_t delay_ms) {
+    desktop_window_t *w = window_by_id(window_id);
+    if (!w || nxserver_owns_window(window_id)) return;
+    long i = (long)(w - g_windows);
+    if (i < 0 || i >= MAX_WINDOWS) return;
+    uint64_t at = pit_get_ticks() + delay_ms;
+    if (at == 0) at = 1;
+    if (g_view_redraw_at[i] == 0 || at < g_view_redraw_at[i]) g_view_redraw_at[i] = at;
+}
+
+/* Slot i is an app view that is shown: does it need drawing this tick?
+ * drawn_anyway: the whole screen is redrawn this tick. A redraw uses up a
+ * due request and restarts the safety-net period. */
+static int view_redraw_due(int i, uint64_t now, int drawn_anyway) {
+    int due = drawn_anyway ||
+              (g_view_redraw_at[i] != 0 && now >= g_view_redraw_at[i]) ||
+              now - g_view_refreshed_at[i] >= DESKTOP_VIEW_REFRESH_MS ||
+              now < g_view_refreshed_at[i];
+    if (due) {
+        if (g_view_redraw_at[i] != 0 && now >= g_view_redraw_at[i]) g_view_redraw_at[i] = 0;
+        g_view_refreshed_at[i] = now;
+    }
+    return due;
 }
 
 static uint32_t text_hash(const char *a, int na, const char *b, int nb) {
@@ -1639,13 +1833,15 @@ static void frame_collect_damage(int had_input, int snapshot_drawn) {
 
     /* Windows: opened/closed/restacked/refocused/retitled redraw everything
      * (title bars, menu bar app name, dock indicators); a move or resize
-     * damages the old and new frame. Windows of the shell's own views are
-     * redrawn every tick, client windows only when they commit. */
+     * damages the old and new frame. Client windows are redrawn when they
+     * commit; windows of the shell's own views when they ask (blinking
+     * caret, timers) and at least once a second (view_redraw_due). */
     for (int i = 0; i < MAX_WINDOWS; i++) {
         desktop_window_t *w = &g_windows[i];
         win_sig_t cur;
         window_signature(w, &g_wanim[i], &cur);
         win_sig_t *old = &g_win_sig[i];
+        uint32_t old_id = old->id;
         if (cur.id != old->id || cur.visible != old->visible || cur.focused != old->focused ||
             cur.minimized != old->minimized || cur.z != old->z || cur.phase != old->phase ||
             cur.mode != old->mode || cur.sidebar_open != old->sidebar_open || cur.pip != old->pip ||
@@ -1656,9 +1852,15 @@ static void frame_collect_damage(int had_input, int snapshot_drawn) {
             damage_window_frame(cur.x, cur.y, cur.w, cur.h);
         }
         *old = cur;
+        if (cur.id != old_id) {
+            g_view_redraw_at[i] = 0;            /* a new window in this slot */
+            g_view_refreshed_at[i] = now;
+        }
         if (cur.id && cur.visible && !cur.minimized && !nxserver_owns_window(cur.id)) {
             if (cur.mode == WIN_MODE_SIDEBAR && !cur.sidebar_open) continue;   /* a static tab */
-            damage_rect(cur.x, cur.y, cur.w, (int64_t)cur.h + WIN_TITLE_H);
+            if (view_redraw_due(i, now, g_damage.full)) {
+                damage_rect(cur.x, cur.y, cur.w, (int64_t)cur.h + WIN_TITLE_H);
+            }
         }
     }
 
@@ -1734,15 +1936,25 @@ static void frame_draw(int first_pass) {
     float dt = nxui_frame_dt();
     PF_MARK(PF_BG);
 
-    render_navigation_bar();
+    /* Below the windows: skipped where this pass cannot show them (pass
+     * culling above). Components without fixed bounds are skipped only
+     * when an opaque window covers the whole pass. */
+    int hidden = pass_skips_below_windows(pass_rect());
+    nxc_irect_t bar = nxc_irect(0, 0, (int32_t)g_desktop.width, (int32_t)nxui_theme()->menubar_height + 4);
+    if (!hidden && !pass_skips_below_windows(bar)) render_navigation_bar();
     PF_MARK(PF_NAV);
-    render_globe_clock_widget();
+    nxc_irect_t clock = nxc_irect(CLOCK_WIDGET_X - CLOCK_SHADOW_REACH, CLOCK_WIDGET_Y - CLOCK_SHADOW_REACH,
+                                  CLOCK_WIDGET_W + 2 * CLOCK_SHADOW_REACH, CLOCK_WIDGET_H + 2 * CLOCK_SHADOW_REACH);
+    if (!hidden && !pass_skips_below_windows(clock)) render_globe_clock_widget();
     PF_MARK(PF_CLOCK);
-    if (!anveshan_is_active()) render_search_bar();   /* active: drawn above windows */
-    render_desktop_icons();
+    if (!hidden) {
+        if (!anveshan_is_active()) render_search_bar();   /* active: drawn above windows */
+        render_desktop_icons();
+    }
     PF_MARK(PF_SEARCH);
 
-    /* Tile preview (below windows): sprung glass panel with accent tint */
+    /* Tile preview (below windows): sprung glass panel with accent tint.
+     * Always run: it steps its own animation. */
     render_tile_preview(frame, dt);
 
     /* Windows: Overview replaces the normal pass; Stage adds its strip
@@ -1750,7 +1962,7 @@ static void frame_draw(int first_pass) {
     if (overview_active()) {
         overview_render(frame);
     } else {
-        stage_render(frame);
+        stage_render(frame);                /* always: it also keeps its snapshots fresh */
         render_windows();
         stage_render_overlay(frame);
     }
@@ -1842,7 +2054,9 @@ static void frame_verify(uint64_t tick_no, int drew) {
     uint32_t *back = nxui_retarget(g_verify_px);
     if (!back) return;
     nxui_pass_begin(0, 0, (int32_t)w, (int32_t)h, 0);
+    g_cull_off = 1;                 /* the reference draws everything, the slow way */
     frame_draw(0);
+    g_cull_off = 0;
     nxui_retarget(back);
     int motion_verify = nxui_motion_take();
     if (motion_before) nxui_motion_note();
@@ -1859,18 +2073,16 @@ static void frame_verify(uint64_t tick_no, int drew) {
             if (a[x] == b[x]) continue;
             if ((int32_t)x >= cur.x && (int32_t)x < cur.x + cur.w && (int32_t)y >= cur.y && (int32_t)y < cur.y + cur.h)
                 continue;
+            /* Attribute the pixel to the topmost window whose frame holds it */
             int in_window = 0;
-            for (int i = 0; i < MAX_WINDOWS && !in_window; i++) {
-                desktop_window_t *cw = &g_windows[i];
-                if (!cw->id || !cw->visible || cw->minimized) continue;
-                if (nxserver_owns_window(cw->id)) {
-                    if ((int32_t)x >= cw->x && (int32_t)x < cw->x + (int32_t)cw->width &&
-                        (int32_t)y >= cw->y + WIN_TITLE_H && (int32_t)y < cw->y + WIN_TITLE_H + (int32_t)cw->height)
-                        in_window = 1;
-                } else if ((int32_t)x >= cw->x && (int32_t)x < cw->x + (int32_t)cw->width &&
-                           (int32_t)y >= cw->y && (int32_t)y < cw->y + WIN_TITLE_H + (int32_t)cw->height) {
-                    in_window = 2;
-                }
+            for (int k = g_zcount - 1; k >= 0 && !in_window; k--) {
+                desktop_window_t *cw = window_by_id(g_zorder[k]);
+                if (!cw || !cw->id || !cw->visible || cw->minimized) continue;
+                if ((int32_t)x < cw->x || (int32_t)x >= cw->x + (int32_t)cw->width ||
+                    (int32_t)y < cw->y || (int32_t)y >= cw->y + WIN_TITLE_H + (int32_t)cw->height) continue;
+                if (!nxserver_owns_window(cw->id)) in_window = 2;
+                else if ((int32_t)y >= cw->y + WIN_TITLE_H) in_window = 1;   /* client content */
+                else break;                                                  /* its title bar */
             }
             if (in_window == 1) { client_bad++; continue; }
             if (in_window == 2) { view_bad++; continue; }
@@ -1882,15 +2094,17 @@ static void frame_verify(uint64_t tick_no, int drew) {
         }
     }
     if (view_bad) {
-        /* Windows of the shell's own views are redrawn every tick, so a
-         * difference there is a view that draws differently the second
-         * time in one frame (e.g. it set its title while drawing), not
-         * missed damage. */
+        /* Windows of the shell's own views are redrawn when they ask and
+         * at least once a second, so a difference there is a view whose
+         * content changed without asking (shown within a second; add a
+         * desktop_window_redraw_in call if it should be sooner) or one
+         * that draws differently the second time in one frame (e.g. it
+         * set its title while drawing), not missed damage. */
         serial_puts("[DAMAGE] verify: tick ");
         serial_dec((int64_t)tick_no);
         serial_puts(": ");
         serial_dec((int64_t)view_bad);
-        serial_puts(" px differ inside a shell view window (redrawn every tick)\n");
+        serial_puts(" px differ inside a shell view window (redrawn on request)\n");
     }
     if (bad || client_bad) {
         g_fs.verify_bad_frames++;
@@ -1912,10 +2126,11 @@ static void frame_verify(uint64_t tick_no, int drew) {
 }
 #endif
 
-/* Log one line of frame statistics every FRAME_LOG_TICKS ticks. */
+/* Log one line of frame statistics every FRAME_LOG_TICKS ticks, or every
+ * FRAME_LOG_MS when slow frames stretch the ticks out. */
 static void frame_log(void) {
-    if (g_fs.ticks < FRAME_LOG_TICKS) return;
     uint64_t now = pit_get_ticks();
+    if (g_fs.ticks < FRAME_LOG_TICKS && now - g_fs.window_start < FRAME_LOG_MS) return;
     uint32_t drawn = g_fs.full + g_fs.partial;
     serial_puts("[DESKTOP] Frames: ");
     serial_dec(g_fs.ticks);

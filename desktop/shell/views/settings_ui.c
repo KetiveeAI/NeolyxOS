@@ -650,6 +650,14 @@ static int sui_thumb(nxc_rect_t *thumb) {
     return 1;
 }
 
+static uint32_t g_sui_redraw_ms = SUI_NO_REDRAW;
+
+uint32_t sui_take_redraw_ms(void) {
+    uint32_t ms = g_sui_redraw_ms;
+    g_sui_redraw_ms = SUI_NO_REDRAW;
+    return ms;
+}
+
 static void sui_run(sui_build_fn fn, sui_pass_t pass, nxc_canvas_t *c, sui_t *ui) {
     sui_begin(ui, pass, c, S.area);
     fn(ui);
@@ -682,6 +690,9 @@ void sui_pane_render(sui_build_fn fn, nxc_canvas_t *c, nxc_rect_t area) {
         if (near || S.sb_drag) S.sb_seen = nxui_time();
         float age = nxui_time() - S.sb_seen;
         float a = age < 0.9f ? 1.0f : (age < 1.3f ? (1.3f - age) / 0.4f : 0.0f);
+        /* Shown: redraw when the fade starts, then every tick until gone */
+        if (age < 0.9f) g_sui_redraw_ms = (uint32_t)((0.9f - age) * 1000.0f) + 1u;
+        else if (age < 1.3f) g_sui_redraw_ms = 0;
         if (a > 0.0f) {
             int hot = S.sb_drag || near;
             nxc_rect_t k = hot ? thumb : nxc_rect(thumb.x + 3.0f, thumb.y, thumb.w - 4.0f, thumb.h);

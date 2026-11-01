@@ -886,6 +886,8 @@ void fonts_view_render(desktop_window_t *win, void *ctx) {
     nxc_rect_t content = app_view_content_rect(win);
     fv_layout_t L = layout_for(win);
     desktop_set_window_place(win->id, g_fv.family[0] ? g_fv.family : NULL);
+    /* The sample field's caret blinks at 2 Hz while it has focus */
+    if (g_fv.focus == FOCUS_SAMPLE && win->focused) desktop_window_redraw_in(win->id, nxui_ms_to_next_step(2.0f));
     nxc_save(c);
     nxc_translate(c, content.x, content.y);
     draw_sidebar(c, &L);

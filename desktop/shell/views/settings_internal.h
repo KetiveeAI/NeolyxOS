@@ -121,6 +121,10 @@ void sui_pane_render(sui_build_fn fn, nxc_canvas_t *c, nxc_rect_t area);
 int  sui_pane_mouse(sui_build_fn fn, int32_t lx, int32_t ly, uint8_t b, uint8_t pb);
 int  sui_pane_key(sui_build_fn fn, uint8_t sc, uint8_t pressed, char ascii);
 int  sui_pane_scroll(int32_t lx, int32_t ly, int32_t notches);   /* scroll wheel */
+/* Milliseconds until the last drawn pane changes by itself (the overlay
+ * scrollbar fading out), or SUI_NO_REDRAW; clears it. */
+#define SUI_NO_REDRAW 0xFFFFFFFFu
+uint32_t sui_take_redraw_ms(void);
 void sui_pane_reset(void);              /* scroll to top, clear interaction */
 float sui_scroll_offset(void);          /* current scroll (px) of the visible sui pane */
 void sui_pointer_left(void);            /* pointer moved out of the pane: drop hover */
