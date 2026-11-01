@@ -1,7 +1,10 @@
 #!/bin/bash
 # NeolyxOS Full Build Script
 # Rebuilds desktop ELF, generates header, and rebuilds kernel
-# Usage: ./build_all.sh [clean]
+# Usage: ./build_all.sh [clean] [--werror]
+#   clean     clean the desktop and kernel first
+#   --werror  build every C file with the flags GCC 15 treats as errors
+#             (what CI and the owner's machine use); also NX_WERROR=1
 
 set -e
 
@@ -13,8 +16,26 @@ echo "     NeolyxOS Full Build"
 echo "========================================"
 echo ""
 
+DO_CLEAN=0
+WERROR="${NX_WERROR:-0}"
+for arg in "$@"; do
+    case "$arg" in
+        clean)    DO_CLEAN=1 ;;
+        --werror) WERROR=1 ;;
+        *)        echo "ERROR: unknown argument '$arg' (usage: ./build_all.sh [clean] [--werror])"; exit 2 ;;
+    esac
+done
+
+# GCC 15 makes these errors by default; GCC 13/14 only warn. Passing them
+# through CC keeps every Makefile unchanged.
+MAKE_CC=()
+if [ "$WERROR" = "1" ]; then
+    MAKE_CC=(CC="gcc -Werror=implicit-function-declaration -Werror=implicit-int -Werror=int-conversion -Werror=incompatible-pointer-types")
+    echo "Building with the GCC 15 error flags (--werror)"
+fi
+
 # Optional clean
-if [ "$1" = "clean" ]; then
+if [ "$DO_CLEAN" = "1" ]; then
     echo "[1/5] Cleaning..."
     (cd desktop && make clean 2>/dev/null || true)
     (cd kernel && make clean 2>/dev/null || true)
@@ -24,7 +45,7 @@ fi
 echo "[1/5] Building desktop..."
 cd desktop
 make clean >/dev/null 2>&1 || true
-make 2>&1 | grep -E "(error|Built|warning:.*error)" || true
+make "${MAKE_CC[@]}" 2>&1 | grep -E "(error:|\*\*\*|^Built)" || true
 if [ ! -f bin/neolyx-desktop ]; then
     echo "ERROR: Desktop build failed!"
     exit 1
@@ -57,7 +78,7 @@ BOOT_FALLBACK=$(mktemp)
 [ -f BOOTX64.EFI ] && cp -p BOOTX64.EFI "$BOOT_FALLBACK"
 if [ -f /usr/include/efi/efi.h ]; then
     rm -f ./*.o ./*.so
-    if make >/dev/null 2>&1 && [ -s BOOTX64.EFI ] && [ BOOTX64.EFI -nt main.c ]; then
+    if make "${MAKE_CC[@]}" >/dev/null 2>&1 && [ -s BOOTX64.EFI ] && [ BOOTX64.EFI -nt main.c ]; then
         echo "      Bootloader built: boot/BOOTX64.EFI"
     elif [ -s "$BOOT_FALLBACK" ]; then
         cp -p "$BOOT_FALLBACK" BOOTX64.EFI
@@ -82,7 +103,7 @@ cd ../kernel
 rm -f main.o kernel.bin 2>/dev/null || true
 # -B: object files are committed to git, so their timestamps cannot be
 # trusted after a checkout; always rebuild every kernel object.
-make -B 2>&1 | grep -E "(error|kernel.bin|warning:.*error)" | head -10 || true
+make -B "${MAKE_CC[@]}" 2>&1 | grep -E "(error:|\*\*\*|^objcopy .*kernel\.bin)" | awk 'NR <= 20' || true
 if [ ! -f kernel.bin ]; then
     echo "ERROR: Kernel build failed!"
     exit 1
@@ -98,15 +119,25 @@ echo "      Kernel built: kernel.bin"
 
 cd ..
 
-# Step 4b: Build user programs installed on the boot disk (/apps)
-echo "[4b] Building user programs..."
-for prog in ticker fdtest shmtest ipc_test fbtest wintest nxwtest nxuitest memstress cpuhog classtest nettest; do
-    make -C tests/userland/$prog >/dev/null
-    if [ ! -f tests/userland/$prog/$prog ]; then
-        echo "ERROR: $prog build failed!"
+# Step 4b: Build the programs installed on the boot image.
+# The list is config/image-apps.list; add programs there, not here.
+echo "[4b] Building user programs (config/image-apps.list)..."
+# shellcheck source=scripts/lib/image_apps.sh
+. "$SCRIPT_DIR/scripts/lib/image_apps.sh"
+if ! image_apps_load "$SCRIPT_DIR"; then
+    echo "ERROR: config/image-apps.list is invalid"
+    exit 1
+fi
+for i in "${!IMAGE_APP_DESTS[@]}"; do
+    dir="${IMAGE_APP_DIRS[$i]}"
+    file="${IMAGE_APP_FILES[$i]}"
+    # -B: object files are committed for some programs, so their
+    # timestamps cannot be trusted after a checkout.
+    if ! make -B -C "$dir" "${MAKE_CC[@]}" >/dev/null || [ ! -f "$dir/$file" ]; then
+        echo "ERROR: $dir/$file build failed! (run 'make -C $dir' for details)"
         exit 1
     fi
-    echo "      Built tests/userland/$prog/$prog"
+    echo "      Built $dir/$file"
 done
 
 # Step 5: Update boot image
@@ -121,8 +152,14 @@ if mcopy -i neolyx.img -o kernel/kernel.bin ::/EFI/BOOT/kernel.bin 2>/dev/null; 
     if ! mdir -i neolyx.img ::/apps >/dev/null 2>&1; then
         mmd -i neolyx.img ::/apps || { echo "ERROR: cannot create /apps in neolyx.img"; exit 1; }
     fi
-    for prog in ticker fdtest shmtest ipc_test fbtest wintest nxwtest nxuitest memstress cpuhog classtest nettest; do
-        mcopy -i neolyx.img -o tests/userland/$prog/$prog ::/apps/$prog && echo "      Installed /apps/$prog"
+    for i in "${!IMAGE_APP_DESTS[@]}"; do
+        src="${IMAGE_APP_DIRS[$i]}/${IMAGE_APP_FILES[$i]}"
+        dest="${IMAGE_APP_DESTS[$i]}"
+        if ! image_apps_mkdirs neolyx.img "$dest" || ! mcopy -i neolyx.img -o "$src" "::$dest"; then
+            echo "ERROR: cannot install $src as $dest in neolyx.img"
+            exit 1
+        fi
+        echo "      Installed $dest"
     done
 else
     echo "      mcopy failed - run ./rebuild_image.sh to fix image"

@@ -1,0 +1,120 @@
+# NeolyxOS CI: runs on every pull request to main and every push to main.
+#
+#   registry    syscall numbers match docs/kernel/syscall-registry.md
+#   build       kernel, desktop, loader and image programs with the GCC 15
+#               error flags (-Werror=implicit-function-declaration, ...),
+#               then the boot image; uploads the image for the smoke job
+#   host-tests  every test in tests/host, built with the same flags
+#   qemu-smoke  boots the image in QEMU (OVMF), waits for the desktop and
+#               runs fdtest and wintest from the app drawer
+#
+# Every step calls a script in the repository, so a failure can be
+# reproduced locally with the same command. Owner: stream S10.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  registry:
+    name: Syscall registry
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check syscall numbers against the registry
+        run: scripts/check_syscall_registry.sh
+
+  build:
+    name: Build (GCC 15 error flags)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gnu-efi mtools dosfstools xxd
+      - name: Build everything
+        run: ./build_all.sh --werror
+      - name: Build the boot image
+        run: ./rebuild_image.sh
+      - name: Check that the loader built from source
+        run: |
+          # build_all.sh falls back to the committed loader when the build
+          # fails; CI must not hide that.
+          make -C boot CC="gcc -Werror=implicit-function-declaration -Werror=implicit-int -Werror=int-conversion -Werror=incompatible-pointer-types"
+      - name: Upload the boot image
+        uses: actions/upload-artifact@v4
+        with:
+          name: neolyx-img
+          path: neolyx.img
+          retention-days: 7
+
+  host-tests:
+    name: Host tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run tests/host
+        run: scripts/run_host_tests.sh --werror --out build/host-tests
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-test-logs
+          path: build/host-tests/*.log
+          retention-days: 7
+
+  qemu-smoke:
+    name: QEMU boot smoke
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install QEMU and OVMF
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf mtools netcat-openbsd
+      - name: Allow KVM when the runner has it
+        run: |
+          if [ -e /dev/kvm ]; then
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+              | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+          else
+            echo "No /dev/kvm: QEMU runs with TCG (slower)"
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          name: neolyx-img
+      - name: Boot to the desktop and run fdtest and wintest
+        run: |
+          scripts/qemu_run.sh --image neolyx.img --cpus 2 --mem 2G \
+            --boot-timeout 420 --run fdtest --run wintest:300 \
+            --screenshot --out build/qemu-smoke
+      - name: Show the summary
+        if: always()
+        run: cat build/qemu-smoke/summary.txt 2>/dev/null || true
+      - name: Keep the serial log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-smoke
+          path: build/qemu-smoke/
+          retention-days: 14
