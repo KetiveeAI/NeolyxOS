@@ -258,6 +258,11 @@ int nxrelay_stat(const char *path, nxrelay_kind_t *kind, uint64_t *size) {
     relay_kstat_t st;
     r_zero(&st, sizeof(st));
     int64_t k = syscall2(RELAY_SYS_STAT, (int64_t)(uintptr_t)canon, (int64_t)(uintptr_t)&st);
+    /* SYS_STAT answers -EFAULT for a bad pointer and -ENOENT (-2) for every
+     * failed lookup. -2 is also the VFS "permission" code that
+     * map_kernel_err expects from other calls, so map it here: a missing
+     * item must read as "not found", not "denied". */
+    if (k == -2) return NXRELAY_ERR_NOT_FOUND;
     if (k != 0) return map_kernel_err(k);
     if (kind) *kind = (st.st_mode & 0170000u) == 0040000u ? NXRELAY_KIND_FOLDER : NXRELAY_KIND_FILE;
     if (size) *size = st.st_size;

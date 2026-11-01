@@ -241,6 +241,13 @@ int desktop_activate_window(uint32_t window_id);
 /* Animated close, as the close button does. Returns 0, or -1 if unknown. */
 int desktop_close_window(uint32_t window_id);
 
+/* ============ Keyboard ============ */
+
+/* The character the input driver decoded for the key being dispatched
+ * right now (Shift and Caps Lock applied), or 0 for keys without one.
+ * Only meaningful inside a key handler. */
+char desktop_key_ascii(void);
+
 /* ============ Display ============ */
 
 /* Night Mode warmth 0 (off) .. 1 (full). Values are clamped. */

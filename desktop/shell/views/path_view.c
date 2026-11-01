@@ -7,8 +7,8 @@
  * location, and a list of the folder's items (folders first).
  *
  *   click            select an item or a sidebar place
- *   double-click     open a folder
- *   Return           open the selected folder
+ *   double-click     open a folder (text files open in Notes)
+ *   Return           open the selected folder or text file
  *   Backspace        enclosing folder
  *   Up / Down        move the selection
  *   F5               reload from the system
@@ -144,12 +144,32 @@ static void pv_up(void) {
     if (nxrelay_parent(P.path, parent, (int)sizeof(parent)) == NXRELAY_OK) pv_go(parent, 1);
 }
 
+/* Plain-text files Notes can edit. */
+static int pv_is_text(const char *name) {
+    const char *dot = 0;
+    for (const char *s = name; *s; s++) if (*s == '.') dot = s;
+    if (!dot || dot == name) return 0;
+    static const char *const ext[] = { ".txt", ".md" };
+    for (unsigned i = 0; i < sizeof(ext) / sizeof(ext[0]); i++) {
+        const char *a = dot, *b = ext[i];
+        while (*a && *b && (*a == *b || (*a >= 'A' && *a <= 'Z' && *a + 32 == *b))) { a++; b++; }
+        if (!*a && !*b) return 1;
+    }
+    return 0;
+}
+
 static void pv_open_selected(void) {
     const nxrelay_listing_t *l = pv_listing();
     if (P.selected < 0 || (uint32_t)P.selected >= l->count) return;
     const nxrelay_entry_t *e = &l->entries[P.selected];
-    if (e->kind != NXRELAY_KIND_FOLDER) return;   /* files open in apps once a launcher exists */
     char next[NXRELAY_PATH_MAX];
+    if (e->kind == NXRELAY_KIND_FILE && pv_is_text(e->name)) {
+        /* Text files open in Notes */
+        if (nxrelay_join(P.path, e->name, next, (int)sizeof(next)) != NXRELAY_OK || notes_view_open_file(next) != 0)
+            pv_log("could not open in Notes:", P.path);
+        return;
+    }
+    if (e->kind != NXRELAY_KIND_FOLDER) return;   /* other files open in apps once a launcher exists */
     if (nxrelay_join(P.path, e->name, next, (int)sizeof(next)) == NXRELAY_OK) pv_go(next, 1);
     else pv_log("cannot open item in", P.path);
 }
