@@ -339,7 +339,7 @@ static void canvas_sink(void *ctx, int32_t y, int32_t x0, const uint8_t *cov, in
     while (n > 0) {
         int32_t len = (int32_t)(cap < (uint64_t)n ? cap : (uint64_t)n);
         for (int32_t i = 0; i < len; i++) tmp[i] = cs->lut[cov[i]];
-        nxc__span_cov(cs->c, y, x0, tmp, len, cs->premul);
+        nxc__span_cov_gamma(cs->c, y, x0, tmp, len, cs->premul);
         x0 += len; cov += len; n -= len;
     }
 }
@@ -582,7 +582,7 @@ static void blit_entry(nxc_canvas_t *c, const nxt_entry_t *e, int32_t dx, int32_
         const uint8_t *src = bm + (int64_t)row * w;
         uint32_t any = 0;
         for (int32_t i = 0; i < len_px; i++) { tmp[i] = lut[src[i]]; any |= tmp[i]; }
-        if (any) nxc__span_cov(c, dy + row, dx, tmp, len_px, premul);
+        if (any) nxc__span_cov_gamma(c, dy + row, dx, tmp, len_px, premul);
     }
 }
 

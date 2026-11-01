@@ -650,7 +650,7 @@ static void fx_shadow_ramp(nxc_canvas_t *c, const fx_axis_t *ax, const uint32_t 
     while (p0 < p1) {
         int32_t n = nxc__mini(cap, p1 - p0);
         fx_eval_span(ax, br, p0, n, cov);
-        nxc__span_cov(c, py, p0, cov, n, premul);
+        nxc__span_cov_gamma(c, py, p0, cov, n, premul);
         p0 += n;
     }
 }
@@ -686,7 +686,7 @@ static void fx_shadow_paint(nxc_canvas_t *c, const uint8_t *mask, const fx_shado
             uint32_t pc = (br[ax->tmax] + 128u) >> 8;
             fx_shadow_ramp(c, ax, br, py, x0, nxc__mini(ax->pa, x1), premul, cov, cov_cap);
             if (pc) {
-                nxc__span_solid(c, py, nxc__maxi(ax->pa, x0), nxc__mini(ax->pb, x1), premul, pc);
+                nxc__span_solid_gamma(c, py, nxc__maxi(ax->pa, x0), nxc__mini(ax->pb, x1), premul, pc);
             }
             fx_shadow_ramp(c, ax, br, py, nxc__maxi(ax->pb, x0), x1, premul, cov, cov_cap);
         } else {
