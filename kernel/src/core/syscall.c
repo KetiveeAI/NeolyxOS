@@ -371,47 +371,82 @@ int64_t sys_brk_impl(uint64_t addr, uint64_t a2, uint64_t a3, uint64_t a4, uint6
 
 /* File I/O */
 
-static vfs_file_t *fd_table[16] = {NULL};
+/*
+ * File descriptors are per process: each PCB owns fd_table[PROCESS_FD_MAX]
+ * (see process.h). Two processes never see each other's descriptors, and
+ * terminate() closes whatever a process leaves open. Descriptors survive
+ * exec (the PCB is kept); spawn starts a child with an empty table.
+ */
+
+/* Descriptor table of the calling process, or NULL outside a process */
+static vfs_file_t **fd_slots(void) {
+    process_t *proc = process_current();
+    if (!proc) return NULL;
+    return (vfs_file_t **)proc->fd_table;
+}
+
+/* Open file behind fd for the calling process, or NULL if fd is not open */
+static vfs_file_t *fd_lookup(uint64_t fd) {
+    vfs_file_t **slots = fd_slots();
+    if (!slots || fd >= PROCESS_FD_MAX) return NULL;
+    return slots[fd];
+}
 
 int64_t sys_open_impl(uint64_t path_ptr, uint64_t flags, uint64_t mode, uint64_t a4, uint64_t a5) {
     (void)mode; (void)a4; (void)a5;
+    
+    vfs_file_t **slots = fd_slots();
+    if (!slots) {
+        serial_puts("[FD] ERROR: open outside a process\n");
+        return -EPERM;
+    }
     
     char path[256];
     if (syscall_strncpy_from_user(path, (const char *)path_ptr, 256) < 0) {
         return -EFAULT;
     }
     
+    /* Reserve the slot first so a full table never opens (or creates) a file */
+    int fd = -1;
+    for (int i = 0; i < PROCESS_FD_MAX; i++) {
+        if (slots[i] == NULL) {
+            fd = i;
+            break;
+        }
+    }
+    if (fd < 0) {
+        process_t *proc = process_current();
+        serial_puts("[FD] PID ");
+        serial_dec(proc ? proc->pid : 0);
+        serial_puts(": descriptor table full\n");
+        return -EMFILE;
+    }
+    
     vfs_file_t *file = vfs_open(path, (uint32_t)flags);
     if (!file) return -ENOENT;
     
-    /* Find free fd */
-    for (int fd = 0; fd < 16; fd++) {
-        if (fd_table[fd] == NULL) {
-            fd_table[fd] = file;
-            return fd;
-        }
-    }
-    
-    vfs_close(file);
-    return -EMFILE;
+    slots[fd] = file;
+    return fd;
 }
 
 int64_t sys_close_impl(uint64_t fd, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
     (void)a2; (void)a3; (void)a4; (void)a5;
     
-    if (fd >= 16 || fd_table[fd] == NULL) {
+    vfs_file_t *file = fd_lookup(fd);
+    if (!file) {
         return -EBADF;
     }
     
-    vfs_close(fd_table[fd]);
-    fd_table[fd] = NULL;
+    fd_slots()[fd] = NULL;
+    vfs_close(file);
     return 0;
 }
 
 int64_t sys_read_impl(uint64_t fd, uint64_t buf_ptr, uint64_t count, uint64_t a4, uint64_t a5) {
     (void)a4; (void)a5;
     
-    if (fd >= 16 || fd_table[fd] == NULL) {
+    vfs_file_t *file = fd_lookup(fd);
+    if (!file) {
         return -EBADF;
     }
     
@@ -419,13 +454,14 @@ int64_t sys_read_impl(uint64_t fd, uint64_t buf_ptr, uint64_t count, uint64_t a4
         return -EFAULT;
     }
     
-    return vfs_read(fd_table[fd], (void *)buf_ptr, count);
+    return vfs_read(file, (void *)buf_ptr, count);
 }
 
 int64_t sys_write_impl(uint64_t fd, uint64_t buf_ptr, uint64_t count, uint64_t a4, uint64_t a5) {
     (void)a4; (void)a5;
     
-    if (fd >= 16 || fd_table[fd] == NULL) {
+    vfs_file_t *file = fd_lookup(fd);
+    if (!file) {
         return -EBADF;
     }
     
@@ -433,17 +469,18 @@ int64_t sys_write_impl(uint64_t fd, uint64_t buf_ptr, uint64_t count, uint64_t a
         return -EFAULT;
     }
     
-    return vfs_write(fd_table[fd], (void *)buf_ptr, count);
+    return vfs_write(file, (void *)buf_ptr, count);
 }
 
 int64_t sys_seek_impl(uint64_t fd, uint64_t offset, uint64_t whence, uint64_t a4, uint64_t a5) {
     (void)a4; (void)a5;
     
-    if (fd >= 16 || fd_table[fd] == NULL) {
+    vfs_file_t *file = fd_lookup(fd);
+    if (!file) {
         return -EBADF;
     }
     
-    return vfs_seek(fd_table[fd], (int64_t)offset, (int)whence);
+    return vfs_seek(file, (int64_t)offset, (int)whence);
 }
 
 /* Current working directory (global for now, TODO: per-process) */

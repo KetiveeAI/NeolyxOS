@@ -100,12 +100,14 @@ cd ..
 
 # Step 4b: Build user programs installed on the boot disk (/apps)
 echo "[4b] Building user programs..."
-make -C tests/userland/ticker >/dev/null
-if [ ! -f tests/userland/ticker/ticker ]; then
-    echo "ERROR: ticker build failed!"
-    exit 1
-fi
-echo "      Built tests/userland/ticker/ticker"
+for prog in ticker fdtest; do
+    make -C tests/userland/$prog >/dev/null
+    if [ ! -f tests/userland/$prog/$prog ]; then
+        echo "ERROR: $prog build failed!"
+        exit 1
+    fi
+    echo "      Built tests/userland/$prog/$prog"
+done
 
 # Step 5: Update boot image
 echo "[5/5] Updating boot image..."
@@ -115,7 +117,9 @@ if mcopy -i neolyx.img -o kernel/kernel.bin ::/EFI/BOOT/kernel.bin 2>/dev/null; 
     mcopy -i neolyx.img -o boot/BOOTX64.EFI ::/EFI/BOOT/BOOTX64.EFI
     echo "      Boot image updated (kernel.bin, desktop.elf, BOOTX64.EFI)"
     mmd -i neolyx.img ::/apps 2>/dev/null || true
-    mcopy -i neolyx.img -o tests/userland/ticker/ticker ::/apps/ticker && echo "      Installed /apps/ticker"
+    for prog in ticker fdtest; do
+        mcopy -i neolyx.img -o tests/userland/$prog/$prog ::/apps/$prog && echo "      Installed /apps/$prog"
+    done
 else
     echo "      mcopy failed - run ./rebuild_image.sh to fix image"
 fi
