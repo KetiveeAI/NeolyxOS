@@ -1,7 +1,14 @@
 # Proposal: kernel syscalls for desktop networking
 
-Status: **proposal, not implemented**. Owner: Networking area (desktop).
+Status: `net.if_list` is implemented (syscall 133, ABI 1.4). The rest of
+this page is a **proposal, not implemented**. Owner: Networking stream (N).
 Kernel changes need approval from the kernel owner before work starts.
+
+For the public beta, stream N owns syscalls 48-49 and 133-139 and ABI flag
+0x0020 (`docs/kernel/syscall-registry.md`). The numbers 140-147 in the
+draft table below predate that registry and are not allocated. The beta
+batch proposal is the last section, "Beta ABI batch: socket semantics and
+DNS resolve".
 
 ## Why
 
@@ -187,3 +194,227 @@ should call `abi.query` (syscall 0) and check a capability flag (for
 example `NX_CAP_NET_INFO` in `nx_abi_info_t.flags`) before it calls
 `net.if_list`. It must not issue an unallocated syscall number on an
 older kernel.
+
+## Beta ABI batch: socket semantics and DNS resolve
+
+Status: **proposal for the Beta ABI batch (owner decision D2, 2026-11-06)**.
+Stream N, for stream S6 (TLS and HTTP) and S4 (nxlibc). Nothing in this
+section is implemented yet.
+
+S6 needs three things from the kernel to fetch `https://host/path`: turn a
+host name into an address, open TCP with known timeouts, and tell a refused
+connection from a reset or a timeout. Today the socket calls (40-47) work
+(see `docs/network/wired-networking.md`), but:
+
+- their timeouts are fixed constants in `kernel/src/net/tcpip.c`;
+- a refused connect and a reset both return `-EIO`, and "no address yet"
+  returns `-ENXIO`;
+- `recv` never blocks, so a client must spin on `-EAGAIN`;
+- there is no DNS call from userspace (`dns_resolve()` is kernel-only);
+- the address struct lives in `kernel/include/net/tcpip.h`, which userspace
+  does not include.
+
+### What this batch adds
+
+| No. | Name | Args | Privilege | Purpose |
+|---|---|---|---|---|
+| 48 | `sock.setopt` | 3 | PRIV_USER | Set a per-socket timeout or flag |
+| 49 | `sock.poll` | 3 | PRIV_USER | Wait until one of several sockets is ready, with a timeout |
+| 134 | `net.resolve` | 5 | PRIV_USER | Host name to IPv4 addresses, through the DHCP-provided DNS servers |
+
+135-139 stay free for later network calls. Capability: the existing
+`NX_ABI_FLAG_NET` (0x0020). See "Detection" below.
+
+### New public header: `kernel/include/core/nx_sock.h`
+
+Userspace builds include `kernel/include/core` only, so the shared types
+move there. The kernel's `sockaddr_in_t` becomes a typedef of the public
+struct, and a `_Static_assert` keeps both at 16 bytes.
+
+```c
+#define NX_AF_INET        2
+#define NX_SOCK_STREAM    1      /* TCP */
+#define NX_SOCK_DGRAM     2      /* UDP */
+
+typedef struct {
+    uint16_t family;             /* NX_AF_INET */
+    uint16_t port;               /* network byte order */
+    uint8_t  addr[4];            /* network byte order */
+    uint8_t  zero[8];            /* must be zero */
+} nx_sockaddr_in_t;              /* 16 bytes, same layout as today */
+
+/* sock.setopt names. Values are uint32_t passed by value. */
+#define NX_SO_CONNECT_TIMEOUT_MS  1   /* default 16000, range 1..120000 */
+#define NX_SO_SEND_TIMEOUT_MS     2   /* default 5000,  range 0..120000 */
+#define NX_SO_RECV_TIMEOUT_MS     3   /* default 0 (never block), range 0..120000 */
+
+/* sock.poll */
+#define NX_POLL_IN    0x0001     /* data, end of stream, or an error to read */
+#define NX_POLL_OUT   0x0002     /* connected and send buffer has room */
+#define NX_POLL_ERR   0x0004     /* reset, refused, or timed out (revents only) */
+#define NX_POLL_HUP   0x0008     /* peer closed its side (revents only) */
+#define NX_POLL_MAX   16
+
+typedef struct {
+    int32_t  fd;
+    uint16_t events;             /* NX_POLL_IN | NX_POLL_OUT */
+    uint16_t revents;            /* written by the kernel */
+} nx_sock_pollfd_t;              /* 8 bytes */
+
+/* net.resolve */
+#define NX_RESOLVE_MAX_NAME     253
+#define NX_RESOLVE_MAX_ADDRS    8
+#define NX_RESOLVE_TIMEOUT_MAX  30000
+```
+
+### New error codes (`kernel/include/core/syscall.h`)
+
+The socket calls keep using negative error codes. These are new, numbered
+next to the existing `ETIMEDOUT` (110). nxlibc's `errno.h` (S4) must use the
+same values, and S3 should not reuse these numbers. nxlibc already has them
+(checked with S4). nxlibc also uses `EDOM` 33, `EOVERFLOW` 75 and `EILSEQ` 84
+for library-only errors, so the kernel keeps those numbers free:
+
+| Code | Value | Returned when |
+|---|---|---|
+| `EADDRINUSE` | 98 | `bind` to a port another socket holds |
+| `ENETUNREACH` | 101 | no interface has an address, or there is no route |
+| `ECONNRESET` | 104 | the peer sent RST on an open connection |
+| `EISCONN` | 106 | `connect` on a socket that is already connected |
+| `ENOTCONN` | 107 | `send` or `recv` on a TCP socket that never connected |
+| `ECONNREFUSED` | 111 | the peer answered the SYN with RST |
+| `EHOSTUNREACH` | 113 | ARP got no answer for the next hop |
+
+### Socket semantics after the batch
+
+Numbers and arguments of 40-47 do not change. Defaults stay as they are
+today, so existing programs behave the same except for the error codes in
+the last column.
+
+| Call | Behaviour | Errors |
+|---|---|---|
+| `connect` (44) | Blocks until the handshake finishes or the connect timeout ends. | `-ECONNREFUSED` (was `-EIO`), `-ETIMEDOUT`, `-ENETUNREACH` (was `-ENXIO`), `-EHOSTUNREACH`, `-EISCONN`, `-EINVAL`, `-EFAULT`, `-EBADF` |
+| `send` (45) | Queues as much as fits, waiting up to the send timeout for room. Returns the bytes queued, which can be fewer than asked. A timeout of 0 never waits. | `-EAGAIN` (nothing queued), `-EPIPE` (we closed or the peer finished), `-ECONNRESET` (was `-EPIPE`), `-ENOTCONN` |
+| `recv` (46) | Returns what is buffered. With a receive timeout above 0, waits up to that long for the first byte. Returns 0 at end of stream. | `-EAGAIN` (timeout, or nothing and timeout 0), `-ECONNRESET` (was `-EIO`), `-ENOTCONN` |
+| `closesock` (47) | Unchanged: returns at once; the FIN handshake finishes in the background. | `-EBADF` |
+| `listen`, `accept` | Unchanged: `-ENOSYS`. Server-side TCP is not in the beta. | |
+
+**Buffers and end of stream** (today's behaviour, now part of the contract):
+
+- Each TCP socket has a 32 KB receive buffer (`TCP_RX_CAPACITY`) and a 16 KB
+  send buffer. The advertised window is the free space in the receive buffer,
+  at most 32 KB. There is no window scaling, and 32 KB fits in the 16-bit
+  window field. A full TLS record (16 KB + 256 bytes) always fits. The size
+  must not drop below 32 KB.
+- Bytes are delivered in order and never dropped at the socket. A FIN is
+  accepted only once every byte before it has arrived. `recv` returns all
+  buffered bytes first and returns 0 only when the buffer is empty and the
+  peer's FIN has been seen. A TLS `close_notify` sent just before FIN is
+  therefore always readable.
+- After a reset, `recv` still returns the bytes that arrived before it, then
+  `-ECONNRESET`. A program can tell a clean close (0) from a cut connection
+  (`-ECONNRESET`).
+
+Every wait (connect, send, recv, poll, resolve) sleeps through
+`network_wait()`, so `netd` keeps running and other processes are not
+blocked. A process that exits while waiting releases its sockets as it does
+today (`network_process_exit`).
+
+### `sock.setopt(fd, name, value)` (48)
+
+- `fd` must be a socket the caller owns, otherwise `-EBADF`.
+- `name` must be one of the `NX_SO_*` values and `value` must be in its
+  range, otherwise `-EINVAL`. Nothing is read from user memory.
+- Changing a timeout affects the next call, not one already waiting.
+- Options are per socket and reset when the socket is closed. There is no
+  get call: the program set the value, so it knows it.
+
+### `sock.poll(fds, count, timeout_ms)` (49)
+
+- `count` is 1 to `NX_POLL_MAX` (16), `timeout_ms` at most 120000, otherwise
+  `-EINVAL`. `fds` is checked for `count * 8` bytes, readable and writable,
+  otherwise `-EFAULT`.
+- Each entry's `revents` is written. A bad or foreign `fd` gets
+  `NX_POLL_ERR` in its own entry instead of failing the whole call, so one
+  closed socket does not hide the others.
+- Returns the number of entries with any `revents` bit set, or 0 when the
+  timeout ends first. A timeout of 0 checks once and returns.
+- It is a socket wait only. It does not cover files, pipes or IPC handles
+  (those have `obj.wait`).
+
+### `net.resolve(name, name_len, out, cap, timeout_ms)` (134)
+
+```c
+int64_t net.resolve(const char *name, uint32_t name_len,
+                    uint8_t (*out)[4], uint32_t cap, uint32_t timeout_ms);
+```
+
+- **Input checks.** `name_len` is 1 to 253 (a trailing dot is allowed and
+  dropped). Each label is 1 to 63 bytes of `A-Z a-z 0-9 -` and does not start
+  or end with `-`. `cap` is 1 to 8. `timeout_ms` is 1 to 30000. Any other
+  value gives `-EINVAL`. The kernel copies the name into its own buffer
+  before checking it. `name` and `out` are checked with
+  `syscall_validate_ptr`, otherwise `-EFAULT`.
+- **Result.** Copies up to `cap` IPv4 addresses (A records, in answer order)
+  into `out` and returns how many it copied, at least 1.
+- **Shortcuts.** A dotted-quad literal such as `10.0.2.2` is returned without
+  a query. `localhost` returns 127.0.0.1.
+- **Servers.** It asks the DHCP-provided servers in order, then any static
+  servers, with 2 tries each, sharing one `timeout_ms` budget.
+- **Errors.**
+  - `-ENETUNREACH`: no configured interface.
+  - `-ENOENT`: the name does not exist (NXDOMAIN) or has no A record.
+  - `-ETIMEDOUT`: no server answered in time.
+  - `-EIO`: every server failed (SERVFAIL, REFUSED, or a malformed reply).
+- **Cache.** The kernel keeps up to 32 answers, each for its record TTL,
+  clamped to at most 1 hour. Failures are not cached.
+- **Spoofing.** Each query uses a random transaction id (as today) and a
+  random source port. Today ephemeral ports start at a random point and then
+  go up one at a time. This batch makes every ephemeral port random, for both
+  UDP and TCP `connect`, with no internal ABI change. A reply must come from the server's address and port 53 and
+  repeat the question. There is no DNSSEC in the beta. For HTTPS this is
+  acceptable, because a forged address fails S6's certificate check instead
+  of reaching the user's data.
+- **Logging.** One serial line per lookup with the name and the result or
+  error, as `dns_resolve()` logs today.
+
+### Detection
+
+Programs check `NX_ABI_FLAG_NET` (0x0020) in `abi.query`, as the plan
+requires, never the minor version. Today's main sets that flag with
+`net.if_list` only. Proposal: from the batch on, the flag means
+`net.if_list`, `net.resolve`, `sock.setopt`, `sock.poll` and the new error
+codes together. This spends no new flag bit. No kernel outside the tree has
+shipped with the flag, so the redefinition breaks nothing. Until the batch
+merges, in-tree callers must treat `-ENOSYS` from 48, 49 and 134 as "not
+available". The dispatcher (`nx_syscall_dispatch`) already returns `-ENOSYS`
+for numbers that have no handler.
+
+### Tests (QEMU)
+
+`tests/userland/nettest` gains these checks:
+
+- **Resolve inputs:** empty, too long, bad label, `cap` 0 and an unmapped
+  pointer each get the documented error.
+- **Resolve answers:** a literal and `localhost` return without a query. A
+  real name returns at least one address, or `-ETIMEDOUT` or `-ENOENT` on a
+  network without DNS.
+- **Socket errors:** connect to a closed port on the host (10.0.2.2) gets
+  `-ECONNREFUSED`. Connect to an unused address on the subnet gets
+  `-EHOSTUNREACH`.
+- **Timeouts:** `recv` with a 500 ms timeout on an idle connection returns
+  `-EAGAIN` after 450 to 700 ms.
+- **Poll:** returns `NX_POLL_IN` when data arrives from the host, and gives
+  `NX_POLL_ERR` for one bad `fd` in a set of two without failing the call.
+
+### Out of scope for the beta
+
+The following are not in the beta:
+
+- Non-blocking connect (`-EINPROGRESS`).
+- Server-side TCP (`listen`, `accept`).
+- `sendto` and `recvfrom` syscalls.
+- IPv6 and AAAA records.
+- A per-process DNS cache or `hosts` file.
+- `net.if_config`, hostname and Wi-Fi calls from the draft table above. Those
+  go to the second batch (around 2026-11-24) if the desktop needs them.
