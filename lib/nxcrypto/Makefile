@@ -18,7 +18,8 @@ AR      ?= ar
 HOSTCC  ?= gcc
 
 SRCS = src/util.c src/sha256.c src/sha512.c src/hash.c src/hmac.c \
-       src/fe25519.c src/x25519.c src/ed25519.c
+       src/fe25519.c src/x25519.c src/ed25519.c \
+       src/chacha20.c src/poly1305.c src/chachapoly.c src/aes.c src/gcm.c
 
 STRICT  = -Werror=implicit-function-declaration -Werror=implicit-int \
           -Werror=int-conversion -Werror=incompatible-pointer-types
@@ -34,7 +35,7 @@ OBJS    = $(SRCS:src/%.c=$(OBJDIR)/%.o)
 LIB     = $(OBJDIR)/libnxcrypto.a
 
 TESTDIR = ../../tests/host
-TESTS   = crypto_sha2_test crypto_curve25519_test
+TESTS   = crypto_sha2_test crypto_curve25519_test crypto_aead_test
 
 .PHONY: all test clean vectors ct-test
 

@@ -72,6 +72,19 @@ static inline uint8_t *hex_decode(const char *hex, size_t *out_len) {
     return b;
 }
 
+/* Value that is either hex or a "quoted ASCII string" (BoringSSL style). */
+static inline uint8_t *val_decode(const char *v, size_t *out_len) {
+    size_t n = strlen(v);
+    if (n >= 2 && v[0] == '"' && v[n - 1] == '"') {
+        uint8_t *b = malloc(n);
+        if (!b) { perror("malloc"); exit(2); }
+        memcpy(b, v + 1, n - 2);
+        *out_len = n - 2;
+        return b;
+    }
+    return hex_decode(v, out_len);
+}
+
 /* Decode into a fixed buffer; returns 0 on success. */
 static inline int hex_fixed(const char *hex, uint8_t *out, size_t want) {
     size_t n = 0;
@@ -115,7 +128,7 @@ static inline char *vec_read_file(const char *dir, const char *rel) {
 
 /*
  * Iterate "Name = value" lines. For each one calls cb(ctx, name, value),
- * with both trimmed. "[...]" section lines call cb(ctx, "[", inner).
+ * with both trimmed. A line with no "=" calls cb(ctx, line, ""). "[...]" section lines call cb(ctx, "[", inner).
  * Comment (#) and blank lines call cb(ctx, "", "") so a test can close a
  * record at a blank line. The buffer is modified in place.
  */
@@ -145,6 +158,8 @@ static inline void vec_parse(char *text, vec_cb cb, void *ctx) {
             if (eq) {
                 *eq = 0;
                 cb(ctx, trim(t), trim(eq + 1));
+            } else {
+                cb(ctx, t, "");     /* bare token, e.g. CAVP "FAIL" */
             }
         }
         line = nl ? nl + 1 : NULL;
