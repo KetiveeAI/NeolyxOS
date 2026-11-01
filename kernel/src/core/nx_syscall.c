@@ -38,6 +38,11 @@ extern uint64_t g_framebuffer_addr;     /* video/framebuffer.c */
 #include "core/syscall_table.def"
 #undef NX_SYSCALL
 
+/* syscall.h's SYS_MAX and the dispatch table size must agree, so a number
+ * allocated in docs/kernel/syscall-registry.md fits both. */
+_Static_assert(SYS_MAX == NX_SYSCALL_MAX,
+               "SYS_MAX (syscall.h) must equal NX_SYSCALL_MAX (nx_abi.h)");
+
 /* Generate syscall table */
 #define NX_SYSCALL(num, name, handler, argc, priv, flags) \
     [num] = { handler, name, argc, priv, flags },

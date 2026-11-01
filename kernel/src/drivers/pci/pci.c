@@ -9,6 +9,10 @@
 #include "pci.h"
 #include "../../drivers/serial.h"
 
+/* Kernel identity map for MMIO above 4 GB (src/arch/x86_64/paging.c) */
+extern int paging_mmio_register(uint64_t phys, uint64_t size);
+extern int paging_mmio_is_mapped(uint64_t phys, uint64_t size);
+
 /* ============ PCI I/O Ports ============ */
 #define PCI_CONFIG_ADDR    0xCF8
 #define PCI_CONFIG_DATA    0xCFC
@@ -98,58 +102,133 @@ void pci_write_config8(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset, u
     pci_write_config32(bus, dev, func, offset & 0xFC, val);
 }
 
+/* ============ Logging Helpers ============ */
+
+static void pci_put_hex(uint64_t v, int digits) {
+    static const char hex[] = "0123456789ABCDEF";
+    for (int i = digits - 1; i >= 0; i--) {
+        serial_putc(hex[(v >> (i * 4)) & 0xF]);
+    }
+}
+
+static void pci_put_dec(uint64_t v) {
+    char buf[21];
+    int i = 0;
+    do { buf[i++] = (char)('0' + (v % 10)); v /= 10; } while (v && i < 20);
+    while (i > 0) serial_putc(buf[--i]);
+}
+
+static void pci_put_bdf(const pci_device_t *dev) {
+    pci_put_hex(dev->bus, 2);
+    serial_putc(':');
+    pci_put_hex(dev->device, 2);
+    serial_putc('.');
+    pci_put_hex(dev->function, 1);
+}
+
+/* Interrupts off around BAR sizing: while decoding is disabled, an
+ * interrupt handler touching this device would read all-ones. */
+static inline uint64_t pci_irq_save(void) {
+    uint64_t flags;
+    __asm__ volatile("pushfq; popq %0; cli" : "=r"(flags) : : "memory");
+    return flags;
+}
+
+static inline void pci_irq_restore(uint64_t flags) {
+    if (flags & (1ULL << 9)) __asm__ volatile("sti" : : : "memory");
+}
+
 /* ============ BAR Parsing ============ */
 
+/*
+ * Fill dev->bars[] indexed by BAR number. Sizes are read with the
+ * write-all-ones method, with I/O and memory decoding disabled for the
+ * whole device while its BARs are probed, then restored.
+ */
 static void pci_parse_bars(pci_device_t *dev) {
     dev->bar_count = 0;
-    
-    for (int i = 0; i < PCI_MAX_BARS && dev->bar_count < PCI_MAX_BARS; i++) {
-        uint8_t offset = PCI_BAR0 + (i * 4);
-        
-        /* Read current BAR value */
-        uint32_t bar = pci_read_config32(dev->bus, dev->device, dev->function, offset);
-        
-        if (bar == 0) continue;
-        
-        /* Disable decoding */
-        uint16_t cmd = pci_read_config16(dev->bus, dev->device, dev->function, PCI_COMMAND);
-        pci_write_config16(dev->bus, dev->device, dev->function, PCI_COMMAND, 
-                          cmd & ~(PCI_CMD_IO_SPACE | PCI_CMD_MEM_SPACE));
-        
-        /* Write all 1s to determine size */
-        pci_write_config32(dev->bus, dev->device, dev->function, offset, 0xFFFFFFFF);
-        uint32_t size_mask = pci_read_config32(dev->bus, dev->device, dev->function, offset);
-        
-        /* Restore original value */
-        pci_write_config32(dev->bus, dev->device, dev->function, offset, bar);
-        pci_write_config16(dev->bus, dev->device, dev->function, PCI_COMMAND, cmd);
-        
-        if (size_mask == 0 || size_mask == 0xFFFFFFFF) continue;
-        
-        pci_bar_t *b = &dev->bars[dev->bar_count];
-        
-        if (bar & PCI_BAR_IO) {
-            /* I/O BAR */
-            b->type = PCI_BAR_IO;
-            b->base = bar & 0xFFFFFFFC;
-            b->size = ~(size_mask & 0xFFFFFFFC) + 1;
-            b->prefetchable = 0;
-        } else {
-            /* Memory BAR */
-            b->type = PCI_BAR_MEM;
-            b->memory_type = (bar >> 1) & 0x03;
-            b->prefetchable = (bar & PCI_BAR_PREFETCH) ? 1 : 0;
-            b->base = bar & 0xFFFFFFF0;
-            b->size = ~(size_mask & 0xFFFFFFF0) + 1;
-            
-            /* Skip next BAR if 64-bit */
-            if (b->memory_type == 0x02) {
-                i++;
-            }
+    for (int i = 0; i < PCI_MAX_BARS; i++) {
+        dev->bars[i].base = 0;
+        dev->bars[i].size = 0;
+        dev->bars[i].type = PCI_BAR_NONE;
+        dev->bars[i].memory_type = 0;
+        dev->bars[i].prefetchable = 0;
+        dev->bars[i].upper_half = 0;
+    }
+
+    /* Type 0 headers have six BARs, PCI-to-PCI bridges two, CardBus none */
+    int nbars;
+    switch (dev->header_type & 0x7F) {
+        case PCI_HEADER_TYPE_NORMAL: nbars = 6; break;
+        case PCI_HEADER_TYPE_BRIDGE: nbars = 2; break;
+        default:                     return;
+    }
+
+    uint8_t b = dev->bus, d = dev->device, f = dev->function;
+    uint64_t irq = pci_irq_save();
+    uint16_t cmd = pci_read_config16(b, d, f, PCI_COMMAND);
+    pci_write_config16(b, d, f, PCI_COMMAND,
+                       cmd & (uint16_t)~(PCI_CMD_IO_SPACE | PCI_CMD_MEM_SPACE));
+
+    for (int i = 0; i < nbars; i++) {
+        uint8_t off = (uint8_t)(PCI_BAR0 + i * 4);
+        uint32_t lo = pci_read_config32(b, d, f, off);
+        pci_bar_t *bar = &dev->bars[i];
+
+        if (lo & PCI_BAR_IO) {
+            pci_write_config32(b, d, f, off, 0xFFFFFFFF);
+            uint32_t mask = pci_read_config32(b, d, f, off);
+            pci_write_config32(b, d, f, off, lo);
+            mask &= 0xFFFFFFFC;
+            if (mask == 0) continue;                    /* not implemented */
+            if ((mask & 0xFFFF0000) == 0) mask |= 0xFFFF0000;  /* 16-bit decoder */
+            uint64_t base = lo & 0xFFFFFFFC;
+            if (base == 0) continue;                    /* not assigned */
+            bar->type = PCI_BAR_IO;
+            bar->base = base;
+            bar->size = (uint64_t)(uint32_t)(~mask + 1);
+            dev->bar_count++;
+            continue;
         }
-        
+
+        uint8_t memtype = (uint8_t)((lo >> 1) & 0x03);
+        int is64 = (memtype == PCI_BAR_MEMTYPE_64);
+        if (is64 && i + 1 >= nbars) {
+            /* A 64-bit BAR in the last register has no upper half */
+            continue;
+        }
+
+        uint32_t hi = 0, mask_hi = 0xFFFFFFFF;
+        pci_write_config32(b, d, f, off, 0xFFFFFFFF);
+        uint32_t mask_lo = pci_read_config32(b, d, f, off);
+        pci_write_config32(b, d, f, off, lo);
+        if (is64) {
+            uint8_t off_hi = (uint8_t)(off + 4);
+            hi = pci_read_config32(b, d, f, off_hi);
+            pci_write_config32(b, d, f, off_hi, 0xFFFFFFFF);
+            mask_hi = pci_read_config32(b, d, f, off_hi);
+            pci_write_config32(b, d, f, off_hi, hi);
+            dev->bars[i + 1].upper_half = 1;
+        }
+
+        uint64_t mask = ((uint64_t)mask_hi << 32) | (mask_lo & 0xFFFFFFF0u);
+        uint64_t base = ((uint64_t)hi << 32) | (lo & 0xFFFFFFF0u);
+        if (is64) i++;                                  /* skip the upper half */
+        if ((mask & 0xFFFFFFFFFFFFFFF0ULL) == 0xFFFFFFFF00000000ULL || mask == 0) {
+            continue;                                   /* not implemented */
+        }
+        if (base == 0) continue;                        /* not assigned */
+
+        bar->type = PCI_BAR_MEM;
+        bar->memory_type = memtype;
+        bar->prefetchable = (lo & PCI_BAR_PREFETCH) ? 1 : 0;
+        bar->base = base;
+        bar->size = ~mask + 1;
         dev->bar_count++;
     }
+
+    pci_write_config16(b, d, f, PCI_COMMAND, cmd);
+    pci_irq_restore(irq);
 }
 
 /* ============ Device Scanning ============ */
@@ -196,8 +275,25 @@ static int pci_probe_device(uint8_t bus, uint8_t dev, uint8_t func) {
 
 static void pci_scan_bus(uint8_t bus);
 
+/* Buses already scanned: a bridge with a bad secondary-bus number cannot
+ * send the scan round in a loop. */
+static uint8_t pci_bus_seen[PCI_MAX_BUSES / 8];
+
+/* Probe one function; if it is a PCI-to-PCI bridge, scan the bus behind it. */
+static int pci_probe_and_descend(uint8_t bus, uint8_t dev, uint8_t func) {
+    if (pci_probe_device(bus, dev, func) < 0) return -1;
+    const pci_device_t *device = pci_device_head;      /* just added */
+    if (device->class_code == PCI_CLASS_BRIDGE && device->subclass == 0x04) {
+        uint8_t secondary_bus = pci_read_config8(bus, dev, func, 0x19);
+        if (secondary_bus != 0 && secondary_bus != bus) {
+            pci_scan_bus(secondary_bus);
+        }
+    }
+    return 0;
+}
+
 static void pci_scan_device(uint8_t bus, uint8_t dev) {
-    if (pci_probe_device(bus, dev, 0) < 0) {
+    if (pci_probe_and_descend(bus, dev, 0) < 0) {
         return;
     }
     
@@ -205,21 +301,14 @@ static void pci_scan_device(uint8_t bus, uint8_t dev) {
     uint8_t header = pci_read_config8(bus, dev, 0, PCI_HEADER_TYPE);
     if (header & PCI_HEADER_TYPE_MULTI) {
         for (uint8_t func = 1; func < PCI_MAX_FUNCTIONS; func++) {
-            pci_probe_device(bus, dev, func);
-        }
-    }
-    
-    /* Check for PCI-to-PCI bridge */
-    pci_device_t *device = &pci_devices[pci_device_count - 1];
-    if (device->class_code == PCI_CLASS_BRIDGE && device->subclass == 0x04) {
-        uint8_t secondary_bus = pci_read_config8(bus, dev, 0, 0x19);
-        if (secondary_bus != 0) {
-            pci_scan_bus(secondary_bus);
+            pci_probe_and_descend(bus, dev, func);
         }
     }
 }
 
 static void pci_scan_bus(uint8_t bus) {
+    if (pci_bus_seen[bus / 8] & (1u << (bus % 8))) return;
+    pci_bus_seen[bus / 8] |= (uint8_t)(1u << (bus % 8));
     for (uint8_t dev = 0; dev < PCI_MAX_DEVICES; dev++) {
         pci_scan_device(bus, dev);
     }
@@ -232,6 +321,7 @@ int pci_init(void) {
     
     pci_device_count = 0;
     pci_device_head = 0;
+    for (int i = 0; i < (int)sizeof(pci_bus_seen); i++) pci_bus_seen[i] = 0;
     
     /* Scan all buses starting from bus 0 */
     /* Check if host bridge is multi-function */
@@ -266,29 +356,45 @@ int pci_init(void) {
     serial_puts(buf);
     serial_puts(" devices\r\n");
     
-    /* Log devices */
-    pci_device_t *dev = pci_device_head;
-    while (dev) {
+    /* Log devices and their BARs; register memory BARs above 4 GB so the
+     * kernel page tables map them (uncached) when they are built. */
+    for (pci_device_t *dev = pci_device_head; dev; dev = dev->next) {
         serial_puts("  [");
-        /* Bus */
-        char hex[3];
-        hex[0] = "0123456789ABCDEF"[(dev->bus >> 4) & 0xF];
-        hex[1] = "0123456789ABCDEF"[dev->bus & 0xF];
-        hex[2] = '\0';
-        serial_puts(hex);
-        serial_puts(":");
-        hex[0] = "0123456789ABCDEF"[(dev->device >> 4) & 0xF];
-        hex[1] = "0123456789ABCDEF"[dev->device & 0xF];
-        serial_puts(hex);
-        serial_puts(".");
-        hex[0] = '0' + dev->function;
-        hex[1] = '\0';
-        serial_puts(hex);
+        pci_put_bdf(dev);
         serial_puts("] ");
+        pci_put_hex(dev->vendor_id, 4);
+        serial_putc(':');
+        pci_put_hex(dev->device_id, 4);
+        serial_putc(' ');
         serial_puts(pci_get_class_name(dev->class_code));
         serial_puts("\r\n");
-        
-        dev = dev->next;
+
+        for (int i = 0; i < PCI_MAX_BARS; i++) {
+            const pci_bar_t *bar = pci_get_bar(dev, i);
+            if (!bar) continue;
+            serial_puts("      BAR");
+            pci_put_dec((uint64_t)i);
+            if (bar->type == PCI_BAR_IO) {
+                serial_puts(" IO    0x");
+            } else {
+                serial_puts(bar->memory_type == PCI_BAR_MEMTYPE_64 ? " MEM64 0x" : " MEM32 0x");
+            }
+            pci_put_hex(bar->base, bar->base > 0xFFFFFFFFULL ? 16 : 8);
+            serial_puts(" size 0x");
+            pci_put_hex(bar->size, bar->size > 0xFFFFFFFFULL ? 16 : 8);
+            if (bar->prefetchable) serial_puts(" prefetchable");
+            serial_puts("\r\n");
+
+            if (bar->type == PCI_BAR_MEM && bar->base + bar->size > 0x100000000ULL) {
+                int r = paging_mmio_register(bar->base, bar->size);
+                serial_puts(r == 0 ? "[PCI] BAR above 4 GB registered for mapping: "
+                                   : "[PCI] WARNING: BAR above 4 GB cannot be mapped: ");
+                pci_put_bdf(dev);
+                serial_puts(" BAR");
+                pci_put_dec((uint64_t)i);
+                serial_puts("\r\n");
+            }
+        }
     }
     
     serial_puts("[PCI] Initialization complete\r\n");
@@ -367,4 +473,71 @@ const char *pci_get_class_name(uint8_t class_code) {
         case PCI_CLASS_SIGNAL:        return "Signal Processing";
         default:                      return "Unknown";
     }
+}
+
+const pci_bar_t *pci_get_bar(const pci_device_t *dev, int index) {
+    if (!dev || index < 0 || index >= PCI_MAX_BARS) return 0;
+    const pci_bar_t *bar = &dev->bars[index];
+    if (bar->type != PCI_BAR_MEM && bar->type != PCI_BAR_IO) return 0;
+    return bar;
+}
+
+/* Capability lists live in the first 256 bytes: at most 48 entries of 4
+ * bytes fit after the 64-byte header, so more steps means a loop. */
+#define PCI_CAP_MAX_STEPS 48
+
+uint8_t pci_find_next_cap(const pci_device_t *dev, uint8_t after, uint8_t cap_id) {
+    if (!dev) return 0;
+    uint8_t b = dev->bus, d = dev->device, f = dev->function;
+
+    uint16_t status = pci_read_config16(b, d, f, PCI_STATUS);
+    if (status == 0xFFFF || !(status & PCI_STATUS_CAP_LIST)) return 0;
+
+    uint8_t ptr;
+    if (after) {
+        if (after < 0x40 || (after & 0x03)) return 0;   /* not a capability offset */
+        ptr = pci_read_config8(b, d, f, (uint8_t)(after + 1));
+    } else {
+        /* CardBus bridges keep the list head at 0x14 */
+        uint8_t head = ((dev->header_type & 0x7F) == PCI_HEADER_TYPE_CARDBUS) ? 0x14 : PCI_CAPABILITIES;
+        ptr = pci_read_config8(b, d, f, head);
+    }
+
+    for (int step = 0; step < PCI_CAP_MAX_STEPS; step++) {
+        ptr &= 0xFC;
+        if (ptr < 0x40) return 0;                       /* end of list or bad pointer */
+        uint8_t id = pci_read_config8(b, d, f, ptr);
+        if (id == 0xFF) return 0;                       /* device gone */
+        if (id == cap_id) return ptr;
+        ptr = pci_read_config8(b, d, f, (uint8_t)(ptr + 1));
+    }
+    serial_puts("[PCI] WARNING: capability list of ");
+    pci_put_bdf(dev);
+    serial_puts(" does not end; ignoring it\r\n");
+    return 0;
+}
+
+uint8_t pci_find_cap(const pci_device_t *dev, uint8_t cap_id) {
+    return pci_find_next_cap(dev, 0, cap_id);
+}
+
+int pci_bar_map(const pci_device_t *dev, int index, volatile void **out) {
+    if (!out) return -1;
+    *out = 0;
+    const pci_bar_t *bar = pci_get_bar(dev, index);
+    if (!bar || bar->type != PCI_BAR_MEM || bar->size == 0) return -1;
+    if (bar->base + bar->size < bar->base) return -1;  /* wraps */
+
+    if (!paging_mmio_is_mapped(bar->base, bar->size)) {
+        serial_puts("[PCI] ERROR: ");
+        pci_put_bdf(dev);
+        serial_puts(" BAR");
+        pci_put_dec((uint64_t)index);
+        serial_puts(" at 0x");
+        pci_put_hex(bar->base, 16);
+        serial_puts(" is not mapped in the active page tables\r\n");
+        return -2;
+    }
+    *out = (volatile void *)(uintptr_t)bar->base;
+    return 0;
 }
