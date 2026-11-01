@@ -1,8 +1,8 @@
 # Proposal: nxserver window server and protocol (week 3)
 
-Status: **proposed, waiting for the project owner's sign-off.** No code
-follows this document until it is approved. Changing it after approval needs
-the owner's sign-off again.
+Status: **approved by the project owner on 2026-11-01 ("approve as
+written").** Changing it needs the owner's sign-off again. Implemented so
+far: step 1, `fb.flip_rects` (148, ABI 1.2).
 Plan: week 3 of the 1.0 Preview plan ("desktop becomes the nxserver
 compositor, with damage tracking"). Builds on the approved kernel interface in
 `kernel-shm-ipc.md` (ABI 1.1, merged in PRs #22 and #23).

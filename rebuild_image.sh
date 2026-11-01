@@ -37,7 +37,7 @@ mcopy -i neolyx_new.img desktop/bin/neolyx-desktop ::/EFI/BOOT/desktop.elf
 
 echo "[IMG] Installing user programs into /apps..."
 mmd -i neolyx_new.img ::/apps
-for prog in ticker fdtest shmtest ipc_test; do
+for prog in ticker fdtest shmtest ipc_test fbtest; do
     if [ -f "tests/userland/$prog/$prog" ]; then
         mcopy -i neolyx_new.img "tests/userland/$prog/$prog" "::/apps/$prog"
         echo "  ✓ /apps/$prog"
