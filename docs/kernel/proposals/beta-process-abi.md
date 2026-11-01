@@ -663,6 +663,13 @@ kill rule.
 
 ### 9.6 Who may end or lower whom
 
+Privilege in this document always means `PROC_FLAG_SYSTEM` checked in the
+handler, as `fb.flip_rects` does. The table's `PRIV_SYSTEM` column and the
+global `current_priv` in `syscall.c` (which nothing raises, so `PRIV_SYSTEM`
+entries refuse everyone) are left alone; replacing them is the job of the
+capabilities proposal (90-99). `PROC_FLAG_SYSTEM` must keep meaning "a
+system process such as the desktop" only.
+
 As taskmgr.md: a user process may end or lower its own descendants; a
 system process any non-system process; nobody a system process, kernel
 thread, pid 1 or the idle process. One change is needed because S2 moves the
@@ -672,13 +679,6 @@ apps it lists. Proposed (decision Q2):
 ```c
 #define NX_SPAWN_GRANT_PROC_ADMIN  0x8   /* spawn_ex flag; only a system caller may set it */
 ```
-
-Privilege in this document always means `PROC_FLAG_SYSTEM` checked in the
-handler, as `fb.flip_rects` does. The table's `PRIV_SYSTEM` column and the
-global `current_priv` in `syscall.c` (which nothing raises, so `PRIV_SYSTEM`
-entries refuse everyone) are left alone; replacing them is the job of the
-capabilities proposal (90-99). `PROC_FLAG_SYSTEM` must keep meaning "a
-system process such as the desktop" only.
 
 A process started with it may end and lower any non-system process, as a
 system process may. It is stored as one bit in the PCB, never inherited,
