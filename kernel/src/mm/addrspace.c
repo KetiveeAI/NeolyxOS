@@ -430,6 +430,62 @@ int addrspace_map_alloc(addrspace_t *as, uint64_t va, uint64_t size, uint32_t fl
     return 0;
 }
 
+int64_t addrspace_unmap_range(addrspace_t *as, uint64_t va, uint64_t size) {
+    if (!as) return -1;
+    if (size == 0) return 0;
+    if ((va & (AS_PAGE - 1)) || (size & (AS_PAGE - 1))) return -1;
+    if (va + size < va || va < USER_WINDOW_BASE || va + size > USER_WINDOW_END) return -1;
+
+    uint64_t cr3;
+    __asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
+    int active = ((cr3 & PTE_ADDR_MASK) == as->pml4_phys);
+
+    uint64_t *pd = (uint64_t *)as->pd_phys;
+    uint64_t end = va + size;
+    int64_t freed = 0;
+    int tables_freed = 0;
+
+    for (uint64_t chunk = va & ~0x1FFFFFULL; chunk < end; chunk += 0x200000ULL) {
+        uint64_t pdi = (chunk >> 21) & 0x1FF;
+        if (!(pd[pdi] & PTE_PRESENT) || (pd[pdi] & PTE_LARGE)) continue;
+        uint64_t *pt = (uint64_t *)(pd[pdi] & PTE_ADDR_MASK);
+
+        uint64_t lo = (chunk < va) ? va : chunk;
+        uint64_t hi = (chunk + 0x200000ULL > end) ? end : chunk + 0x200000ULL;
+        for (uint64_t page = lo; page < hi; page += AS_PAGE) {
+            uint64_t *pte = &pt[(page >> 12) & 0x1FF];
+            if (!(*pte & PTE_PRESENT)) continue;
+            if (*pte & PTE_SHARED) {
+                /* shm frames belong to their object, never to this space */
+                serial_puts("[AS] ERROR: shared page in private window left mapped\n");
+                continue;
+            }
+            uint64_t frame = *pte & PTE_ADDR_MASK;
+            *pte = 0;
+            if (active) __asm__ volatile("invlpg (%0)" : : "r"(page) : "memory");
+            pmm_free_page(frame);
+            if (as->pages_mapped) as->pages_mapped--;
+            freed++;
+        }
+
+        /* Give back the page table once nothing in its 2 MiB is mapped */
+        int used = 0;
+        for (int k = 0; k < 512 && !used; k++) used = (pt[k] & PTE_PRESENT) != 0;
+        if (!used) {
+            pd[pdi] = 0;
+            pmm_free_page((uint64_t)pt);
+            tables_freed = 1;
+        }
+    }
+
+    /* A removed page table may still be cached as a paging-structure
+     * entry: reloading CR3 drops it */
+    if (tables_freed && active) {
+        __asm__ volatile("mov %0, %%cr3" : : "r"(cr3) : "memory");
+    }
+    return freed;
+}
+
 int addrspace_copy_in(addrspace_t *as, uint64_t va, const void *src, uint64_t len) {
     if (!as || (!src && len)) return -1;
     if (va + len < va) return -1;

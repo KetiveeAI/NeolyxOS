@@ -84,8 +84,8 @@ The kernel copies `min(size, 80)` bytes, so a newer, larger struct still works. 
 
 ## Not in K1
 
-- **NxUI cache trimming.** The proposal had NxUI apps drop their glyph cache on WARN. The NXCanvas caches are fixed-size allocations made once at start. The user heap (`brk`) also keeps its pages mapped until exit. So trimming would free no physical memory today. It needs a heap that can return pages first, which fits K2.
-- **K2 policy**: what the kernel does at CRITICAL, such as ending or pausing background apps.
+- **NxUI cache trimming.** The proposal had NxUI apps drop their glyph cache on WARN. The NXCanvas caches are fixed-size allocations made once at start. The user heap (`brk`) also keeps its pages mapped until exit. So trimming would free no physical memory today. It needs a heap that can return pages first, which fits K2. K2 part 1 added that, and NxUI now trims its heap on WARN: see `memory-policy.md`.
+- **K2 policy**: what the kernel does at CRITICAL, such as ending or pausing background apps. See `memory-policy.md`.
 
 ## Tests
 

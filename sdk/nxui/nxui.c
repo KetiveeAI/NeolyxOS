@@ -488,6 +488,119 @@ static void* host_map_framebuffer(uint32_t* w, uint32_t* h, uint32_t* pitch) {
     return g_frame.pixels;
 }
 
+/* ============ Memory pressure (K2) ============ */
+/*
+ * When the kernel reports WARN or CRITICAL, NxUI gives the unused top of
+ * its heap back with nx_malloc_trim(). The pressure handle is waited on
+ * next to the window server connection, so an idle app reacts too. If the
+ * kernel has no pressure notices (ABI < 1.3) or the handle cannot be
+ * opened, the app runs as before and the reason is logged once.
+ */
+static nx_handle_t g_pressure = NX_HANDLE_INVALID;
+static bool g_pressure_tried = false;
+static int g_pressure_level = NX_MEM_NORMAL;
+
+static void nxui_out_dec(const char* before, uint64_t v, const char* after) {
+    char buf[128];
+    size_t pos = 0;
+    const char* s = before ? before : "";
+    while (*s && pos + 1 < sizeof buf) buf[pos++] = *s++;
+    char digits[21];
+    int n = 0;
+    do { digits[n++] = (char)('0' + v % 10); v /= 10; } while (v && n < 20);
+    while (n > 0 && pos + 1 < sizeof buf) buf[pos++] = digits[--n];
+    s = after ? after : "";
+    while (*s && pos + 1 < sizeof buf) buf[pos++] = *s++;
+    buf[pos] = '\0';
+    nxui_out(buf);
+}
+
+static void nxui_pressure_trim(int level) {
+    uint64_t released = nx_malloc_trim();
+    nxui_out_dec(level >= (int)NX_MEM_CRITICAL ? "[NXUI] memory CRITICAL: returned "
+                                          : "[NXUI] memory WARN: returned ",
+                 released / 1024u, " KB of heap to the system\n");
+}
+
+static void nxui_pressure_close(void) {
+    if (g_pressure != NX_HANDLE_INVALID) nx_handle_close(g_pressure);
+    g_pressure = NX_HANDLE_INVALID;
+}
+
+/* Read the level after the handle became READABLE; trim when it rose to
+ * WARN or above. */
+static void nxui_pressure_changed(void) {
+    int lvl = nx_mem_pressure_read(g_pressure);
+    if (lvl < 0) {
+        nxui_fail_code("nxui_run", "memory pressure read failed; no heap trims from now on", lvl);
+        nxui_pressure_close();
+        return;
+    }
+    int was = g_pressure_level;
+    g_pressure_level = lvl;
+    if (lvl >= (int)NX_MEM_WARN && lvl > was) nxui_pressure_trim(lvl);
+}
+
+static void nxui_pressure_open(void) {
+    if (g_pressure_tried) return;
+    g_pressure_tried = true;
+    nx_abi_info_t abi;
+    int r = nx_abi_query(&abi);
+    if (r != 0 || !(abi.flags & NX_ABI_FLAG_MEMCLASS)) {
+        nxui_out("[NXUI] kernel has no memory pressure notices; heap is not trimmed on WARN\n");
+        return;
+    }
+    nx_handle_t h = nx_mem_pressure_open();
+    if (h <= 0) {
+        nxui_fail_code("nxui_run", "cannot open a memory pressure handle; heap is not trimmed on WARN", (int)h);
+        return;
+    }
+    g_pressure = h;
+    int lvl = nx_mem_pressure_read(h);
+    if (lvl < 0) {
+        nxui_fail_code("nxui_run", "memory pressure read failed; heap is not trimmed on WARN", lvl);
+        nxui_pressure_close();
+        return;
+    }
+    g_pressure_level = (int)NX_MEM_NORMAL;
+    if (lvl >= (int)NX_MEM_WARN) nxui_pressure_trim(lvl);
+    g_pressure_level = lvl;
+}
+
+/* nxw_wait_event that also wakes for memory pressure changes. Same
+ * returns: 1 an event, 0 timeout, negative errno. */
+static int nxui_wait(nxw_event_t* e, uint64_t ms) {
+    if (g_pressure == NX_HANDLE_INVALID) return nxw_wait_event(e, ms);
+    uint64_t start = nx_gettime();
+    for (;;) {
+        int r = nxw_poll_event(e);
+        if (r != 0) return r;
+        uint64_t left = NX_WAIT_FOREVER;
+        if (ms != NX_WAIT_FOREVER) {
+            uint64_t spent = nx_gettime() - start;
+            if (spent >= ms) return 0;
+            left = ms - spent;
+        }
+        nx_wait_item_t it[2];
+        it[0].handle = nxw_connection_handle();
+        it[0].signals = NX_SIGNAL_READABLE | NX_SIGNAL_PEER_CLOSED;
+        it[1].handle = g_pressure;
+        it[1].signals = NX_SIGNAL_READABLE;
+        for (int i = 0; i < 2; i++) { it[i].observed = 0; it[i].reserved = 0; }
+        int w = nx_obj_wait(it, 2, left);
+        if (w == -NXW_ETIMEDOUT) return 0;
+        if (w < 0) {
+            /* Keep the app working: drop the pressure handle and wait on
+             * the connection alone */
+            nxui_fail_code("nxui_run", "waiting with the memory pressure handle failed; no heap trims from now on", w);
+            nxui_pressure_close();
+            return nxw_wait_event(e, left);
+        }
+        if (it[1].observed & NX_SIGNAL_READABLE) nxui_pressure_changed();
+        /* connection readable or closed: the next poll reports it */
+    }
+}
+
 static int host_poll_input(reox_ffi_input_event_t* ev) {
     if (!ev) return -1;
     if (evq_deliver(ev)) return 1;
@@ -513,7 +626,7 @@ static int host_wait_event(reox_ffi_input_event_t* ev, uint32_t timeout_ms) {
             left = limit - spent;
         }
         nxw_event_t e;
-        int r = nxw_wait_event(&e, left);
+        int r = nxui_wait(&e, left);
         if (r == 0) return 0;
         if (r < 0) {
             nxui_fail_code("nxui_run", "waiting for window events failed", r);
@@ -546,7 +659,7 @@ static int host_present(void* fb) {
             return -1;
         }
         nxw_event_t e;
-        r = nxw_wait_event(&e, NXUI_FRAME_MS - spent);
+        r = nxui_wait(&e, NXUI_FRAME_MS - spent);
         if (r < 0) return -1;           /* disconnected: CLOSE is queued */
         if (r == 1 && translate(&e)) break;
     }
@@ -645,6 +758,7 @@ static int nxui_install_host(const nxui_slot_t* w) {
     g_req.resizable = w->resizable;
     nxgfx_set_log_sink(host_log);
     nxui_load_ui_font();
+    nxui_pressure_open();
     g_win = NULL;
     g_frame_begun = false;
     evq_clear();

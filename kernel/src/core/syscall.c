@@ -328,7 +328,8 @@ int64_t sys_wait_impl(uint64_t pid, uint64_t status_ptr, uint64_t a3, uint64_t a
  * Per-process program break. addr == 0 queries the current break. Growing
  * maps fresh zero-filled pages into the caller's address space on demand;
  * the reserve ends at heap_max (64MB, or earlier if it would reach the
- * stack). Shrinking moves the break but keeps pages mapped until exit.
+ * stack). Shrinking unmaps the whole pages above the new break and gives
+ * them back to the system (K2); growing again maps fresh zeroed pages.
  * Returns the new (page-aligned) break or a negative errno.
  */
 int64_t sys_brk_impl(uint64_t addr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
@@ -363,6 +364,24 @@ int64_t sys_brk_impl(uint64_t addr, uint64_t a2, uint64_t a3, uint64_t a4, uint6
             return -ENOMEM;
         }
         proc->heap_mapped = aligned;
+    } else if (aligned < proc->heap_mapped) {
+        /* heap_start and aligned are page aligned (the ELF loader rounds
+         * the break up), so only heap pages are released */
+        int64_t freed = addrspace_unmap_range(proc->as, aligned, proc->heap_mapped - aligned);
+        if (freed < 0) {
+            serial_puts("[BRK] PID ");
+            serial_dec(proc->pid);
+            serial_puts(": cannot release heap pages (bad range); keeping them\n");
+        } else {
+            proc->heap_mapped = aligned;
+            if ((uint64_t)freed * 4096ULL >= (1ULL << 20)) {
+                serial_puts("[BRK] PID ");
+                serial_dec(proc->pid);
+                serial_puts(": returned ");
+                serial_dec((uint64_t)freed * 4096ULL / 1024ULL);
+                serial_puts(" KB to the system\n");
+            }
+        }
     }
     
     proc->heap_end = aligned;

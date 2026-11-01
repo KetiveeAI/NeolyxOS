@@ -28,6 +28,7 @@
 static uint8_t *g_mem;          /* page-aligned reserve */
 static uint64_t g_brk;          /* current break (absolute address) */
 static int g_logged;            /* [MALLOC] lines printed */
+static uint64_t g_released;     /* bytes given back by brk shrinking */
 
 int64_t nx_host_syscall(int64_t num, int64_t a1, int64_t a2, int64_t a3) {
     (void)a2; (void)a3;
@@ -37,7 +38,19 @@ int64_t nx_host_syscall(int64_t num, int64_t a1, int64_t a2, int64_t a3) {
         if (a1 == 0) return (int64_t)g_brk;
         uint64_t want = ((uint64_t)a1 + 4095) & ~4095ULL;
         if ((uint64_t)a1 < lo || want > (uint64_t)g_mem + RESERVE) return -12;
-        if (want > g_brk) g_brk = want;
+        if (want > g_brk) {
+            /* Fresh pages are zero, like the kernel's */
+            uint64_t from = g_brk > (uint64_t)g_mem ? (g_brk + 4095) & ~4095ULL : (uint64_t)g_mem;
+            if (want > from) memset((void *)from, 0, want - from);
+            g_brk = want;
+        } else if (want < ((g_brk + 4095) & ~4095ULL)) {
+            /* Shrinking gives pages back (K2): poison them so the test sees
+             * any use of released memory */
+            uint64_t old_end = (g_brk + 4095) & ~4095ULL;
+            memset((void *)want, 0xEE, old_end - want);
+            g_released += old_end - want;
+            g_brk = want;
+        }
         return (int64_t)g_brk;
     }
     if (num == 127) {                                   /* debug_print */
@@ -249,6 +262,55 @@ int main(void) {
         if (heap != heap_after_first || used != 0) { ok = 0; break; }
     }
     check(ok, "50 rounds of 18 MiB allocate+free keep the heap size constant");
+
+    /* K2: free memory at the top goes back to the system */
+    {
+        uint8_t *keep1 = nx_malloc(4000);
+        uint8_t *keep2 = nx_malloc(70000);
+        pattern_fill(keep1, 256, 0x31);
+        pattern_fill(keep2, 256, 0x62);
+        uint8_t *big = nx_malloc(8u << 20);
+        uint8_t *tail = nx_malloc(64);
+        check(big && tail, "8 MiB block and a small block above it");
+        uint64_t r0 = g_released;
+        nx_mfree(big);                               /* not at the top: kept */
+        check(g_released == r0, "freeing a block below a used one releases nothing");
+        nx_mfree(tail);                              /* now the whole run is at the top */
+        check(g_released - r0 >= (7u << 20), "freeing the top run gives about 8 MiB back");
+        check((uint64_t)(g_heap.mapped - g_heap.top) <= NXM_GROW_MIN + 4096,
+              "slack above the heap is at most the grow step");
+        check(heap_valid(), "heap valid after an automatic trim");
+        check(pattern_ok(keep1, 256, 0x31) && pattern_ok(keep2, 256, 0x62),
+              "blocks below the trimmed run keep their contents");
+
+        /* Small free at the top: no automatic trim, nx_malloc_trim does it */
+        uint8_t *small = nx_malloc(100000);
+        r0 = g_released;
+        nx_mfree(small);
+        check(g_released == r0, "100 KB free at the top is kept (below the threshold)");
+        uint64_t got = nx_malloc_trim();
+        check(got > 0 && g_released - r0 == got, "nx_malloc_trim releases the slack");
+        check((uint64_t)g_heap.mapped == (((uint64_t)g_heap.top + 4095) & ~4095ULL),
+              "after nx_malloc_trim the break is the page above the heap");
+        check(nx_malloc_trim() == 0, "a second trim has nothing to give");
+        check(heap_valid(), "heap valid after nx_malloc_trim");
+
+        /* Growing again after a trim works and the memory is usable */
+        uint8_t *again = nx_malloc(4u << 20);
+        check(again != 0, "4 MiB after a trim");
+        if (again) {
+            for (uint64_t i = 0; i < (4u << 20); i += 4096) again[i] = (uint8_t)i;
+            int same = 1;
+            for (uint64_t i = 0; i < (4u << 20); i += 4096) same &= (again[i] == (uint8_t)i);
+            check(same, "re-grown pages hold data");
+        }
+        nx_mfree(again);
+        nx_mfree(keep1);
+        nx_mfree(keep2);
+        nx_malloc_trim();
+        check(heap_valid() && g_heap.in_use == 0 && g_heap.top == g_heap.base,
+              "everything freed and trimmed: empty heap");
+    }
 
     printf("%d checks, %d allocator log lines\n", g_checks, g_logged);
     printf(g_fail ? "RESULT: FAIL\n" : "RESULT: PASS\n");
