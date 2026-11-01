@@ -19,7 +19,7 @@ HOSTCC  ?= gcc
 
 CRYPTO  = ../nxcrypto
 SRCS    = src/der.c src/names.c src/x509.c src/x509_verify.c \
-          src/tls13_keys.c src/tls13_record.c
+          src/tls13_keys.c src/tls13_record.c src/tls_client.c
 CRYPTO_SRCS = $(wildcard $(CRYPTO)/src/*.c)
 
 STRICT  = -Werror=implicit-function-declaration -Werror=implicit-int \
@@ -39,7 +39,8 @@ LIB     = $(OBJDIR)/libnxtls.a
 HDRS    = include/nxtls/*.h src/*.h $(CRYPTO)/include/nxcrypto.h $(CRYPTO)/include/nxcrypto/*.h
 
 TESTDIR = ../../tests/host
-TESTS   = crypto_x509_test crypto_x509_limbo_test crypto_tls13_trace_test
+TESTS   = crypto_x509_test crypto_x509_limbo_test crypto_tls13_trace_test \
+          crypto_tls13_client_test
 
 .PHONY: all test clean
 
@@ -53,11 +54,17 @@ $(LIB): $(OBJS)
 	$(AR) rcs $@ $^
 	@echo "Built: $@"
 
-$(OBJDIR)/host/%: $(TESTDIR)/%.c $(SRCS) $(CRYPTO_SRCS) $(HDRS) $(TESTDIR)/crypto_vec.h $(TESTDIR)/crypto_json.h $(TESTDIR)/crypto_pem.h
+# The TLS client test uses the NXT_TESTING hooks (src/tls13.h); they
+# exist only in that test binary.
+$(OBJDIR)/host/crypto_tls13_client_test: TEST_DEFS = -DNXT_TESTING
+
+$(OBJDIR)/host/%: $(TESTDIR)/%.c $(SRCS) $(CRYPTO_SRCS) $(HDRS) $(TESTDIR)/crypto_vec.h $(TESTDIR)/crypto_json.h $(TESTDIR)/crypto_pem.h $(TESTDIR)/crypto_certgen.h
 	@mkdir -p $(OBJDIR)/host
-	$(HOSTCC) $(CFLAGS_HOST) -o $@ $< $(SRCS) $(CRYPTO_SRCS)
+	$(HOSTCC) $(CFLAGS_HOST) $(TEST_DEFS) -o $@ $< $(SRCS) $(CRYPTO_SRCS)
 
 test: $(LIB) $(TESTS:%=$(OBJDIR)/host/%)
+	@if nm $(LIB) | grep -q nxt__tls_test; then \
+	    echo "ERROR: test hooks were built into $(LIB)"; exit 1; fi
 	@set -e; V=$$($(TESTDIR)/crypto_fetch_vectors.sh); \
 	for t in $(TESTS); do $(OBJDIR)/host/$$t "$$V"; done
 
