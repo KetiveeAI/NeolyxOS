@@ -32,6 +32,7 @@ TESTS = core:nxc_core.c,nxc_math.c \
         font:nxc_core.c,nxc_math.c,nxc_paint.c,nxc_font.c,nxc_raster.c \
         text:nxc_core.c,nxc_math.c,nxc_paint.c,nxc_raster.c,nxc_font.c,nxc_text.c,nxc_shapes.c,nxc_image.c,nxc_effects.c \
         quality:nxc_core.c,nxc_math.c,nxc_paint.c,nxc_raster.c,nxc_font.c,nxc_text.c,nxc_shapes.c,nxc_image.c,nxc_effects.c \
+        rclip:nxc_core.c,nxc_math.c,nxc_paint.c,nxc_raster.c,nxc_shapes.c,nxc_image.c,nxc_effects.c \
         registry:nxc_core.c,nxc_math.c,nxc_paint.c,nxc_raster.c,nxc_font.c,nxc_text.c,../nxfont_registry.c
 
 all-tests:
