@@ -1356,6 +1356,19 @@ void kernel_main(NeolyxBootInfo *boot_info) {
             serial_puts("[OK] PMM initialized for AHCI\n");
         }
         
+        /* Enable interrupts here, explicitly. Until K0 they were switched on
+         * as a side effect: the first PMM allocation (AHCI port rebase in
+         * nucleus_init, just below) executed STI when releasing its lock.
+         * The PMM lock now restores the caller's interrupt state, so the
+         * boot path enables them itself, at the same point, before the
+         * code that relies on timer ticks (driver and disk timeouts). The
+         * IDT, PIC and PIT were set up above. */
+        {
+            extern void interrupts_enable(void);
+            interrupts_enable();
+            serial_puts("[BOOT] Interrupts enabled (IDT, PIC and PIT ready)\n");
+        }
+        
          /* Initialize Nucleus Disk Manager */
         serial_puts("[BOOT] Starting nucleus_init...\n");
         nucleus_init();

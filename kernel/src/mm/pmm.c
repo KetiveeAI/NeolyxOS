@@ -38,22 +38,51 @@ static pmm_stats_t pmm_stats;
 /* Highest usable physical address */
 static uint64_t pmm_max_address = 0;
 
-/* Spinlock for bitmap operations.
- * Current implementation: CLI/STI (single-core safe).
- * Upgrade to ticket spinlock when SMP is enabled. */
+/* Spinlock for bitmap and statistics.
+ * Interrupts are disabled while it is held and the caller's interrupt
+ * flag is restored on release: a caller that runs with interrupts off
+ * (IRQ handlers, irq_save regions, early boot) keeps them off. The old
+ * lock always executed STI on release, which re-enabled interrupts inside
+ * such regions. Single core today; the test-and-set keeps it correct
+ * once SMP arrives (a ticket lock would add fairness). */
 static volatile int pmm_lock = 0;
 
-static inline void pmm_spin_lock(void) {
-    __asm__ volatile("cli");
+#define PMM_RFLAGS_IF 0x200ULL
+
+#ifndef PMM_HOST_TEST
+static inline uint64_t pmm_spin_lock(void) {
+    uint64_t flags;
+    __asm__ volatile("pushfq; pop %0; cli" : "=r"(flags) : : "memory");
     while (__sync_lock_test_and_set(&pmm_lock, 1)) {
         __asm__ volatile("pause");
     }
+    return flags;
 }
 
-static inline void pmm_spin_unlock(void) {
+static inline void pmm_spin_unlock(uint64_t flags) {
     __sync_lock_release(&pmm_lock);
-    __asm__ volatile("sti");
+    if (flags & PMM_RFLAGS_IF) __asm__ volatile("sti" : : : "memory");
 }
+#else
+/* tests/host/pmm_test.c: CLI/STI are privileged in a host process. The
+ * test checks that every lock is released (pmm_lock back to 0). */
+static inline uint64_t pmm_spin_lock(void) {
+    if (__sync_lock_test_and_set(&pmm_lock, 1)) pmm_host_lock_error();
+    return PMM_RFLAGS_IF;
+}
+
+static inline void pmm_spin_unlock(uint64_t flags) {
+    (void)flags;
+    __sync_lock_release(&pmm_lock);
+}
+#endif
+
+/* Lowest bitmap byte that may still contain a free page. Invariant:
+ * every byte below it is 0xFF. Allocation searches from here instead of
+ * from page 0, and a free moves it back down, so the result is exactly
+ * the lowest free page, as before, without rescanning the used prefix.
+ * Low-first placement matters: the kernel identity-maps only 0-4 GB. */
+static uint64_t pmm_hint_byte = 0;
 
 /* Kernel end symbol from linker script */
 extern uint8_t _kernel_end[];
@@ -254,15 +283,17 @@ void pmm_init(void *memory_map, uint64_t map_size, uint64_t descriptor_size) {
     serial_puts(" MB total\n");
     
     /* Mark as initialized */
+    pmm_hint_byte = 0;
     pmm_initialized = 1;
 }
 
 uint64_t pmm_alloc_page(void) {
-    pmm_spin_lock();
+    uint64_t flags = pmm_spin_lock();
     
-    /* Find first free page */
-    for (uint64_t byte = 0; byte < BITMAP_SIZE; byte++) {
+    /* Find the lowest free page, starting at the hint */
+    for (uint64_t byte = pmm_hint_byte; byte < BITMAP_SIZE; byte++) {
         if (pmm_bitmap[byte] != 0xFF) {
+            pmm_hint_byte = byte;
             for (int bit = 0; bit < 8; bit++) {
                 uint64_t page = byte * 8 + bit;
                 if (!bitmap_test(page)) {
@@ -270,14 +301,15 @@ uint64_t pmm_alloc_page(void) {
                     pmm_stats.free_pages--;
                     pmm_stats.used_pages++;
                     uint64_t addr = page_to_addr(page);
-                    pmm_spin_unlock();
+                    pmm_spin_unlock(flags);
                     return addr;
                 }
             }
         }
     }
+    pmm_hint_byte = BITMAP_SIZE;
     
-    pmm_spin_unlock();
+    pmm_spin_unlock(flags);
     serial_puts("[PMM] ERROR: Out of physical memory!\n");
     return 0;
 }
@@ -286,11 +318,19 @@ uint64_t pmm_alloc_pages(size_t count) {
     if (count == 0) return 0;
     if (count == 1) return pmm_alloc_page();
     
-    /* Find contiguous free pages */
+    if (count > MAX_PAGES) {
+        serial_puts("[PMM] ERROR: contiguous request larger than physical memory\n");
+        return 0;
+    }
+    
+    uint64_t flags = pmm_spin_lock();
+    
+    /* Find the lowest run of `count` free pages (pages below the hint
+     * are all in use, so the search starts there) */
     uint64_t consecutive = 0;
     uint64_t start_page = 0;
     
-    for (uint64_t page = 0; page < MAX_PAGES; page++) {
+    for (uint64_t page = pmm_hint_byte * 8; page < MAX_PAGES; page++) {
         if (!bitmap_test(page)) {
             if (consecutive == 0) {
                 start_page = page;
@@ -305,6 +345,7 @@ uint64_t pmm_alloc_pages(size_t count) {
                 pmm_stats.used_pages += count;
                 
                 uint64_t addr = page_to_addr(start_page);
+                pmm_spin_unlock(flags);
                 
                 /* Note: Page zeroing removed - caller must zero after mapping */
                 
@@ -315,6 +356,7 @@ uint64_t pmm_alloc_pages(size_t count) {
         }
     }
     
+    pmm_spin_unlock(flags);
     serial_puts("[PMM] ERROR: Cannot allocate ");
     serial_dec(count);
     serial_puts(" contiguous pages!\n");
@@ -335,11 +377,11 @@ void pmm_free_page(uint64_t page_addr) {
         return;
     }
     
-    pmm_spin_lock();
+    uint64_t flags = pmm_spin_lock();
     
     /* Check for double-free (security) */
     if (!bitmap_test(page)) {
-        pmm_spin_unlock();
+        pmm_spin_unlock(flags);
         serial_puts("[PMM] WARNING: Double-free detected at ");
         serial_hex64(page_addr);
         serial_puts("!\n");
@@ -349,7 +391,8 @@ void pmm_free_page(uint64_t page_addr) {
     bitmap_clear(page);
     pmm_stats.free_pages++;
     pmm_stats.used_pages--;
-    pmm_spin_unlock();
+    if (page / 8 < pmm_hint_byte) pmm_hint_byte = page / 8;
+    pmm_spin_unlock(flags);
 }
 
 void pmm_free_pages(uint64_t page_addr, size_t count) {
@@ -362,6 +405,7 @@ void pmm_reserve_region(uint64_t start, uint64_t size) {
     uint64_t start_page = addr_to_page(start);
     uint64_t pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
     
+    uint64_t flags = pmm_spin_lock();
     for (uint64_t p = 0; p < pages; p++) {
         uint64_t page = start_page + p;
         if (page < MAX_PAGES && !bitmap_test(page)) {
@@ -372,16 +416,19 @@ void pmm_reserve_region(uint64_t start, uint64_t size) {
             pmm_stats.reserved_pages++;
         }
     }
+    pmm_spin_unlock(flags);
 }
 
 void pmm_get_stats(pmm_stats_t *stats) {
     if (stats) {
+        uint64_t flags = pmm_spin_lock();
         stats->total_pages = pmm_stats.total_pages;
         stats->used_pages = pmm_stats.used_pages;
         stats->free_pages = pmm_stats.free_pages;
         stats->reserved_pages = pmm_stats.reserved_pages;
         stats->total_memory = pmm_stats.total_memory;
         stats->free_memory = pmm_stats.free_pages * PAGE_SIZE;
+        pmm_spin_unlock(flags);
     }
 }
 
