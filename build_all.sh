@@ -116,7 +116,11 @@ if mcopy -i neolyx.img -o kernel/kernel.bin ::/EFI/BOOT/kernel.bin 2>/dev/null; 
     mcopy -i neolyx.img -o desktop/bin/neolyx-desktop ::/EFI/BOOT/desktop.elf
     mcopy -i neolyx.img -o boot/BOOTX64.EFI ::/EFI/BOOT/BOOTX64.EFI
     echo "      Boot image updated (kernel.bin, desktop.elf, BOOTX64.EFI)"
-    mmd -i neolyx.img ::/apps 2>/dev/null || true
+    # mmd asks an interactive question when ::/apps already exists (and
+    # 2>/dev/null hides it, so the build looks hung): create it only if missing.
+    if ! mdir -i neolyx.img ::/apps >/dev/null 2>&1; then
+        mmd -i neolyx.img ::/apps || { echo "ERROR: cannot create /apps in neolyx.img"; exit 1; }
+    fi
     for prog in ticker fdtest shmtest ipc_test fbtest wintest nxwtest nxuitest; do
         mcopy -i neolyx.img -o tests/userland/$prog/$prog ::/apps/$prog && echo "      Installed /apps/$prog"
     done
