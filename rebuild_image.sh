@@ -32,6 +32,15 @@ echo "[IMG] Copying kernel..."
 mcopy -i neolyx_new.img kernel/kernel.bin ::/EFI/BOOT/kernel.bin
 mcopy -i neolyx_new.img kernel/kernel.bin ::/kernel.bin
 
+echo "[IMG] Preallocating the kernel log file..."
+# The kernel only overwrites this file in place (exactly 65536 bytes) and
+# never creates or resizes it: see kernel/include/core/boot_logfile.h.
+mmd -i neolyx_new.img ::/EFI/NEOLYX
+BOOTLOG_TMP=$(mktemp)
+{ head -c 65535 /dev/zero | tr '\0' ' '; printf '\n'; } > "$BOOTLOG_TMP"
+mcopy -i neolyx_new.img "$BOOTLOG_TMP" ::/EFI/NEOLYX/boot.log
+rm -f "$BOOTLOG_TMP"
+
 echo "[IMG] Copying desktop..."
 mcopy -i neolyx_new.img desktop/bin/neolyx-desktop ::/EFI/BOOT/desktop.elf
 

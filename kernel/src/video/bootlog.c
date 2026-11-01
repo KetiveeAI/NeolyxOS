@@ -331,3 +331,15 @@ int bootlog_boot_flags(uint64_t word, uint32_t *flags_out, uint32_t *pixfmt_out)
     }
     return valid;
 }
+
+uint32_t bootlog_copy(char *dst, uint32_t cap) {
+    if (!dst || cap == 0) return 0;
+    uint64_t end = bl_written;              /* snapshot: later bytes are not copied */
+    uint64_t first = (end > BOOTLOG_RING_SIZE) ? end - BOOTLOG_RING_SIZE : 0;
+    if (end - first > cap) first = end - cap;
+    uint32_t n = 0;
+    for (uint64_t pos = first; pos < end; pos++) {
+        dst[n++] = bl_at(pos);
+    }
+    return n;
+}

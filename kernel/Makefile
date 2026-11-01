@@ -185,6 +185,7 @@ obj-y += npa_archive.o
 obj-y += storage.o
 obj-y += ahci_block.o
 obj-y += write_guard.o
+obj-y += boot_logfile.o
 
 # Block layer
 obj-y += block.o
@@ -375,6 +376,9 @@ storage.o: src/storage/storage.c include/storage/storage.h include/core/kernel.h
 
 write_guard.o: src/storage/write_guard.c include/storage/write_guard.h
 	$(CC) $(CFLAGS) -c src/storage/write_guard.c -o write_guard.o
+
+boot_logfile.o: src/core/boot_logfile.c include/core/boot_logfile.h
+	$(CC) $(CFLAGS) -c src/core/boot_logfile.c -o boot_logfile.o
 
 ahci_block.o: src/storage/ahci_block.c include/storage/ahci_block.h include/drivers/ahci.h include/fs/nxfs.h
 	$(CC) $(CFLAGS) -c src/storage/ahci_block.c -o ahci_block.o

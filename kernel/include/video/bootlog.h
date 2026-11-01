@@ -103,6 +103,16 @@ void bootlog_show_crash(const char *title);
 void bootlog_show_summary(const char *title, const char *const *patterns, uint32_t count);
 
 /**
+ * bootlog_copy - Copy the recorded log, oldest byte first.
+ * @dst: destination buffer
+ * @cap: size of @dst in bytes
+ *
+ * If more is recorded than fits, the newest @cap bytes are copied.
+ * Returns the number of bytes copied (0 if @dst is NULL or @cap is 0).
+ */
+uint32_t bootlog_copy(char *dst, uint32_t cap);
+
+/**
  * bootlog_boot_flags - Decode the loader's boot flags word.
  * @word: NeolyxBootInfo.reserved[4]
  * @flags_out: receives the flag bits (0 if the word is not valid)
