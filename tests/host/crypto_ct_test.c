@@ -68,6 +68,30 @@ int main(void) {
     rc |= nxc_ed25519_sign(sig, msg, sizeof(msg), seed);
     PUBLIC(&rc, sizeof(rc));
 
+    /* AEADs with a secret key and secret plaintext (public nonce, AAD). */
+    uint8_t nonce[12] = { 1, 2, 3 }, ct[200], tag[16];
+    SECRET(key, sizeof(key));
+    SECRET(msg, sizeof(msg));
+    rc |= nxc_chacha20poly1305_seal(ct, tag, key, nonce, "hdr", 3, msg, sizeof(msg));
+    PUBLIC(&rc, sizeof(rc));
+    PUBLIC(ct, sizeof(ct));
+    PUBLIC(tag, sizeof(tag));
+    rc |= nxc_chacha20poly1305_open(ct, key, nonce, "hdr", 3, ct, sizeof(ct), tag);
+    PUBLIC(&rc, sizeof(rc));
+
+    nxc_gcm_ctx g;
+    SECRET(key, sizeof(key));
+    rc |= nxc_gcm_init(&g, key, 32);
+    PUBLIC(&rc, sizeof(rc));
+    SECRET(msg, sizeof(msg));
+    rc |= nxc_gcm_seal(&g, ct, tag, nonce, "hdr", 3, msg, sizeof(msg));
+    PUBLIC(&rc, sizeof(rc));
+    PUBLIC(ct, sizeof(ct));
+    PUBLIC(tag, sizeof(tag));
+    rc |= nxc_gcm_open(&g, ct, nonce, "hdr", 3, ct, sizeof(ct), tag);
+    PUBLIC(&rc, sizeof(rc));
+    nxc_gcm_wipe(&g);
+
     /* Constant-time comparison of a secret tag. */
     SECRET(out, 32);
     int eq = nxc_ct_equal(out, okm, 32);

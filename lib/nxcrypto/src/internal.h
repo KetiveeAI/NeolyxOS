@@ -58,4 +58,14 @@ static inline void nxc_copy(void *dst, const void *src, size_t len) {
     for (size_t i = 0; i < len; i++) d[i] = s[i];
 }
 
+/*
+ * AEAD open helper: when ok == 1 return NXC_OK and leave buf alone; when
+ * ok == 0 zero buf and return NXC_ERR_VERIFY. No branch depends on ok.
+ */
+static inline int nxc__aead_keep_if(uint8_t *buf, size_t len, uint32_t ok) {
+    uint8_t keep = (uint8_t)(0u - (ok & 1u));            /* 0xff or 0x00 */
+    for (size_t i = 0; i < len; i++) buf[i] &= keep;
+    return (int)((uint32_t)NXC_ERR_VERIFY & (uint32_t)(0u - ((ok & 1u) ^ 1u)));
+}
+
 #endif /* NXCRYPTO_INTERNAL_H */
