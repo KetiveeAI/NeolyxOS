@@ -28,6 +28,7 @@
 #define USER_STACK_SIZE     (64 * 1024)  /* 64 KB */
 #define PROCESS_ARGV_MAX    16           /* Max argv entries for spawn/exec */
 #define PROCESS_ARG_LEN     256          /* Max length of one argument */
+#define PROCESS_FD_MAX      16           /* Open files per process (fd 0-15) */
 
 /* Process states */
 typedef enum {
@@ -97,8 +98,9 @@ typedef struct process {
     /* CPU Context */
     cpu_context_t context;
     
-    /* File descriptors */
-    void *fd_table[16];                 /* Open file handles */
+    /* File descriptors: private to this process (vfs_file_t *, NULL = free).
+     * Closed by terminate(); kept across exec; empty for a new process. */
+    void *fd_table[PROCESS_FD_MAX];
     
     /* Working directory */
     char cwd[256];

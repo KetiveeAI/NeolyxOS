@@ -27,7 +27,7 @@ None of the rows below has been verified on real hardware yet.
 | Memory syscalls | Partial | Only `brk` is registered. `mmap`/`munmap` are declared in `syscall.h` but are not in `syscall_table.def`, so they return `ENOSYS`. |
 | Shared memory | Missing | No syscalls. |
 | IPC | Missing | No pipes, ports or channels. PTY syscalls 60 to 67 are declared in `syscall.h` but not registered. |
-| File descriptors | Partial, unsafe | One global table of 16 entries in `syscall.c`, shared by every process. |
+| File descriptors | Partial | Per process: 16 descriptors in each PCB (`fd_table`), kept across `exec`, closed when the process exits, is killed or faults. Socket numbers are still one global table in the network stack, shared by every process. Verified by `tests/userland/fdtest`. |
 | Framebuffer syscalls | Partial | `fb.map` gives any user process the raw framebuffer. `fb.flip` copies the full frame. No vsync. |
 | Input syscalls | Partial | One global event queue: the first process to poll takes each event. `input.register` is a no-op. |
 | Syscall dispatch, ABI query, filter, audit | Real | `nx_syscall.c`, `syscall_table.def`. |

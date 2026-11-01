@@ -736,8 +736,40 @@ int32_t process_spawn_file(const char *path, int argc, const char *const *argv,
  * Common teardown. The process must not be on the ready queue afterwards
  * and must not be the one whose CR3 is loaded (caller handles current).
  */
+/*
+ * Close every file a process still has open. Called from terminate(), so it
+ * runs for normal exit, kill and CPU faults alike. Each slot is cleared
+ * before vfs_close() so a descriptor can never be closed twice.
+ */
+static void close_files(process_t *proc) {
+    uint32_t closed = 0;
+    for (int fd = 0; fd < PROCESS_FD_MAX; fd++) {
+        vfs_file_t *file = (vfs_file_t *)proc->fd_table[fd];
+        if (!file) continue;
+        proc->fd_table[fd] = NULL;
+        if (vfs_close(file) != VFS_OK) {
+            serial_puts("[PROC] WARNING: close failed for fd ");
+            serial_dec((uint32_t)fd);
+            serial_puts(" of PID ");
+            serial_dec(proc->pid);
+            serial_puts("\n");
+        }
+        closed++;
+    }
+    if (closed) {
+        serial_puts("[PROC] Closed ");
+        serial_dec(closed);
+        serial_puts(" open file(s) of PID ");
+        serial_dec(proc->pid);
+        serial_puts("\n");
+    }
+}
+
 static void terminate(process_t *proc, int exit_code) {
     proc->exit_code = exit_code;
+
+    /* A process's files are its own: nothing it left open outlives it */
+    close_files(proc);
 
     scheduler_remove(proc);
     if (proc->state == PROC_STATE_SLEEPING && sleeping_count) sleeping_count--;
