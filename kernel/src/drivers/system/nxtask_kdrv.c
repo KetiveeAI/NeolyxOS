@@ -311,46 +311,39 @@ int nxtask_kdrv_set_affinity(uint32_t pid, uint64_t mask) {
     return 0;
 }
 
-int nxtask_kdrv_suspend(uint32_t pid) {
-    process_t *proc = NULL;
+/*
+ * Suspend and resume are refused until the scheduler supports them.
+ *
+ * The old code set PROC_FLAG_SYSTEM as a "suspended" marker, which would
+ * have given a suspended app system rights (framebuffer, input, nx.* ports,
+ * and protection from being killed). It also changed proc->state without
+ * taking the process off the run queue (suspend) or putting it back
+ * (resume), which corrupts the scheduler's queues. Nothing calls either
+ * function, so both now refuse and log instead of doing that.
+ *
+ * Returns -1 for an unknown PID, -3 (not supported) otherwise.
+ */
+static int nxtask_find_pid(uint32_t pid) {
     for (int i = 0; i < process_table_size; i++) {
-        if (process_table[i] && process_table[i]->pid == pid) {
-            proc = process_table[i];
-            break;
-        }
+        if (process_table[i] && process_table[i]->pid == pid) return 1;
     }
-    
-    if (!proc) return -1;
-    if (proc->flags & PROC_FLAG_SYSTEM) return -2;  /* Cannot suspend system */
-    
-    proc->state = PROC_STATE_BLOCKED;
-    proc->flags |= PROC_FLAG_SYSTEM;  /* Mark as suspended */
-    
-    serial_puts("[NXTask] Suspended PID ");
-    serial_dec(pid);
-    serial_puts("\n");
-    
     return 0;
 }
 
-int nxtask_kdrv_resume(uint32_t pid) {
-    process_t *proc = NULL;
-    for (int i = 0; i < process_table_size; i++) {
-        if (process_table[i] && process_table[i]->pid == pid) {
-            proc = process_table[i];
-            break;
-        }
-    }
-    
-    if (!proc) return -1;
-    
-    proc->state = PROC_STATE_READY;
-    
-    serial_puts("[NXTask] Resumed PID ");
+int nxtask_kdrv_suspend(uint32_t pid) {
+    if (!nxtask_find_pid(pid)) return -1;
+    serial_puts("[NXTask] Suspend of PID ");
     serial_dec(pid);
-    serial_puts("\n");
-    
-    return 0;
+    serial_puts(" refused: not supported by the scheduler\n");
+    return -3;
+}
+
+int nxtask_kdrv_resume(uint32_t pid) {
+    if (!nxtask_find_pid(pid)) return -1;
+    serial_puts("[NXTask] Resume of PID ");
+    serial_dec(pid);
+    serial_puts(" refused: not supported by the scheduler\n");
+    return -3;
 }
 
 int nxtask_kdrv_kill(uint32_t pid, int signal) {
