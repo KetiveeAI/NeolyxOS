@@ -47,6 +47,8 @@ typedef enum {
 #define PROC_FLAG_SYSTEM    0x0004  /* System process (cannot be killed) */
 #define PROC_FLAG_DETACHED  0x0008  /* No parent waiting */
 
+struct nx_proc_ipc;                     /* core/nx_handle.h */
+
 /* ============ CPU Context ============ */
 
 /* Saved registers for context switch */
@@ -128,6 +130,7 @@ typedef struct process {
     uint64_t user_argc;                 /* First-run: RDI */
     uint64_t user_argv;                 /* First-run: RSI */
     int stack_released;                 /* Kernel stack + FPU area already freed */
+    struct nx_proc_ipc *ipc;            /* Handles + shm mappings (NULL until first use) */
 } process_t;
 
 /* ============ Process API ============ */

@@ -25,7 +25,7 @@ None of the rows below has been verified on real hardware yet.
 | Processes | Partial | Per-process address spaces; `spawn`, `exec`, `fork`, `wait`, `exit`. No threads. |
 | Scheduler | Partial | Round-robin; the timer preempts ring 3 only, kernel code is not preemptible. One CPU, no SMP. |
 | Memory syscalls | Partial | Only `brk` is registered. `mmap`/`munmap` are declared in `syscall.h` but are not in `syscall_table.def`, so they return `ENOSYS`. |
-| Shared memory | Missing | No syscalls. |
+| Shared memory | Partial | Handles (`handle.close` 140, `handle.dup` 149) and `shm.create`/`shm.map`/`shm.unmap` (141 to 143) per `docs/desktop/proposals/kernel-shm-ipc.md`, mapped in a per-process shared region at `0x4000_0000_0000`. Pages are zeroed, returned to the PMM when the last handle and mapping go, and released on exit, kill, fault and `exec`. Verified by `tests/userland/shmtest`. Handles cannot cross processes until channels land. |
 | IPC | Missing | No pipes, ports or channels. PTY syscalls 60 to 67 are declared in `syscall.h` but not registered. |
 | File descriptors | Partial | Per process: 16 descriptors in each PCB (`fd_table`), kept across `exec`, closed when the process exits, is killed or faults. Socket numbers are still one global table in the network stack, shared by every process. Verified by `tests/userland/fdtest`. |
 | Framebuffer syscalls | Partial | `fb.map` gives any user process the raw framebuffer. `fb.flip` copies the full frame. No vsync. |

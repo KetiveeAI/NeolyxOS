@@ -28,6 +28,7 @@
 #include "mm/addrspace.h"
 #include "fs/vfs.h"
 #include "core/panic.h"
+#include "core/nx_handle.h"
 
 /* ============ External Dependencies ============ */
 
@@ -215,6 +216,7 @@ static void free_process(process_t *proc) {
         process_table[proc->pid] = NULL;
     }
     release_stacks(proc);
+    nx_ipc_release(proc);   /* no-op unless a creation path failed late */
     if (proc->as) {
         addrspace_destroy(proc->as);
         proc->as = NULL;
@@ -771,6 +773,10 @@ static void terminate(process_t *proc, int exit_code) {
     /* A process's files are its own: nothing it left open outlives it */
     close_files(proc);
 
+    /* Handles and shm mappings die with it; shm frames return to the PMM
+     * once no other process holds them. Must run before addrspace_destroy. */
+    nx_ipc_release(proc);
+
     scheduler_remove(proc);
     if (proc->state == PROC_STATE_SLEEPING && sleeping_count) sleeping_count--;
     proc->state = PROC_STATE_ZOMBIE;
@@ -1076,6 +1082,10 @@ int process_exec(const char *path, char *const argv[], char *const envp[]) {
 
     /* Point of no return: swap images */
     __asm__ volatile("cli");
+
+    /* exec starts the new program with no handles and no mappings */
+    nx_ipc_release(self);
+
     addrspace_t *old = self->as;
     self->as = as;
     self->page_directory = as->pml4_phys;

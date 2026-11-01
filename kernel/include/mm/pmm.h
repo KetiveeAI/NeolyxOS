@@ -134,7 +134,8 @@ void pmm_init(void *memory_map, uint64_t map_size, uint64_t descriptor_size);
  * 
  * @return Physical address of allocated page, or 0 on failure.
  * 
- * The page is zeroed before return (security).
+ * The page is NOT zeroed: it may hold a previous owner's data. Callers that
+ * hand memory to userspace must clear it first (addrspace and shm do).
  */
 uint64_t pmm_alloc_page(void);
 
@@ -144,7 +145,7 @@ uint64_t pmm_alloc_page(void);
  * @param count Number of pages to allocate.
  * @return Physical address of first page, or 0 on failure.
  * 
- * All pages are zeroed before return (security).
+ * The pages are NOT zeroed (see pmm_alloc_page).
  */
 uint64_t pmm_alloc_pages(size_t count);
 

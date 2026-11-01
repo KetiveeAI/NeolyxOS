@@ -130,8 +130,18 @@
 #define SYS_RTC_SET             131 /* int sys_rtc_set(rtc_time_t* time) - Set real time */
 #define SYS_RTC_UNIX            132 /* uint64_t sys_rtc_unix(void) - Get Unix timestamp */
 
+/* ============ Handles and Shared Memory (ABI v1.1) ============ */
+/* Spec: docs/desktop/proposals/kernel-shm-ipc.md. Types: core/nx_ipc.h.
+ * 144-147 and 150-152 (channels, obj.wait, ports) are assigned by the spec
+ * and land in the next step; 148 is reserved for fb.flip_rects. */
+#define SYS_HANDLE_CLOSE        140 /* int sys_handle_close(nx_handle_t h) */
+#define SYS_SHM_CREATE          141 /* nx_handle_t sys_shm_create(uint64_t size, uint32_t flags) */
+#define SYS_SHM_MAP             142 /* void *sys_shm_map(nx_handle_t h, uint32_t prot, uint64_t *out_size) */
+#define SYS_SHM_UNMAP           143 /* int sys_shm_unmap(void *addr) */
+#define SYS_HANDLE_DUP          149 /* nx_handle_t sys_handle_dup(nx_handle_t h, uint32_t rights) */
+
 /* Maximum syscall number */
-#define SYS_MAX         150
+#define SYS_MAX         160
 
 /* ============ Error Codes ============ */
 /* POSIX-compatible */
@@ -169,6 +179,8 @@
 #define ENOSYS          38  /* Function not implemented */
 #define ENOTEMPTY       39  /* Directory not empty */
 #define ERANGE          40  /* Math result not representable */
+#define EMSGSIZE        90  /* Message too long / receive buffer too small */
+#define ETIMEDOUT       110 /* Wait timed out */
 
 /* ============ Privilege Levels ============ */
 

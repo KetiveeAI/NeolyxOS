@@ -1,6 +1,8 @@
 # Proposal: kernel shared memory and IPC (ABI v1.1)
 
-Status: **approved by the project owner on 2026-11-01, not implemented yet.**
+Status: **approved by the project owner on 2026-11-01.** Implemented so far:
+handles (140, 149) and shared memory (141 to 143). Channels, `obj.wait` and
+ports (144 to 147, 150 to 152) are next.
 This document is the spec the kernel code must follow; changing it needs the
 owner's sign-off again.
 Plan: weeks 1 and 2 of the 1.0 Preview plan (nxserver window server).

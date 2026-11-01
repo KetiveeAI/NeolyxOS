@@ -9,6 +9,10 @@
  *                                                    other PD entries copied
  *                                                    from the kernel PD
  *
+ * The shared region (PML4[128], AS_SHARED_BASE..AS_SHARED_END) gets its own
+ * private PDPT on the first shm mapping; its leaf entries carry
+ * PTE_SHARED and point at frames owned by shm objects.
+ *
  * Kernel identity mappings are supervisor-only, so user code can only reach
  * its own window pages (plus the framebuffer, which the kernel maps with
  * PAGE_USER in the shared tables for the desktop compositor).
@@ -31,6 +35,7 @@ extern uint64_t paging_get_pml4(void);
 #define PTE_WRITE       (1ULL << 1)
 #define PTE_USER        (1ULL << 2)
 #define PTE_LARGE       (1ULL << 7)
+#define PTE_SHARED      (1ULL << 9)      /* Software bit: frame owned by an shm object */
 #define PTE_ADDR_MASK   0x000FFFFFFFFFF000ULL
 
 #define AS_PAGE         0x1000ULL
@@ -39,10 +44,13 @@ extern uint64_t paging_get_pml4(void);
 #define WINDOW_PD_FIRST ((USER_WINDOW_BASE >> 21) & 0x1FF)   /* 8   */
 #define WINDOW_PD_END   ((USER_WINDOW_END >> 21) & 0x1FF)    /* 128 */
 
+#define SHARED_PML4_INDEX ((AS_SHARED_BASE >> 39) & 0x1FF)   /* 128 */
+
 /* ============ State ============ */
 
 static uint64_t g_kernel_pml4 = 0;
 static int g_window_reserved = 0;
+static int g_shared_ok = 0;
 
 /* ============ Helpers ============ */
 
@@ -109,6 +117,85 @@ static uint64_t *as_find_pte(const addrspace_t *as, uint64_t va) {
     return &pt[(va >> 12) & 0x1FF];
 }
 
+static inline int as_va_in_shared(uint64_t va) {
+    return va >= AS_SHARED_BASE && va < AS_SHARED_END;
+}
+
+/*
+ * Return the PTE for va in the shared region. When create is non-zero,
+ * missing PDPT/PD/PT levels are allocated (zeroed). Returns NULL when a
+ * level is missing (create == 0) or cannot be allocated.
+ */
+static uint64_t *as_shared_pte(addrspace_t *as, uint64_t va, int create) {
+    if (!as || !as_va_in_shared(va)) return NULL;
+
+    uint64_t *pml4 = (uint64_t *)as->pml4_phys;
+    if (!as->shared_pdpt_phys) {
+        if (!create) return NULL;
+        uint64_t f = as_alloc_frame();
+        if (!f) return NULL;
+        as->shared_pdpt_phys = f;
+        pml4[SHARED_PML4_INDEX] = f | PTE_PRESENT | PTE_WRITE | PTE_USER;
+    }
+
+    uint64_t *pdpt = (uint64_t *)as->shared_pdpt_phys;
+    uint64_t *pdpte = &pdpt[(va >> 30) & 0x1FF];
+    if (!(*pdpte & PTE_PRESENT)) {
+        if (!create) return NULL;
+        uint64_t f = as_alloc_frame();
+        if (!f) return NULL;
+        *pdpte = f | PTE_PRESENT | PTE_WRITE | PTE_USER;
+    }
+
+    uint64_t *pd = (uint64_t *)(*pdpte & PTE_ADDR_MASK);
+    uint64_t *pde = &pd[(va >> 21) & 0x1FF];
+    if (!(*pde & PTE_PRESENT)) {
+        if (!create) return NULL;
+        uint64_t f = as_alloc_frame();
+        if (!f) return NULL;
+        *pde = f | PTE_PRESENT | PTE_WRITE | PTE_USER;
+    }
+
+    uint64_t *pt = (uint64_t *)(*pde & PTE_ADDR_MASK);
+    return &pt[(va >> 12) & 0x1FF];
+}
+
+/* Const lookup for the shared region (never allocates) */
+static const uint64_t *as_shared_pte_ro(const addrspace_t *as, uint64_t va) {
+    return as_shared_pte((addrspace_t *)as, va, 0);
+}
+
+/* Free the shared region's page tables. Shared frames are never freed here:
+ * the shm layer unmaps every mapping before a space is destroyed. A leaf
+ * still present is logged and its frame leaked rather than double-freed. */
+static void as_destroy_shared(addrspace_t *as) {
+    if (!as->shared_pdpt_phys) return;
+
+    uint64_t stray = 0;
+    uint64_t *pdpt = (uint64_t *)as->shared_pdpt_phys;
+    for (int i = 0; i < 512; i++) {
+        if (!(pdpt[i] & PTE_PRESENT)) continue;
+        uint64_t *pd = (uint64_t *)(pdpt[i] & PTE_ADDR_MASK);
+        for (int j = 0; j < 512; j++) {
+            if (!(pd[j] & PTE_PRESENT)) continue;
+            uint64_t *pt = (uint64_t *)(pd[j] & PTE_ADDR_MASK);
+            for (int k = 0; k < 512; k++) {
+                if (pt[k] & PTE_PRESENT) stray++;
+            }
+            pmm_free_page((uint64_t)pt);
+        }
+        pmm_free_page((uint64_t)pd);
+    }
+    pmm_free_page(as->shared_pdpt_phys);
+    as->shared_pdpt_phys = 0;
+
+    if (stray) {
+        serial_puts("[AS] WARNING: ");
+        as_dec(stray);
+        serial_puts(" shared pages still mapped at teardown (frames left to their shm objects)\n");
+    }
+}
+
 /* ============ Public API ============ */
 
 void addrspace_reserve_window(void) {
@@ -154,6 +241,22 @@ int addrspace_init(void) {
         pd[i] = 0;
     }
     __asm__ volatile("mov %0, %%cr3" : : "r"(pml4_phys) : "memory");
+
+    /* The shared region needs its PML4 slot free in every space. An
+     * identity-mapped MMIO range there (e.g. a GOP framebuffer at 64 TiB+)
+     * would collide: refuse shared memory rather than map over it. */
+    if (pml4[SHARED_PML4_INDEX] & PTE_PRESENT) {
+        g_shared_ok = 0;
+        serial_puts("[AS] ERROR: PML4 slot for the shared region is in use; "
+                    "shared memory disabled\n");
+    } else {
+        g_shared_ok = 1;
+        serial_puts("[AS] Shared region ");
+        as_hex64(AS_SHARED_BASE);
+        serial_puts(" - ");
+        as_hex64(AS_SHARED_END);
+        serial_puts(" available\n");
+    }
 
     g_kernel_pml4 = pml4_phys;
     serial_puts("[AS] Kernel template PML4 at ");
@@ -237,6 +340,8 @@ void addrspace_destroy(addrspace_t *as) {
         pd[i] = 0;
     }
 
+    as_destroy_shared(as);
+
     pmm_free_page(as->pd_phys);
     pmm_free_page(as->pdpt_phys);
     pmm_free_page(as->pml4_phys);
@@ -316,15 +421,118 @@ int addrspace_check_range(const addrspace_t *as, uint64_t va, uint64_t len, int 
     if (len == 0) len = 1;
     uint64_t end = va + len;
     if (end < va) return -1;
-    if (va < USER_WINDOW_BASE || end > USER_WINDOW_END) return -1;
+
+    int shared = (va >= AS_SHARED_BASE && end <= AS_SHARED_END);
+    if (!shared && (va < USER_WINDOW_BASE || end > USER_WINDOW_END)) return -1;
 
     for (uint64_t page = va & ~(AS_PAGE - 1); page < end; page += AS_PAGE) {
-        uint64_t *pte = as_find_pte(as, page);
+        const uint64_t *pte = shared ? as_shared_pte_ro(as, page) : as_find_pte(as, page);
         if (!pte) return -1;
         if ((*pte & (PTE_PRESENT | PTE_USER)) != (PTE_PRESENT | PTE_USER)) return -1;
         if (write && !(*pte & PTE_WRITE)) return -1;
     }
     return 0;
+}
+
+int addrspace_shared_ok(void) {
+    return g_shared_ok;
+}
+
+int addrspace_map_shared(addrspace_t *as, uint64_t va, const uint64_t *frames,
+                         uint64_t count, uint32_t flags) {
+    if (!as || !frames || count == 0) return -1;
+    if (!g_shared_ok) {
+        serial_puts("[AS] ERROR: shared region unavailable\n");
+        return -1;
+    }
+    if (va & (AS_PAGE - 1)) return -1;
+    if (count > (AS_SHARED_END - AS_SHARED_BASE) / AS_PAGE) return -1;
+    uint64_t end = va + count * AS_PAGE;
+    if (va < AS_SHARED_BASE || end > AS_SHARED_END || end <= va) return -1;
+
+    /* The range must be completely unmapped */
+    for (uint64_t page = va; page < end; page += AS_PAGE) {
+        const uint64_t *pte = as_shared_pte_ro(as, page);
+        if (pte && (*pte & PTE_PRESENT)) {
+            serial_puts("[AS] ERROR: shared map over a mapped page at ");
+            as_hex64(page);
+            serial_puts("\n");
+            return -1;
+        }
+    }
+
+    uint64_t leaf = PTE_PRESENT | PTE_USER | PTE_SHARED |
+                    ((flags & AS_MAP_WRITE) ? PTE_WRITE : 0);
+    for (uint64_t i = 0; i < count; i++) {
+        uint64_t frame = frames[i];
+        uint64_t *pte = NULL;
+        if ((frame & (AS_PAGE - 1)) == 0 && frame != 0 && frame + AS_PAGE <= IDENTITY_LIMIT) {
+            pte = as_shared_pte(as, va + i * AS_PAGE, 1);
+        }
+        if (!pte) {
+            serial_puts("[AS] ERROR: shared map failed at page ");
+            as_dec(i);
+            serial_puts("\n");
+            addrspace_unmap_shared(as, va, i);
+            return -1;
+        }
+        *pte = frame | leaf;
+    }
+    as->shared_pages += count;
+    return 0;
+}
+
+void addrspace_unmap_shared(addrspace_t *as, uint64_t va, uint64_t count) {
+    if (!as || count == 0) return;
+
+    uint64_t cr3;
+    __asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
+    int active = ((cr3 & PTE_ADDR_MASK) == as->pml4_phys);
+
+    for (uint64_t i = 0; i < count; i++) {
+        uint64_t page = va + i * AS_PAGE;
+        uint64_t *pte = as_shared_pte(as, page, 0);
+        if (!pte || !(*pte & PTE_PRESENT)) continue;
+        *pte = 0;
+        if (as->shared_pages) as->shared_pages--;
+        if (active) {
+            __asm__ volatile("invlpg (%0)" : : "r"(page) : "memory");
+        }
+    }
+
+    /* Give back page tables (and page directories) that became empty, so a
+     * long-running process that maps and unmaps does not keep growing its
+     * tables. The PDPT stays until the space is destroyed. */
+    if (!as->shared_pdpt_phys || !as_va_in_shared(va)) return;
+    int freed = 0;
+    uint64_t *pdpt = (uint64_t *)as->shared_pdpt_phys;
+    uint64_t end = va + count * AS_PAGE;
+    for (uint64_t chunk = va & ~0x1FFFFFULL; chunk < end && chunk < AS_SHARED_END; chunk += 0x200000ULL) {
+        uint64_t *pdpte = &pdpt[(chunk >> 30) & 0x1FF];
+        if (!(*pdpte & PTE_PRESENT)) continue;
+        uint64_t *pd = (uint64_t *)(*pdpte & PTE_ADDR_MASK);
+        uint64_t *pde = &pd[(chunk >> 21) & 0x1FF];
+        if (!(*pde & PTE_PRESENT)) continue;
+
+        uint64_t *pt = (uint64_t *)(*pde & PTE_ADDR_MASK);
+        int used = 0;
+        for (int k = 0; k < 512 && !used; k++) used = (pt[k] & PTE_PRESENT) != 0;
+        if (used) continue;
+        *pde = 0;
+        pmm_free_page((uint64_t)pt);
+        freed = 1;
+
+        int pd_used = 0;
+        for (int k = 0; k < 512 && !pd_used; k++) pd_used = (pd[k] & PTE_PRESENT) != 0;
+        if (!pd_used) {
+            *pdpte = 0;
+            pmm_free_page((uint64_t)pd);
+        }
+    }
+    if (freed && active) {
+        /* Drop cached paging-structure entries for the freed tables */
+        __asm__ volatile("mov %%cr3, %%rax; mov %%rax, %%cr3" : : : "rax", "memory");
+    }
 }
 
 void addrspace_activate(const addrspace_t *as) {
