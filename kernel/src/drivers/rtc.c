@@ -42,9 +42,17 @@ static inline uint8_t inb(uint16_t port) {
 #define CMOS_REG_STATUS_A   0x0A
 #define CMOS_REG_STATUS_B   0x0B
 
-/* Boot time (captured at init) */
+/* Boot time (captured at init). g_rtc_ok is 1 only when the CMOS clock
+ * answered and gave a plausible date; otherwise the time is "not set". */
 static rtc_time_t g_boot_time;
 static uint64_t g_boot_ticks = 0;
+static int g_rtc_ok = 0;
+
+/* Bounds for the CMOS polling loops. An update lasts under 2 ms; a
+ * machine without a legacy CMOS reads 0xFF, which looks like an update
+ * that never ends, so every wait gives up instead of hanging the boot. */
+#define RTC_UIP_POLL_MAX     200000
+#define RTC_STABLE_TRIES     5
 
 /* Helper to print decimal */
 static void serial_dec(uint32_t val) {
@@ -73,6 +81,35 @@ static int rtc_is_updating(void) {
     return (cmos_read(CMOS_REG_STATUS_A) & 0x80) != 0;
 }
 
+/* Wait for an in-progress update to finish. 0 when ready, -1 on timeout. */
+static int rtc_wait_ready(void) {
+    for (uint32_t i = 0; i < RTC_UIP_POLL_MAX; i++) {
+        if (!rtc_is_updating()) return 0;
+        __asm__ volatile("pause");
+    }
+    return -1;
+}
+
+static void rtc_clear(rtc_time_t *time) {
+    time->year = 0;
+    time->month = 0;
+    time->day = 0;
+    time->hour = 0;
+    time->minute = 0;
+    time->second = 0;
+    time->weekday = 0;
+}
+
+/* Plausible calendar values (the century is assumed to be 20xx) */
+static int rtc_time_valid(const rtc_time_t *t) {
+    static const uint8_t mdays[12] = {31,29,31,30,31,30,31,31,30,31,30,31};
+    if (t->year < 2000 || t->year > 2099) return 0;
+    if (t->month < 1 || t->month > 12) return 0;
+    if (t->day < 1 || t->day > mdays[t->month - 1]) return 0;
+    if (t->hour > 23 || t->minute > 59 || t->second > 59) return 0;
+    return 1;
+}
+
 /* Convert BCD to binary */
 static uint8_t bcd_to_bin(uint8_t bcd) {
     return ((bcd >> 4) * 10) + (bcd & 0x0F);
@@ -94,10 +131,15 @@ void rtc_read_time(rtc_time_t *time) {
      */
     uint8_t seconds, minutes, hours, weekday, day, month, year;
     uint8_t last_seconds;
+    int tries = 0;
     
     do {
-        /* Wait for any in-progress update to finish */
-        while (rtc_is_updating());
+        /* Wait for any in-progress update to finish (bounded) */
+        if (rtc_wait_ready() != 0 || ++tries > RTC_STABLE_TRIES) {
+            serial_puts("[RTC] ERROR: CMOS clock not answering; time not set\n");
+            rtc_clear(time);
+            return;
+        }
         
         /* Read all registers */
         last_seconds = cmos_read(CMOS_REG_SECONDS);
@@ -152,6 +194,11 @@ void rtc_read_time(rtc_time_t *time) {
     time->day     = day;
     time->month   = month;
     time->year    = (century * 100) + year;
+
+    if (!rtc_time_valid(time)) {
+        serial_puts("[RTC] ERROR: CMOS clock holds an invalid date; time not set\n");
+        rtc_clear(time);
+    }
 }
 
 
@@ -159,8 +206,17 @@ void rtc_read_time(rtc_time_t *time) {
 void rtc_write_time(const rtc_time_t *time) {
     if (!time) return;
     
-    /* Wait for update to complete */
-    while (rtc_is_updating());
+    /* Reject impossible dates before touching the CMOS */
+    if (!rtc_time_valid(time)) {
+        serial_puts("[RTC] ERROR: refusing to write an invalid date\n");
+        return;
+    }
+
+    /* Wait for update to complete (bounded) */
+    if (rtc_wait_ready() != 0) {
+        serial_puts("[RTC] ERROR: CMOS clock not answering; time not written\n");
+        return;
+    }
     
     /* Read Status B for format info */
     uint8_t status_b = cmos_read(CMOS_REG_STATUS_B);
@@ -267,8 +323,11 @@ void rtc_from_unix(uint64_t timestamp, rtc_time_t *time) {
     time->weekday = ((days + 4) % 7);  /* Jan 1, 1970 was Thursday */
 }
 
-/* Get current time as Unix timestamp */
+/* Get current time as Unix timestamp. When the clock is not set this
+ * returns (uint64_t)-1, which rtc.unix (132) passes to userspace as -1,
+ * "clock not set". */
 uint64_t rtc_get_unix_time(void) {
+    if (!g_rtc_ok) return (uint64_t)-1;
     uint64_t boot_unix = rtc_to_unix(&g_boot_time);
     uint64_t elapsed_ms = pit_get_ticks() - g_boot_ticks;
     return boot_unix + (elapsed_ms / 1000);
@@ -288,6 +347,7 @@ void rtc_init(void) {
     
     /* Read initial time */
     rtc_read_time(&g_boot_time);
+    g_rtc_ok = rtc_time_valid(&g_boot_time);
     
     /* Log boot time */
     serial_puts("[RTC] Boot time: ");
@@ -309,5 +369,5 @@ void rtc_init(void) {
     serial_dec(g_boot_time.second);
     serial_puts("\n");
     
-    serial_puts("[RTC] Ready\n");
+    serial_puts(g_rtc_ok ? "[RTC] Ready\n" : "[RTC] Clock not set (rtc.unix returns -1)\n");
 }
