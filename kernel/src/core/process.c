@@ -39,6 +39,7 @@
 /* ============ External Dependencies ============ */
 
 extern void serial_puts(const char *s);
+extern void network_process_exit(uint32_t pid);   /* net/tcpip.c */
 extern void serial_putc(char c);
 extern uint64_t pit_get_ticks(void);
 extern void tss_set_kernel_stack(uint64_t stack);
@@ -808,6 +809,7 @@ static void terminate(process_t *proc, int exit_code) {
 
     /* A process's files are its own: nothing it left open outlives it */
     close_files(proc);
+    network_process_exit(proc->pid);   /* sockets it still held */
 
     /* Handles and shm mappings die with it; shm frames return to the PMM
      * once no other process holds them. Must run before addrspace_destroy. */

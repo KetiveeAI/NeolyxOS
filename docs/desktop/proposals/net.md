@@ -32,15 +32,14 @@ syscall that exposes this state:
    not ship until this returns a real result, or returns `-ENOSYS`.
 2. Wi-Fi devices fill in `dev->interface` but never call
    `network_register()`, so `wlanN` is missing from the interface list.
-3. There are two `network_init()` definitions:
-   `src/net/network.c` (real) and `src/network/network.c` (a stub that
-   prints "Not implemented yet"). The Makefile builds both objects
-   (`network_core.o`, `network.o`). Check which one gets linked.
+3. ~~There are two `network_init()` definitions.~~ Only `src/net/network.c`
+   is linked (`network.o` is not in `obj-y`). Since the wired networking fix,
+   the network service thread runs it at boot. See `docs/network/wired-networking.md`.
 4. `wifi_get_saved_networks()` keeps passphrases in plain kernel memory.
    This is acceptable for now, but a passphrase must never be copied
    back to userspace.
-5. `network_register()` and `network_init()` call `kzalloc` without
-   checking for NULL.
+5. ~~`network_register()` and `network_init()` call `kzalloc` without
+   checking for NULL.~~ Fixed with the wired networking change.
 
 ## Proposed syscalls
 

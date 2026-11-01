@@ -219,10 +219,11 @@ typedef struct socket {
     
     /* TCP State */
     int tcp_state;
-    uint32_t seq_num;
-    uint32_t ack_num;
+    uint32_t seq_num;           /* next sequence number to send (snd_nxt) */
+    uint32_t ack_num;           /* next sequence number expected (rcv_nxt) */
     
-    /* Buffers */
+    /* Buffers. TCP: byte stream. UDP: datagrams, each stored as a
+     * 2-byte length followed by the payload. */
     uint8_t *rx_buffer;
     uint32_t rx_len;
     uint32_t rx_capacity;
@@ -231,6 +232,27 @@ typedef struct socket {
     net_interface_t *iface;
     
     struct socket *next;
+    
+    /* Owner: only this process may use the descriptor */
+    uint32_t owner_pid;
+    
+    /* TCP send side: bytes in tx_buffer[0..tx_len) start at sequence
+     * snd_una and are kept until the peer acknowledges them. */
+    uint32_t snd_una;
+    uint32_t snd_wnd;           /* peer's advertised window */
+    uint8_t *tx_buffer;
+    uint32_t tx_len;
+    uint32_t tx_capacity;
+    uint8_t  fin_pending;       /* close() asked for a FIN not yet sent */
+    uint8_t  fin_sent;
+    uint8_t  peer_fin;          /* peer closed its side: EOF after rx drains */
+    uint8_t  rst_seen;          /* connection reset or refused */
+    uint16_t peer_mss;
+    uint16_t retries;
+    uint32_t rto_ms;
+    uint64_t rto_deadline_ms;   /* 0 = no retransmission timer */
+    uint64_t state_deadline_ms; /* TIME_WAIT / FIN_WAIT timeouts */
+    uint8_t  user_closed;       /* fd released; free when the connection ends */
 } socket_t;
 
 /* TCP States */
@@ -334,6 +356,34 @@ int arp_resolve(net_interface_t *iface, ipv4_addr_t ip, mac_addr_t *mac);
  */
 void arp_input(net_interface_t *iface, void *data, uint32_t len);
 
+/**
+ * Broadcast one ARP request for `ip` without waiting for the reply.
+ */
+int arp_request(net_interface_t *iface, ipv4_addr_t ip);
+
+/* ============ Stack Services ============ */
+
+/**
+ * Protocol timers (ARP expiry, TCP retransmission and close timeouts).
+ * Run by the network service thread.
+ */
+void tcpip_timers(void);
+
+/**
+ * Pseudo-random 32-bit value (not cryptographic).
+ */
+uint32_t net_random32(void);
+
+/**
+ * Kernel-internal UDP request/response: send `query` from a fresh
+ * ephemeral port to dst:dport and wait up to timeout_ms for one reply
+ * from dst:dport. Returns the reply length copied into resp, 0 on
+ * timeout, or a negative errno.
+ */
+int net_udp_query(net_interface_t *iface, ipv4_addr_t dst, uint16_t dport,
+                  const void *query, uint32_t qlen,
+                  void *resp, uint32_t resp_cap, uint32_t timeout_ms);
+
 /* ============ Socket API ============ */
 
 /**
@@ -357,7 +407,9 @@ int socket_listen(int fd, int backlog);
 int socket_accept(int fd, sockaddr_in_t *addr);
 
 /**
- * Connect to remote.
+ * Connect to remote. TCP: blocks until the handshake completes (0), the
+ * peer refuses or resets (-EIO), or about 10 s pass (-ETIMEDOUT).
+ * UDP: records the destination for send().
  */
 int socket_connect(int fd, sockaddr_in_t *addr);
 
@@ -367,7 +419,9 @@ int socket_connect(int fd, sockaddr_in_t *addr);
 int socket_send(int fd, const void *data, uint32_t len);
 
 /**
- * Receive data.
+ * Receive data. Non-blocking: returns bytes copied, 0 at end of stream
+ * (peer closed, TCP), -EAGAIN when nothing has arrived yet, or another
+ * negative errno.
  */
 int socket_recv(int fd, void *buf, uint32_t len);
 

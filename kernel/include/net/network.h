@@ -77,6 +77,15 @@ typedef struct net_interface {
     
     /* Linked list */
     struct net_interface *next;
+    
+    /* IPv4 configuration source and lease (appended: older mirrors of the
+     * fields above, e.g. shell/terminal.c, stay valid) */
+    uint8_t ipv4_dhcp;          /* 1 = address from DHCP, 0 = manual/none */
+    uint8_t dns_count;          /* servers in dns_servers[] (dns == dns_servers[0]) */
+    uint8_t link_up;            /* last link state seen by the network service */
+    uint8_t _pad0;
+    ipv4_addr_t dns_servers[3];
+    uint32_t lease_seconds;     /* 0 = no lease */
 } net_interface_t;
 
 /* ============ Packet Types ============ */
@@ -173,5 +182,62 @@ int network_set_ip(net_interface_t *iface, ipv4_addr_t ip,
  * Set DNS server.
  */
 int network_set_dns(net_interface_t *iface, ipv4_addr_t dns);
+
+/* ============ Network Service ============ */
+
+/**
+ * Start the network service thread ("netd"). Call once the scheduler can
+ * run kernel threads. The thread brings up the interfaces, runs DHCP on
+ * every Ethernet interface with a link, and then drains received frames
+ * and runs protocol timers (ARP, DHCP renewal, TCP retransmission).
+ * Returns the thread's PID, or -1.
+ */
+int network_service_start(void);
+
+/**
+ * Drain received frames on every interface and hand them to the stack.
+ * Safe to call from syscall context (the kernel is not preemptible);
+ * nested calls from inside packet processing return at once.
+ * Returns the number of frames processed.
+ */
+int network_poll(void);
+
+/**
+ * 1 while received frames are being processed (inside network_poll).
+ * Code on that path must not wait for more input.
+ */
+int network_in_input(void);
+
+/**
+ * 1 if the caller may wait for the network (an ARP reply, say): not on
+ * the input path and not the network service thread, which must keep
+ * draining the receive ring.
+ */
+int network_may_block(void);
+
+/**
+ * Wait up to `ms` milliseconds while processing network input, so a
+ * caller blocked on the network makes progress. Sleeps when the scheduler
+ * runs, busy-waits before that.
+ */
+void network_wait(uint32_t ms);
+
+/**
+ * Milliseconds since boot (PIT ticks; the PIT runs at ~1000 Hz once the
+ * scheduler starts).
+ */
+uint64_t network_now_ms(void);
+
+/**
+ * Interface that carries the default route: the first configured
+ * Ethernet interface with a gateway, else the first configured one.
+ * NULL when no interface has an address.
+ */
+net_interface_t *network_default_iface(void);
+
+/**
+ * Release the sockets a process still holds. Called when it exits.
+ */
+void network_process_exit(uint32_t pid);
 
 #endif /* NEOLYX_NETWORK_H */
