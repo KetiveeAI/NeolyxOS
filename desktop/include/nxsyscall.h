@@ -337,6 +337,7 @@ extern void nx_mfree(void *ptr);                  /* NULL is ignored; invalid/do
 extern void* nx_calloc(uint64_t count, uint64_t size);   /* zeroed; NULL on overflow */
 extern void* nx_realloc(void *ptr, uint64_t size);       /* keeps contents; on failure ptr stays valid */
 extern void nx_malloc_usage(uint64_t *in_use, uint64_t *heap_size);   /* bytes, headers included */
+extern uint64_t nx_malloc_trim(void);              /* give free heap above the last used block back to the system; bytes released */
 
 /* Legacy compatibility wrappers */
 #define nx_alloc(size) nx_malloc(size)

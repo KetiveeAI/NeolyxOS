@@ -23,6 +23,11 @@
  * Children exit with 0 when stopped by a refusal, 1 when stopped by the
  * heap limit, 2 on a memory content error.
  *
+ * K2: before the children start, the parent grows its own heap by
+ * MS_TRIM_MB, shrinks it back with brk and checks with mem.stats that the
+ * pages went back to the system (its own pages drop by exactly that much,
+ * free memory rises), and that growing again gives zeroed pages.
+ *
  * Copyright (c) 2025 KetiveeAI
  * SPDX-License-Identifier: MIT
  */
@@ -54,6 +59,7 @@
 #define MS_HEAP_LIMIT   (64ULL * 1024 * 1024)
 #define MS_HOLD_MS      6000
 #define MS_PAGE         4096
+#define MS_TRIM_MB      32              /* K2 brk shrink check */
 
 static inline int64_t sc0(int64_t n) {
     int64_t r;
@@ -193,6 +199,54 @@ static int poll_pressure(uint64_t ms) {
     return (int)level;
 }
 
+/* ============ Parent: brk shrink gives pages back (K2) ============ */
+
+/* Returns 1 on PASS, 0 on FAIL, -1 when mem.stats is missing (skipped). */
+static int check_trim(void) {
+    nx_mem_stats_t a, b, c;
+    if (sc2(SYS_MEM_STATS, (int64_t)&a, sizeof(a)) != 0) return -1;
+    int64_t base = sc1(SYS_BRK, 0);
+    uint64_t size = (uint64_t)MS_TRIM_MB << 20;
+    if (base <= 0 || sc1(SYS_BRK, base + (int64_t)size) != base + (int64_t)size) {
+        out_str("[MEMSTRESS] trim: FAIL: cannot grow the heap by ");
+        out_dec(MS_TRIM_MB); out_str(" MB\n");
+        flush();
+        return 0;
+    }
+    volatile uint64_t *p = (volatile uint64_t *)base;
+    for (uint64_t off = 0; off < size; off += MS_PAGE) p[off / 8] = 0xA5A5A5A5A5A5A5A5ULL ^ off;
+    sc2(SYS_MEM_STATS, (int64_t)&b, sizeof(b));
+
+    int64_t r = sc1(SYS_BRK, base);
+    sc2(SYS_MEM_STATS, (int64_t)&c, sizeof(c));
+    uint64_t self_drop = (b.self_bytes > c.self_bytes) ? b.self_bytes - c.self_bytes : 0;
+    uint64_t free_rise = (c.free_bytes > b.free_bytes) ? c.free_bytes - b.free_bytes : 0;
+
+    /* Grow again: the pages must be new and zeroed, not the old ones */
+    int stale = 0;
+    uint64_t again = 4ULL << 20;
+    if (sc1(SYS_BRK, base + (int64_t)again) != base + (int64_t)again) {
+        stale = -1;
+    } else {
+        for (uint64_t off = 0; off < again; off += MS_PAGE) {
+            if (p[off / 8] != 0) { stale = 1; break; }
+        }
+        sc1(SYS_BRK, base);
+    }
+
+    /* Own pages are exact; free memory may move a little as other
+     * processes run, so allow 1 MB of noise */
+    int ok = (r == base) && self_drop == size && free_rise + (1ULL << 20) >= size && stale == 0;
+    out_str("[MEMSTRESS] trim: grew "); out_dec(MS_TRIM_MB);
+    out_str(" MB then shrank: own pages -"); out_dec((int64_t)(self_drop >> 20));
+    out_str(" MB, free memory +"); out_dec((int64_t)(free_rise >> 20));
+    out_str(" MB, regrown pages ");
+    out_str(stale == 0 ? "zeroed" : stale > 0 ? "NOT zeroed" : "refused");
+    out_str(ok ? " (PASS)\n" : " (FAIL)\n");
+    flush();
+    return ok;
+}
+
 /* ============ Parent: spawn children and wait ============ */
 
 void _start(long argc, char **argv) {
@@ -218,6 +272,8 @@ void _start(long argc, char **argv) {
         out_str(" MB, level "); out_str(level_name(g_last_level)); out_str("\n");
         flush();
     }
+
+    int trim_ok = check_trim();
 
     static const char *child_argv[] = { "/apps/memstress", "child", 0 };
     int32_t kids[MS_CHILDREN];
@@ -270,6 +326,8 @@ void _start(long argc, char **argv) {
         sc1(SYS_HANDLE_CLOSE, g_ph);
         if (!pressure_ok) failed++;
     }
+
+    if (trim_ok == 0) failed++;
 
     out_str("[MEMSTRESS] done: "); out_dec(nkids);
     out_str(" children, "); out_dec(capped);

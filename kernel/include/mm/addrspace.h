@@ -101,6 +101,16 @@ void addrspace_destroy(addrspace_t *as);
 int addrspace_map_alloc(addrspace_t *as, uint64_t va, uint64_t size, uint32_t flags);
 
 /**
+ * Unmap the private pages in [va, va+size) and give their frames back to
+ * the PMM (brk shrinking, K2). Unmapped pages in the range are skipped;
+ * page tables left empty are freed too. va and size must be page aligned
+ * and inside the private user window. Flushes the TLB when `as` is live.
+ *
+ * @return pages freed, or -1 on a bad range
+ */
+int64_t addrspace_unmap_range(addrspace_t *as, uint64_t va, uint64_t size);
+
+/**
  * Copy kernel memory into a space (target pages must be mapped).
  * @return 0 on success, -1 if any target page is unmapped
  */

@@ -15,8 +15,12 @@
  *   free block:  [magic FREE | prev_size | size] [next | prev] [...]
  *
  * prev_size lets free() merge with the block before; size reaches the block
- * after. The heap only grows (the kernel's brk keeps pages mapped); memory
- * freed at the top is reused, never returned.
+ * after. When the free block at the top of the heap reaches
+ * NXM_TRIM_THRESHOLD, free() gives it back to the system with brk (the
+ * kernel unmaps the pages, K2), keeping NXM_GROW_MIN of slack so a
+ * malloc/free cycle at the top does not cost a syscall each time.
+ * nx_malloc_trim() returns everything above the last used block on demand
+ * (for example on a memory pressure warning).
  *
  * Errors are never silent: an invalid or double free is refused and
  * logged (rate-limited), and running out of heap is logged once per burst.
@@ -54,6 +58,7 @@ typedef struct nxm_links {      /* payload of a free block */
 #define NXM_MIN_BLOCK   (NXM_HDR + (uint64_t)sizeof(nxm_links_t)) /* 32 */
 #define NXM_ALIGN       16ULL
 #define NXM_GROW_MIN    (256ULL * 1024ULL)      /* brk step, limits syscalls */
+#define NXM_TRIM_THRESHOLD (1024ULL * 1024ULL)  /* free top + slack that triggers a trim */
 #define NXM_MAX_REQUEST (1ULL << 31)            /* 2 GiB; keeps every size within prev_size's 32 bits */
 #define NXM_BINS        32
 #define NXM_LOG_MAX     16                      /* error lines per process */
@@ -271,6 +276,8 @@ static nxm_block_t *block_of(void *ptr, const char *who) {
 
 /* ============ Public API ============ */
 
+static uint64_t nxm_trim(uint64_t slack);
+
 void *nx_malloc(uint64_t size) {
     uint64_t need = block_need(size);
     if (need == 0) return (void *)0;
@@ -328,6 +335,43 @@ void nx_mfree(void *ptr) {
     }
     fix_next_prev_size(b);
     bin_insert(b);
+
+    /* A large free run at the top goes back to the system */
+    if (b == g_heap.last && (uint64_t)(g_heap.mapped - (uint8_t *)b) >= NXM_TRIM_THRESHOLD + NXM_GROW_MIN) {
+        nxm_trim(NXM_GROW_MIN);
+    }
+}
+
+/* ============ Giving memory back ============ */
+
+/*
+ * Drop the free block at the top (if any) and lower the break to the
+ * page above the last used block plus slack. @return bytes released
+ */
+static uint64_t nxm_trim(uint64_t slack) {
+    if (g_heap.magic != NXM_STATE_MAGIC) return 0;
+    nxm_block_t *b = g_heap.last;
+    if (b && b->magic == NXM_FREE) {
+        nxm_block_t *p = prev_of(b);
+        bin_remove(b);
+        g_heap.top = (uint8_t *)b;
+        g_heap.last = p;
+    }
+    uint64_t keep = ((uint64_t)g_heap.top + slack + 4095ULL) & ~4095ULL;
+    if (keep >= (uint64_t)g_heap.mapped) return 0;
+
+    int64_t got = nx_brk(keep);
+    if (got < 0 || (uint64_t)got > (uint64_t)g_heap.mapped || (uint64_t)got < (uint64_t)g_heap.top) {
+        nxm_log("brk refused a heap trim to", keep);
+        return 0;
+    }
+    uint64_t released = (uint64_t)(g_heap.mapped - (uint8_t *)got);
+    g_heap.mapped = (uint8_t *)got;
+    return released;
+}
+
+uint64_t nx_malloc_trim(void) {
+    return nxm_trim(0);
 }
 
 void *nx_calloc(uint64_t count, uint64_t size) {
