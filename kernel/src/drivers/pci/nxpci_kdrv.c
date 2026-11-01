@@ -108,15 +108,23 @@ int nxpci_kdrv_device_info(int index, nxpci_device_info_t *info) {
     info->is_multifunction = (dev->header_type & 0x80) ? 1 : 0;
     info->is_bridge = (dev->class_code == 0x06) ? 1 : 0;
     
-    /* Copy BARs */
-    info->bar_count = dev->bar_count;
-    for (int b = 0; b < dev->bar_count && b < NXPCI_MAX_BARS; b++) {
-        info->bars[b].base = dev->bars[b].base;
-        info->bars[b].size = dev->bars[b].size;
-        info->bars[b].prefetchable = dev->bars[b].prefetchable;
-        if (dev->bars[b].type == 0) {
+    /* Copy BARs (both arrays are indexed by BAR number) */
+    info->bar_count = (uint8_t)dev->bar_count;
+    for (int b = 0; b < PCI_MAX_BARS && b < NXPCI_MAX_BARS; b++) {
+        const pci_bar_t *bar = pci_get_bar(dev, b);
+        if (!bar) {
+            info->bars[b].type = NXPCI_BAR_NONE;
+            info->bars[b].base = 0;
+            info->bars[b].size = 0;
+            info->bars[b].prefetchable = 0;
+            continue;
+        }
+        info->bars[b].base = bar->base;
+        info->bars[b].size = bar->size;
+        info->bars[b].prefetchable = bar->prefetchable;
+        if (bar->type == PCI_BAR_IO) {
             info->bars[b].type = NXPCI_BAR_IO;
-        } else if (dev->bars[b].memory_type == 0x02) {
+        } else if (bar->memory_type == PCI_BAR_MEMTYPE_64) {
             info->bars[b].type = NXPCI_BAR_MEM64;
         } else {
             info->bars[b].type = NXPCI_BAR_MEM32;
