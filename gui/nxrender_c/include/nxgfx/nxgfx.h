@@ -104,6 +104,23 @@ void nxgfx_font_destroy(nx_font_t* font);
 void nxgfx_draw_text(nx_context_t* ctx, const char* text, nx_point_t pos, nx_font_t* font, nx_color_t color);
 nx_size_t nxgfx_measure_text(nx_context_t* ctx, const char* text, nx_font_t* font);
 
+/*
+ * Outline text and anti-aliased shapes (NXCanvas engine).
+ *
+ * nxgfx_font_register: give NXGFX the TrueType data for its UI face
+ * (NX Sans Text). `data` must stay valid for the life of the process.
+ * Returns 0, or -1 (logged) when the data is rejected. Until a face is
+ * registered, text uses the built-in 8x16 bitmap font.
+ *
+ * nxgfx_engine_ready: true once the NXCanvas engine is running. When it
+ * cannot start, NXGFX keeps drawing with its legacy rasterizers.
+ *
+ * nxgfx_set_log_sink: where NXGFX writes diagnostic lines (NULL = none).
+ */
+int  nxgfx_font_register(const uint8_t* data, uint32_t size);
+bool nxgfx_engine_ready(void);
+void nxgfx_set_log_sink(void (*sink)(const char* msg));
+
 /* Images */
 nx_image_t* nxgfx_image_load(nx_context_t* ctx, const char* path);
 nx_image_t* nxgfx_image_create(nx_context_t* ctx, const void* data, uint32_t w, uint32_t h);

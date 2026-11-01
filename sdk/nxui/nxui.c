@@ -16,6 +16,8 @@
 #ifdef __NEOLYXOS__
 #include "nxsyscall.h"
 #include "nxwindow.h"
+#include "nxgfx/nxgfx.h"
+#include <stdlib.h>
 #else
 #include <stdio.h>
 #endif
@@ -579,6 +581,59 @@ static void req_title(const char* t) {
     for (size_t i = n; i < NXW_TITLE_MAX; i++) g_req.title[i] = '\0';
 }
 
+/*
+ * UI typeface (owner decision, R1): NX Sans Text is read from the boot
+ * disk once per process and handed to NXGFX, which then draws outline
+ * text through NXCanvas. If the file is missing or rejected the app still
+ * runs, with the 8x16 bitmap font, and the reason is logged.
+ */
+#define NXUI_FONT_PATH       "/System/Fonts/NXSans-Text.ttf"
+#define NXUI_FONT_MAX_BYTES  (4u * 1024u * 1024u)
+
+static bool g_font_tried = false;
+
+static void nxui_load_ui_font(void) {
+    if (g_font_tried) return;
+    g_font_tried = true;
+
+    int fd = nx_open(NXUI_FONT_PATH, O_RDONLY);
+    if (fd < 0) {
+        nxui_fail_code("nxui_run", "cannot open " NXUI_FONT_PATH "; using the bitmap font", fd);
+        return;
+    }
+    int64_t size = nx_seek(fd, 0, SEEK_END);
+    if (size <= 0 || (uint64_t)size > NXUI_FONT_MAX_BYTES || nx_seek(fd, 0, SEEK_SET) != 0) {
+        nx_close(fd);
+        nxui_fail_code("nxui_run", "font file size not acceptable; using the bitmap font", (int)size);
+        return;
+    }
+    uint8_t* data = (uint8_t*)malloc((size_t)size);
+    if (!data) {
+        nx_close(fd);
+        nxui_fail("nxui_run", "no memory for the UI font; using the bitmap font");
+        return;
+    }
+    int64_t done = 0;
+    while (done < size) {
+        int64_t n = nx_read(fd, data + done, (uint64_t)(size - done));
+        if (n <= 0) break;
+        done += n;
+    }
+    nx_close(fd);
+    if (done != size) {
+        free(data);
+        nxui_fail("nxui_run", "short read on the UI font; using the bitmap font");
+        return;
+    }
+    if (nxgfx_font_register(data, (uint32_t)size) != 0) {
+        free(data);
+        nxui_fail("nxui_run", "UI font rejected by NXGFX; using the bitmap font");
+        return;
+    }
+    /* data stays allocated for the life of the process: the face points into it */
+    nxui_out("[NXUI] UI font: NX Sans Text (outline)\n");
+}
+
 static int nxui_install_host(const nxui_slot_t* w) {
     const char* title = reox_window_get_title(w->ptr);
     int width = reox_window_get_width(w->ptr);
@@ -588,6 +643,8 @@ static int nxui_install_host(const nxui_slot_t* w) {
     g_req.width = (uint32_t)width;
     g_req.height = (uint32_t)height;
     g_req.resizable = w->resizable;
+    nxgfx_set_log_sink(host_log);
+    nxui_load_ui_font();
     g_win = NULL;
     g_frame_begun = false;
     evq_clear();

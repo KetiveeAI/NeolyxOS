@@ -1,10 +1,22 @@
 /*
  * NeolyxOS - NXGFX Text Rendering
- * Bitmap font implementation (no FreeType dependency)
+ *
+ * Outline text: when a UI face is registered (nxgfx_font_register) and
+ * the context has an NXCanvas view, text is drawn from the TrueType
+ * outlines by NXCanvas (anti-aliased, kerned, UTF-8, subpixel x
+ * positioning, vertical hinting). The `pos` given to draw/measure is the
+ * top-left of the line box; the baseline sits `ascent` below it and the
+ * measured height is ascent + descent.
+ *
+ * Bitmap fallback: without a registered face (or without NXCanvas) the
+ * built-in 8x16 font below is used, scaled by whole steps. It is kept so
+ * an app whose font file is missing still shows text; the fallback is
+ * logged once.
+ *
  * Copyright (c) 2025 KetiveeAI
  */
 
-#include "nxgfx/nxgfx.h"
+#include "nxgfx_internal.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -135,8 +147,70 @@ void nxgfx_font_destroy(nx_font_t* font) {
     if (font) free(font);
 }
 
+/* Outline sizes accepted; anything outside is clamped. */
+#define NXGFX_TEXT_MIN_PX 6.0f
+#define NXGFX_TEXT_MAX_PX 256.0f
+/* Longest string drawn or measured in one call (NXCanvas limit is 8 KiB) */
+#define NXGFX_TEXT_MAX_BYTES 8000
+
+static bool g_warned_bitmap = false;
+
+static float outline_px(const nx_font_t* font) {
+    float px = (float)font->size;
+    if (px < NXGFX_TEXT_MIN_PX) px = NXGFX_TEXT_MIN_PX;
+    if (px > NXGFX_TEXT_MAX_PX) px = NXGFX_TEXT_MAX_PX;
+    return px;
+}
+
+/* Byte length capped at NXGFX_TEXT_MAX_BYTES, cut on a UTF-8 boundary. */
+static int32_t text_len(const char* text) {
+    int32_t n = 0;
+    while (text[n] && n < NXGFX_TEXT_MAX_BYTES) n++;
+    if (text[n] != '\0') {
+        while (n > 0 && ((unsigned char)text[n] & 0xC0) == 0x80) n--;
+    }
+    return n;
+}
+
+/* The face to draw with for ctx (NULL ctx: measuring only), or NULL for
+ * the bitmap font. */
+static const nxc_font_t* outline_face(const nx_context_t* ctx) {
+    const nxc_font_t* f = nxgfx__ui_font();
+    if (!f) {
+        nxgfx__log_once(&g_warned_bitmap,
+            "[NXGFX] no UI font registered; text uses the 8x16 bitmap font\n");
+        return NULL;
+    }
+    if (ctx && !ctx->nxc_ok) return NULL;
+    return f;
+}
+
+/* Line box metrics in whole pixels: ascent (baseline offset) and height. */
+static bool line_box(const nxc_font_t* f, float px, int32_t* ascent, uint32_t* height) {
+    nxc_font_metrics_t m;
+    if (nxc_font_metrics(f, px, &m) != NXC_OK) return false;
+    float a = m.ascent + 0.5f;
+    float h = m.ascent + m.descent + 0.999f;
+    if (!(a >= 0.0f && a < 1024.0f) || !(h >= 1.0f && h < 2048.0f)) return false;
+    *ascent = (int32_t)a;
+    *height = (uint32_t)h;
+    return true;
+}
+
 void nxgfx_draw_text(nx_context_t* ctx, const char* text, nx_point_t pos, nx_font_t* font, nx_color_t color) {
     if (!ctx || !text || !font) return;
+    const nxc_font_t* face = outline_face(ctx);
+    if (face) {
+        nxc_canvas_t* c = nxgfx__canvas(ctx);
+        float px = outline_px(font);
+        int32_t ascent;
+        uint32_t height;
+        if (c && line_box(face, px, &ascent, &height)) {
+            (void)nxc_draw_text(c, face, px, (float)pos.x, (float)(pos.y + ascent),
+                                text, text_len(text), nxgfx__color(color), NULL);
+            return;
+        }
+    }
     uint32_t scale = font->size / 16 + 1;
     int32_t x = pos.x, y = pos.y;
     while (*text) {
@@ -157,8 +231,19 @@ void nxgfx_draw_text(nx_context_t* ctx, const char* text, nx_point_t pos, nx_fon
 }
 
 nx_size_t nxgfx_measure_text(nx_context_t* ctx, const char* text, nx_font_t* font) {
-    (void)ctx;
     if (!text || !font) return (nx_size_t){0, 0};
+    const nxc_font_t* face = outline_face(ctx);
+    if (face) {
+        float px = outline_px(font);
+        int32_t ascent;
+        uint32_t height;
+        if (line_box(face, px, &ascent, &height)) {
+            float w = nxc_text_width(face, px, text, text_len(text), NULL);
+            if (!(w >= 0.0f)) w = 0.0f;              /* NaN or negative: nothing */
+            if (w > 65535.0f) w = 65535.0f;
+            return (nx_size_t){ (uint32_t)(w + 0.999f), height };
+        }
+    }
     uint32_t scale = font->size / 16 + 1;
     size_t len = 0;
     while (text[len]) len++;
