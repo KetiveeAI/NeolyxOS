@@ -453,6 +453,8 @@ static int wait_poll(struct process *proc, nx_wait_item_t *items, uint32_t count
             s = chan_signals((nx_chan_t *)obj);
         } else if (obj->type == NX_OBJ_PORT) {
             s = (((nx_port_t *)obj)->count > 0) ? NX_SIGNAL_READABLE : 0;
+        } else if (obj->type == NX_OBJ_MEMPRESSURE) {
+            s = nx_mem_pressure_signals(obj);
         } else {
             return -EINVAL;     /* shm has no signals */
         }

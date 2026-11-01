@@ -14,9 +14,10 @@
  *     masked and only give up the CPU at explicit points (sleep, yield,
  *     wait, exit). The timer preempts code running in ring 3, and the idle
  *     thread.
- *   - Two run queues (core/sched_queue.h): SYSTEM (PROC_FLAG_SYSTEM and
- *     kernel threads) gets 3 of every 4 turns while NORMAL work waits;
- *     a SYSTEM wake-up preempts a NORMAL process at the next tick.
+ *   - Three run queues (core/sched_queue.h): SYSTEM (PROC_FLAG_SYSTEM and
+ *     kernel threads), FOREGROUND and BACKGROUND apps (proc.set_class),
+ *     weighted 9:2:1 under full load. A wake-up of a more urgent class
+ *     preempts a less urgent process running in ring 3 at the next tick.
  *   - The boot context becomes the idle thread (PID 0) in scheduler_run().
  *
  * Copyright (c) 2025 KetiveeAI
@@ -25,6 +26,7 @@
 
 #include "core/process.h"
 #include "core/sched_queue.h"
+#include "core/nx_mem.h"
 #include "core/syscall.h"
 #include "core/elf.h"
 #include "mm/kheap.h"
@@ -68,14 +70,15 @@ process_t *current_process = NULL;
 /* Idle process (PID 0): the boot context once scheduler_run() starts */
 static process_t *idle_process = NULL;
 
-/* Run queues: SYSTEM (desktop, kernel threads) and NORMAL, weighted 3:1
- * when both have work (core/sched_queue.h) */
+/* Run queues: SYSTEM (desktop, kernel threads), FOREGROUND and
+ * BACKGROUND apps (core/sched_queue.h) */
 static sched_queues_t run_queues;
 
-/* Set when a SYSTEM process becomes ready while a NORMAL process runs in
- * ring 3: the next timer tick preempts it instead of letting it finish
- * its slice, so input and frame wake-ups reach the desktop within ~1 ms. */
-static volatile int preempt_for_system = 0;
+/* Set when a process of a more urgent class (SYSTEM over apps, FOREGROUND
+ * over BACKGROUND) becomes ready while a less urgent one runs: the next
+ * timer tick preempts it instead of letting it finish its slice, so input
+ * and frame wake-ups reach the desktop and the focused app within ~1 ms. */
+static volatile int preempt_for_urgent = 0;
 
 /* Processes in PROC_STATE_SLEEPING (lets the timer skip the scan) */
 static uint32_t sleeping_count = 0;
@@ -193,7 +196,7 @@ static process_t *alloc_process(void) {
 
     proc->pid = pid;
     proc->state = PROC_STATE_CREATED;
-    proc->priority = SQ_PRIORITY_NORMAL;
+    proc->priority = SQ_PRIORITY_FOREGROUND;
     proc->time_slice = SCHED_TIME_SLICE;
     process_table[pid] = proc;
 
@@ -242,13 +245,33 @@ void scheduler_add(process_t *proc) {
     uint64_t flags = irq_save();
     if (sq_add(&run_queues, proc)) {
         proc->state = PROC_STATE_READY;
-        if (sq_class_of(proc) == SQ_CLASS_SYSTEM && current_process &&
-            current_process != proc && current_process != idle_process &&
-            sq_class_of(current_process) == SQ_CLASS_NORMAL) {
-            preempt_for_system = 1;
+        if (current_process && current_process != proc &&
+            current_process != idle_process &&
+            sq_class_of(proc) < sq_class_of(current_process)) {
+            preempt_for_urgent = 1;
         }
     }
     irq_restore(flags);
+}
+
+uint32_t process_set_class(process_t *proc, uint32_t cls) {
+    if (!proc) return 0;
+    uint64_t flags = irq_save();
+    uint32_t old = proc->sched_class;
+    int queued = sq_contains(&run_queues, proc);
+    if (queued) sq_remove(&run_queues, proc);
+    proc->sched_class = cls;
+    proc->priority = sq_priority_of(sq_class_of(proc));
+    if (queued) {
+        sq_add(&run_queues, proc);
+        if (current_process && current_process != proc &&
+            current_process != idle_process &&
+            sq_class_of(proc) < sq_class_of(current_process)) {
+            preempt_for_urgent = 1;
+        }
+    }
+    irq_restore(flags);
+    return old;
 }
 
 void scheduler_remove(process_t *proc) {
@@ -397,7 +420,7 @@ void process_init(void) {
 
     proc_memset(process_table, 0, sizeof(process_table));
     proc_memset(&run_queues, 0, sizeof(run_queues));
-    preempt_for_system = 0;
+    preempt_for_urgent = 0;
     sleeping_count = 0;
     dead_pending = 0;
     pid_cursor = 1;
@@ -602,8 +625,8 @@ int32_t process_spawn_image(const char *name, const void *image, uint64_t size,
 
     proc_strcpy(proc->name, name ? name : "user", PROCESS_NAME_MAX);
     proc->flags = PROC_FLAG_USER | (flags & (PROC_FLAG_SYSTEM | PROC_FLAG_DETACHED));
-    proc->priority = (sq_class_of(proc) == SQ_CLASS_SYSTEM) ? SQ_PRIORITY_SYSTEM
-                                                             : SQ_PRIORITY_NORMAL;
+    proc->sched_class = NX_CLASS_FOREGROUND;     /* new apps are in front (K1) */
+    proc->priority = sq_priority_of(sq_class_of(proc));
     proc->ppid = current_process ? current_process->pid : 0;
     proc->start_time = pit_get_ticks();
     proc_strcpy(proc->cwd, "/", 256);
@@ -947,10 +970,10 @@ void scheduler_init(void) {
 void schedule(void) {
     uint64_t flags = irq_save();
     process_t *self = current_process;
-    preempt_for_system = 0;
+    preempt_for_urgent = 0;
 
     /* The running process competes for the next turn too (at the tail
-     * of its class), so the SYSTEM:NORMAL weighting also holds when one
+     * of its class), so the class weighting also holds when one
      * busy process of a class is the only one of that class. */
     int self_runnable = (self->state == PROC_STATE_RUNNING && self != idle_process);
     if (self_runnable) {
@@ -997,6 +1020,7 @@ void scheduler_tick_irq(int from_user) {
     if (!scheduler_running || !current_process) return;
 
     wake_sleepers();
+    nx_mem_tick();      /* memory pressure change: log, wake waiters (K1) */
 
     if (current_process == idle_process) {
         if (sq_any(&run_queues)) schedule();
@@ -1008,8 +1032,8 @@ void scheduler_tick_irq(int from_user) {
     /* Kernel code is never preempted; only ring 3 and idle */
     if (!from_user) return;
 
-    /* A SYSTEM process woke while this NORMAL one runs: switch now */
-    if (preempt_for_system && sq_class_of(current_process) == SQ_CLASS_NORMAL) {
+    /* A more urgent process woke while this one runs: switch now */
+    if (preempt_for_urgent && sq_class_of(current_process) != SQ_CLASS_SYSTEM) {
         schedule();
         return;
     }

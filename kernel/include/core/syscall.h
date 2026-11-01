@@ -148,6 +148,12 @@
 #define SYS_PORT_CONNECT        151 /* nx_handle_t sys_port_connect(const char *name, uint32_t flags) */
 #define SYS_PORT_ACCEPT         152 /* nx_handle_t sys_port_accept(nx_handle_t port, uint32_t *out_pid) */
 
+/* ============ App Classes and Memory Pressure (ABI v1.3, core/nx_mem.h) ============ */
+#define SYS_PROC_SET_CLASS      153 /* int sys_proc_set_class(uint32_t pid, uint32_t cls) */
+#define SYS_MEM_PRESSURE_OPEN   154 /* nx_handle_t sys_mem_pressure_open(uint32_t flags) */
+#define SYS_MEM_PRESSURE_READ   155 /* int sys_mem_pressure_read(nx_handle_t h) */
+#define SYS_MEM_STATS           156 /* int sys_mem_stats(nx_mem_stats_t *buf, uint32_t size) */
+
 /* Maximum syscall number */
 #define SYS_MAX         160
 

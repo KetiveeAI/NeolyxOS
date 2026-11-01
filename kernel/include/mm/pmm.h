@@ -190,6 +190,31 @@ uint64_t pmm_reserve_pages(void);
  */
 int pmm_user_alloc_allowed(uint64_t pages, int system_class);
 
+/* ============ Memory pressure (K1) ============ */
+/* Values match NX_MEM_* in core/nx_mem.h (the user ABI). */
+#define PMM_PRESSURE_NORMAL     0
+#define PMM_PRESSURE_WARN       1   /* free <= 3 x reserve; leaves above 4 x */
+#define PMM_PRESSURE_CRITICAL   2   /* free <= 1.5 x reserve; leaves above 2 x */
+
+/**
+ * Next pressure level for `free_pages` given the current level and the
+ * reserve (pure; host-tested). Hysteresis keeps the level from flapping
+ * when free memory hovers at a threshold. reserve 0 means NORMAL.
+ */
+uint32_t pmm_pressure_next(uint32_t cur, uint64_t free_pages, uint64_t reserve);
+
+/** Current pressure level (PMM_PRESSURE_*). */
+uint32_t pmm_pressure_level(void);
+
+/** Number of level changes since boot (handles compare against it). */
+uint64_t pmm_pressure_seq(void);
+
+/**
+ * 1 once after each level change, then 0: the timer tick uses it to log
+ * and wake obj.wait waiters outside the PMM lock.
+ */
+int pmm_pressure_take_change(void);
+
 /**
  * Mark a region as reserved (cannot be allocated).
  * 

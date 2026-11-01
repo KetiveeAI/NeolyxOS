@@ -31,6 +31,8 @@ The process's class is recorded in `addrspace_t.reserve_class` when its image is
 
 ## Scheduling
 
+K1 later split the NORMAL queue into FOREGROUND and BACKGROUND apps: see `app-classes-and-memory-pressure.md`.
+
 The single round-robin queue is replaced by two FIFO queues (`kernel/src/core/sched_queue.c`):
 
 - **SYSTEM**: `PROC_FLAG_SYSTEM` processes (the desktop) and kernel threads.

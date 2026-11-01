@@ -118,8 +118,15 @@ static void as_log_dec(uint64_t v) {
  * K0b memory reserve: may a user mapping take one more frame? Logs the
  * refusal; the caller (brk, spawn, exec) logs which process it was.
  */
+static uint64_t as_refusals = 0;      /* mem.stats (K1) */
+
+uint64_t addrspace_reserve_refusals(void) {
+    return as_refusals;
+}
+
 static int as_reserve_allows(int system_class) {
     if (pmm_user_alloc_allowed(1, system_class)) return 1;
+    as_refusals++;
     pmm_stats_t st;
     pmm_get_stats(&st);
     serial_puts("[MEM] user mapping refused: ");

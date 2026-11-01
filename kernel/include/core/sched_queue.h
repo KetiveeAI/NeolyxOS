@@ -1,11 +1,17 @@
 /*
  * NeolyxOS - scheduler run queues (K0b)
  *
- * Two FIFO run queues: SYSTEM (PROC_FLAG_SYSTEM user processes such as
- * the desktop, and kernel threads) and NORMAL (every other process).
- * When both have work, the picker gives SYSTEM up to SQ_SYSTEM_TURNS
- * consecutive turns, then one NORMAL turn, so neither class can starve
- * the other. Within a class it is round robin.
+ * Three FIFO run queues:
+ *   SYSTEM      PROC_FLAG_SYSTEM user processes (the desktop) and kernel
+ *               threads (K0b);
+ *   FOREGROUND  apps in NX_CLASS_FOREGROUND, the default (K1);
+ *   BACKGROUND  apps nxserver (or the app itself) moved to
+ *               NX_CLASS_BACKGROUND (K1).
+ * When SYSTEM and app work are both waiting, SYSTEM gets up to
+ * SQ_SYSTEM_TURNS turns in a row, then one app turn. App turns go to
+ * FOREGROUND up to SQ_FOREGROUND_TURNS in a row while BACKGROUND waits,
+ * then one BACKGROUND turn. Under full load that is 9:2:1, and no class
+ * can starve. Within a class it is round robin.
  *
  * The queues link processes through process_t.next/prev. Callers hold
  * interrupts off (irq_save) around every call; nothing here allocates.
@@ -18,27 +24,41 @@
 
 #include "core/process.h"
 
+/* Lower value = more urgent (used for wake-up preemption) */
 typedef enum {
     SQ_CLASS_SYSTEM = 0,
-    SQ_CLASS_NORMAL = 1,
+    SQ_CLASS_FOREGROUND = 1,
+    SQ_CLASS_BACKGROUND = 2,
     SQ_CLASS_COUNT
 } sq_class_t;
 
-/* SYSTEM turns in a row while NORMAL work waits (3 of every 4 turns) */
-#define SQ_SYSTEM_TURNS     3
+/* SYSTEM turns in a row while app work waits (3 of every 4 turns) */
+#define SQ_SYSTEM_TURNS      3
+/* FOREGROUND turns in a row while BACKGROUND waits (2 of every 3 app turns) */
+#define SQ_FOREGROUND_TURNS  2
 
 /* process_t.priority per class (0 = highest); informational */
-#define SQ_PRIORITY_SYSTEM  64
-#define SQ_PRIORITY_NORMAL  128
+#define SQ_PRIORITY_SYSTEM      64
+#define SQ_PRIORITY_FOREGROUND  112
+#define SQ_PRIORITY_BACKGROUND  144
 
 typedef struct {
     process_t *head[SQ_CLASS_COUNT];
     process_t *tail[SQ_CLASS_COUNT];
-    uint32_t   system_streak;   /* SYSTEM picks in a row while NORMAL waited */
+    uint32_t   system_streak;   /* SYSTEM picks in a row while app work waited */
+    uint32_t   fg_streak;       /* FOREGROUND picks in a row while BACKGROUND waited */
 } sched_queues_t;
 
-/* Class of a process from its flags (never changes while it is queued). */
+/*
+ * Class of a process: SYSTEM from its flags, otherwise from
+ * process_t.sched_class (BACKGROUND when NX_CLASS_BACKGROUND, else
+ * FOREGROUND). It must not change while the process is queued: remove it,
+ * change sched_class, add it again (process_set_class does this).
+ */
 sq_class_t sq_class_of(const process_t *p);
+
+/* process_t.priority value for a class */
+uint32_t sq_priority_of(sq_class_t c);
 
 /* Append p to its class queue. Returns 1 if added, 0 if already queued
  * or p is NULL. Does not change p->state. */

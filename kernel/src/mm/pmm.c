@@ -93,6 +93,14 @@ static uint64_t pmm_hint_byte = 0;
 #define PMM_RESERVE_MAX_PAGES   ((128ULL * 1024 * 1024) / PAGE_SIZE)
 static uint64_t pmm_reserve = 0;
 
+/* K1 memory pressure level (NX_MEM_*), derived from free pages against the
+ * reserve with hysteresis (pmm_pressure_next). Changed only under the PMM
+ * lock; pmm_pressure_seq counts changes and pmm_pressure_dirty tells the
+ * timer tick to log and wake waiters outside the lock. */
+static uint32_t pmm_pressure = PMM_PRESSURE_NORMAL;
+static uint64_t pmm_pressure_seq_no = 0;
+static volatile int pmm_pressure_dirty = 0;
+
 /* Kernel end symbol from linker script */
 extern uint8_t _kernel_end[];
 
@@ -153,6 +161,26 @@ static void serial_dec(uint64_t val) {
 }
 
 /* ============ PMM Implementation ============ */
+
+uint32_t pmm_pressure_next(uint32_t cur, uint64_t free_pages, uint64_t reserve) {
+    /* Enter WARN at 3R (leave above 4R), CRITICAL at 1.5R (leave above 2R) */
+    if (reserve == 0) return PMM_PRESSURE_NORMAL;
+    if (free_pages <= reserve + reserve / 2) return PMM_PRESSURE_CRITICAL;
+    if (cur == PMM_PRESSURE_CRITICAL && free_pages <= 2 * reserve) return PMM_PRESSURE_CRITICAL;
+    if (free_pages <= 3 * reserve) return PMM_PRESSURE_WARN;
+    if (cur != PMM_PRESSURE_NORMAL && free_pages <= 4 * reserve) return PMM_PRESSURE_WARN;
+    return PMM_PRESSURE_NORMAL;
+}
+
+/* Caller holds the PMM lock */
+static inline void pmm_pressure_update_locked(void) {
+    uint32_t next = pmm_pressure_next(pmm_pressure, pmm_stats.free_pages, pmm_reserve);
+    if (next != pmm_pressure) {
+        pmm_pressure = next;
+        pmm_pressure_seq_no++;
+        pmm_pressure_dirty = 1;
+    }
+}
 
 void pmm_init(void *memory_map, uint64_t map_size, uint64_t descriptor_size) {
     serial_puts("[PMM] Initializing physical memory manager...\n");
@@ -302,6 +330,7 @@ void pmm_init(void *memory_map, uint64_t map_size, uint64_t descriptor_size) {
         if (r > PMM_RESERVE_MAX_PAGES) r = PMM_RESERVE_MAX_PAGES;
         if (r > usable / 4) r = usable / 4;
         pmm_reserve = r;
+        pmm_pressure = pmm_pressure_next(PMM_PRESSURE_NORMAL, pmm_stats.free_pages, r);
         serial_puts("[PMM] Reserve: ");
         serial_dec(r * PAGE_SIZE / 1024 / 1024);
         serial_puts(" MB kept from user allocations (system processes may use half)\n");
@@ -322,6 +351,7 @@ uint64_t pmm_alloc_page(void) {
                     bitmap_set(page);
                     pmm_stats.free_pages--;
                     pmm_stats.used_pages++;
+                    pmm_pressure_update_locked();
                     uint64_t addr = page_to_addr(page);
                     pmm_spin_unlock(flags);
                     return addr;
@@ -365,6 +395,7 @@ uint64_t pmm_alloc_pages(size_t count) {
                 }
                 pmm_stats.free_pages -= count;
                 pmm_stats.used_pages += count;
+                pmm_pressure_update_locked();
                 
                 uint64_t addr = page_to_addr(start_page);
                 pmm_spin_unlock(flags);
@@ -414,6 +445,7 @@ void pmm_free_page(uint64_t page_addr) {
     pmm_stats.free_pages++;
     pmm_stats.used_pages--;
     if (page / 8 < pmm_hint_byte) pmm_hint_byte = page / 8;
+    pmm_pressure_update_locked();
     pmm_spin_unlock(flags);
 }
 
@@ -438,6 +470,7 @@ void pmm_reserve_region(uint64_t start, uint64_t size) {
             pmm_stats.reserved_pages++;
         }
     }
+    pmm_pressure_update_locked();
     pmm_spin_unlock(flags);
 }
 
@@ -456,6 +489,29 @@ void pmm_get_stats(pmm_stats_t *stats) {
 
 uint64_t pmm_reserve_pages(void) {
     return pmm_reserve;
+}
+
+uint32_t pmm_pressure_level(void) {
+    uint64_t flags = pmm_spin_lock();
+    uint32_t level = pmm_pressure;
+    pmm_spin_unlock(flags);
+    return level;
+}
+
+uint64_t pmm_pressure_seq(void) {
+    uint64_t flags = pmm_spin_lock();
+    uint64_t seq = pmm_pressure_seq_no;
+    pmm_spin_unlock(flags);
+    return seq;
+}
+
+int pmm_pressure_take_change(void) {
+    if (!pmm_pressure_dirty) return 0;
+    uint64_t flags = pmm_spin_lock();
+    int changed = pmm_pressure_dirty;
+    pmm_pressure_dirty = 0;
+    pmm_spin_unlock(flags);
+    return changed;
 }
 
 int pmm_user_alloc_allowed(uint64_t pages, int system_class) {

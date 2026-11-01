@@ -8,10 +8,21 @@
  */
 
 #include "core/sched_queue.h"
+#include "core/nx_mem.h"
 
 sq_class_t sq_class_of(const process_t *p) {
-    if (p && (p->flags & (PROC_FLAG_SYSTEM | PROC_FLAG_KERNEL))) return SQ_CLASS_SYSTEM;
-    return SQ_CLASS_NORMAL;
+    if (!p) return SQ_CLASS_FOREGROUND;
+    if (p->flags & (PROC_FLAG_SYSTEM | PROC_FLAG_KERNEL)) return SQ_CLASS_SYSTEM;
+    if (p->sched_class == NX_CLASS_BACKGROUND) return SQ_CLASS_BACKGROUND;
+    return SQ_CLASS_FOREGROUND;
+}
+
+uint32_t sq_priority_of(sq_class_t c) {
+    switch (c) {
+    case SQ_CLASS_SYSTEM:     return SQ_PRIORITY_SYSTEM;
+    case SQ_CLASS_BACKGROUND: return SQ_PRIORITY_BACKGROUND;
+    default:                  return SQ_PRIORITY_FOREGROUND;
+    }
 }
 
 int sq_contains(const sched_queues_t *q, const process_t *p) {
@@ -55,15 +66,36 @@ void sq_remove(sched_queues_t *q, process_t *p) {
 }
 
 int sq_any(const sched_queues_t *q) {
-    return q && (q->head[SQ_CLASS_SYSTEM] != NULL || q->head[SQ_CLASS_NORMAL] != NULL);
+    if (!q) return 0;
+    for (int c = 0; c < SQ_CLASS_COUNT; c++) {
+        if (q->head[c]) return 1;
+    }
+    return 0;
+}
+
+/* FOREGROUND vs BACKGROUND, the same streak rule one level down */
+static process_t *sq_pick_app(sched_queues_t *q) {
+    process_t *fg = q->head[SQ_CLASS_FOREGROUND];
+    process_t *bg = q->head[SQ_CLASS_BACKGROUND];
+
+    if (!bg) {
+        q->fg_streak = 0;               /* nobody waiting: no debt */
+        return fg;
+    }
+    if (fg && q->fg_streak < SQ_FOREGROUND_TURNS) {
+        q->fg_streak++;
+        return fg;
+    }
+    q->fg_streak = 0;
+    return bg;
 }
 
 process_t *sq_pick(sched_queues_t *q) {
     if (!q) return NULL;
     process_t *sys = q->head[SQ_CLASS_SYSTEM];
-    process_t *norm = q->head[SQ_CLASS_NORMAL];
+    int apps = (q->head[SQ_CLASS_FOREGROUND] != NULL || q->head[SQ_CLASS_BACKGROUND] != NULL);
 
-    if (!norm) {
+    if (!apps) {
         q->system_streak = 0;           /* nobody waiting: no debt */
         return sys;
     }
@@ -72,5 +104,5 @@ process_t *sq_pick(sched_queues_t *q) {
         return sys;
     }
     q->system_streak = 0;
-    return norm;
+    return sq_pick_app(q);
 }

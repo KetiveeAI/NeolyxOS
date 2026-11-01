@@ -94,9 +94,11 @@ typedef struct {
     int         qhead, qcount;
     uint32_t    dropped;        /* events dropped since the last log line */
     uint64_t    drop_log_ms;
+    uint32_t    app_class;      /* NX_CLASS_* last set (0 = not set yet; the kernel starts apps in FOREGROUND) */
 } nxs_client_t;
 
 static int          g_ready;
+static int          g_classes;      /* kernel has proc.set_class (ABI 1.3) */
 static nx_handle_t  g_port;
 static uint32_t     g_screen_w, g_screen_h;
 static nxs_client_t g_clients[NXS_CLIENTS];
@@ -783,6 +785,43 @@ static void send_configures(void) {
     }
 }
 
+/*
+ * K1: the app owning the focused window runs in FOREGROUND, every other
+ * client app with a window in BACKGROUND (the kernel gives FOREGROUND 2 of
+ * every 3 app turns and lets its wake-ups preempt BACKGROUND work). A
+ * client with no window yet keeps its class, so an app that is still
+ * starting up is not demoted before its first window gets focus. Only
+ * changes are sent; a refusal is logged once and not retried for that
+ * client.
+ */
+static void update_app_classes(void) {
+    if (!g_classes) return;
+    uint32_t focus_pid = 0;
+    int has_window[NXS_CLIENTS];
+    for (int i = 0; i < NXS_CLIENTS; i++) has_window[i] = 0;
+    for (int i = 0; i < NXS_WINDOWS; i++) {
+        nxs_win_t *w = &g_wins[i];
+        if (!w->id || !w->shell_id || w->closing) continue;
+        nxs_client_t *c = client_of(w);
+        if (!c) continue;
+        has_window[c - g_clients] = 1;
+        desktop_window_info_t info;
+        if (desktop_window_info(w->shell_id, &info) == 0 && info.focused) focus_pid = c->pid;
+    }
+    for (int i = 0; i < NXS_CLIENTS; i++) {
+        nxs_client_t *c = &g_clients[i];
+        if (!c->used || !c->hello || c->dead || c->pid == 0 || !has_window[i]) continue;
+        uint32_t want = (c->pid == focus_pid) ? NX_CLASS_FOREGROUND : NX_CLASS_BACKGROUND;
+        if (c->app_class == want) continue;
+        int r = nx_proc_set_class(c->pid, want);
+        if (r != 0) {
+            lg_begin(); lg_str("proc.set_class for "); lg_client(c); lg_str(" failed: ");
+            lg_dec(r); lg_str("; leaving its class alone"); lg_end();
+        }
+        c->app_class = want;    /* do not retry every frame */
+    }
+}
+
 /* ENTER/LEAVE for the window under the pointer, MOTION to it (or to the
  * window holding a button press, even outside it). */
 static void pointer_track(void) {
@@ -832,6 +871,11 @@ int nxserver_init(uint32_t screen_w, uint32_t screen_h) {
     }
     g_port = p;
     g_ready = 1;
+    nx_abi_info_t abi;
+    g_classes = (nx_abi_query(&abi) == 0 && (abi.flags & NX_ABI_FLAG_MEMCLASS)) ? 1 : 0;
+    if (!g_classes) {
+        lg_begin(); lg_str("kernel has no proc.set_class (ABI < 1.3): focused apps get no CPU boost"); lg_end();
+    }
     lg_begin(); lg_str("listening on " NXW_PORT_NAME ", protocol ");
     lg_dec(NXW_PROTO_MAJOR); lg_str("."); lg_dec(NXW_PROTO_MINOR); lg_end();
     return 0;
@@ -901,6 +945,7 @@ void nxserver_poll(void) {
         if (g_clients[i].used && g_clients[i].dead) disconnect(&g_clients[i], "client closed its connection");
     }
     send_configures();
+    update_app_classes();
     pointer_track();
 }
 
