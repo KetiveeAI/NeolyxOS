@@ -605,6 +605,178 @@ static EFI_STATUS load_desktop(void) {
     return EFI_SUCCESS;
 }
 
+/* ============ Hardware Diagnostics Mode ============ */
+
+/*
+ * Boot flags word in gBootInfo.reserved[4]. Must match
+ * kernel/include/video/bootlog.h:
+ *   bits 63..32 magic "FLGS", bits 15..8 GOP pixel format,
+ *   bit 1 refuse all disk writes, bit 0 show the boot log on screen.
+ * Always filled in, so the kernel knows the real pixel format.
+ */
+#define NEOLYX_BOOT_FLAGS_MAGIC        0x53474C46ULL   /* "FLGS" */
+#define NEOLYX_BOOT_FLAG_VERBOSE       0x1ULL
+#define NEOLYX_BOOT_FLAG_WRITE_PROTECT 0x2ULL
+
+/*
+ * Diagnostics mode is on when \EFI\BOOT\diagnose.flg exists on the boot
+ * volume (the hardware smoke-test image ships it). It shows this machine's
+ * firmware facts before the kernel starts, makes the kernel show its log on
+ * screen, and makes every disk driver refuse writes, so a test boot on a
+ * machine with other operating systems cannot change its disks.
+ */
+static BOOLEAN gDiagnostics = FALSE;
+
+/* Contiguous free memory from 1 MB, measured before the kernel is loaded
+ * (the raw kernel is placed there; see load_kernel). 0 = not measured. */
+static UINT64 gFreeFrom1MB = 0;
+static BOOLEAN gFreeFrom1MBMeasured = FALSE;
+
+static BOOLEAN boot_volume_has_file(CHAR16 *path) {
+    EFI_LOADED_IMAGE *loaded_image;
+    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *fs;
+    EFI_FILE *root, *file;
+    
+    if (EFI_ERROR(uefi_call_wrapper(gNeoBS->HandleProtocol, 3,
+            gNeoImageHandle, &gEfiLoadedImageProtocolGuid, (VOID**)&loaded_image))) {
+        return FALSE;
+    }
+    if (EFI_ERROR(uefi_call_wrapper(gNeoBS->HandleProtocol, 3,
+            loaded_image->DeviceHandle, &gEfiSimpleFileSystemProtocolGuid, (VOID**)&fs))) {
+        return FALSE;
+    }
+    if (EFI_ERROR(uefi_call_wrapper(fs->OpenVolume, 2, fs, &root))) {
+        return FALSE;
+    }
+    EFI_STATUS status = uefi_call_wrapper(root->Open, 5, root, &file, path, EFI_FILE_MODE_READ, 0);
+    if (!EFI_ERROR(status)) {
+        uefi_call_wrapper(file->Close, 1, file);
+    }
+    uefi_call_wrapper(root->Close, 1, root);
+    return !EFI_ERROR(status);
+}
+
+static UINT32 gop_pixel_format(void) {
+    if (!gGOP || !gGOP->Mode || !gGOP->Mode->Info) return PixelBltOnly;
+    return (UINT32)gGOP->Mode->Info->PixelFormat;
+}
+
+static UINT64 boot_flags_word(void) {
+    UINT64 word = NEOLYX_BOOT_FLAGS_MAGIC << 32;
+    word |= ((UINT64)(gop_pixel_format() & 0xFF)) << 8;
+    if (gDiagnostics) {
+        word |= NEOLYX_BOOT_FLAG_VERBOSE | NEOLYX_BOOT_FLAG_WRITE_PROTECT;
+    }
+    return word;
+}
+
+static CHAR16 *pixel_format_name(UINT32 fmt) {
+    switch (fmt) {
+        case PixelRedGreenBlueReserved8BitPerColor: return L"RGB 32-bit (colors will be swapped)";
+        case PixelBlueGreenRedReserved8BitPerColor: return L"BGR 32-bit (expected)";
+        case PixelBitMask:                          return L"bit mask (unsupported)";
+        case PixelBltOnly:                          return L"Blt only, no framebuffer (unsupported)";
+        default:                                    return L"unknown";
+    }
+}
+
+/*
+ * Print what this machine's firmware gives NeolyxOS, so a photo of the
+ * screen is enough to diagnose a failed boot. Read-only: changes nothing.
+ */
+static void show_diagnostics(void) {
+    /* Text only from here: the graphical progress bar would cover it */
+    gGraphicsMode = FALSE;
+    uefi_call_wrapper(gNeoST->ConOut->ClearScreen, 1, gNeoST->ConOut);
+    uefi_call_wrapper(gNeoST->ConOut->SetAttribute, 2, gNeoST->ConOut, EFI_YELLOW);
+    Print(L"NeolyxOS hardware diagnostics (diagnose.flg found)\n");
+    Print(L"Disk writes are disabled for this boot.\n\n");
+    uefi_call_wrapper(gNeoST->ConOut->SetAttribute, 2, gNeoST->ConOut, EFI_WHITE);
+    
+    Print(L"Firmware: %s rev 0x%x, UEFI %d.%d\n",
+          gNeoST->FirmwareVendor ? gNeoST->FirmwareVendor : L"(unknown)",
+          gNeoST->FirmwareRevision,
+          gNeoST->Hdr.Revision >> 16, gNeoST->Hdr.Revision & 0xFFFF);
+    
+    if (gGOP && gGOP->Mode && gGOP->Mode->Info) {
+        EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *info = gGOP->Mode->Info;
+        Print(L"Display: %dx%d (mode %d of %d), stride %d pixels\n",
+              info->HorizontalResolution, info->VerticalResolution,
+              gGOP->Mode->Mode, gGOP->Mode->MaxMode, info->PixelsPerScanLine);
+        Print(L"Pixel format: %s\n", pixel_format_name((UINT32)info->PixelFormat));
+        Print(L"Framebuffer: 0x%lx, %ld bytes%s\n",
+              (UINT64)gGOP->Mode->FrameBufferBase, (UINT64)gGOP->Mode->FrameBufferSize,
+              ((UINT64)gGOP->Mode->FrameBufferBase + gGOP->Mode->FrameBufferSize > 0x100000000ULL)
+                  ? L"  ABOVE 4 GB (not supported yet)" : L"");
+    } else {
+        Print(L"Display: no Graphics Output Protocol (no framebuffer)\n");
+    }
+    
+    /* Memory map summary */
+    UINTN map_size = 0, map_key, desc_size;
+    UINT32 desc_version;
+    EFI_MEMORY_DESCRIPTOR *map = NULL;
+    /* First call only sizes the map (EFI_BUFFER_TOO_SMALL is expected) */
+    (void)uefi_call_wrapper(gNeoBS->GetMemoryMap, 5,
+        &map_size, NULL, &map_key, &desc_size, &desc_version);
+    map_size += 8 * (desc_size ? desc_size : sizeof(EFI_MEMORY_DESCRIPTOR));
+    if (desc_size == 0 ||
+        EFI_ERROR(uefi_call_wrapper(gNeoBS->AllocatePool, 3, EfiLoaderData, map_size, (VOID**)&map))) {
+        Print(L"Memory map: unavailable\n");
+    } else if (EFI_ERROR(uefi_call_wrapper(gNeoBS->GetMemoryMap, 5,
+                   &map_size, map, &map_key, &desc_size, &desc_version))) {
+        Print(L"Memory map: unavailable\n");
+        uefi_call_wrapper(gNeoBS->FreePool, 1, map);
+    } else {
+        UINT64 low_free = 0, high_free = 0, top = 0;
+        UINTN entries = map_size / desc_size;
+        for (UINTN i = 0; i < entries; i++) {
+            EFI_MEMORY_DESCRIPTOR *d = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)map + i * desc_size);
+            UINT64 start = d->PhysicalStart;
+            UINT64 end = start + d->NumberOfPages * 4096ULL;
+            if (end > top) top = end;
+            if (d->Type != EfiConventionalMemory) continue;
+            if (end <= 0x100000000ULL) {
+                low_free += end - start;
+            } else if (start >= 0x100000000ULL) {
+                high_free += end - start;
+            } else {
+                low_free += 0x100000000ULL - start;
+                high_free += end - 0x100000000ULL;
+            }
+        }
+        if (!gFreeFrom1MBMeasured) {
+            /* Follow free descriptors upward from 1 MB (the map need not be sorted) */
+            UINT64 cur = 0x100000ULL;
+            for (UINTN pass = 0; pass < entries; pass++) {
+                BOOLEAN advanced = FALSE;
+                for (UINTN i = 0; i < entries; i++) {
+                    EFI_MEMORY_DESCRIPTOR *d = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)map + i * desc_size);
+                    UINT64 start = d->PhysicalStart;
+                    UINT64 end = start + d->NumberOfPages * 4096ULL;
+                    if (d->Type == EfiConventionalMemory && start <= cur && end > cur) {
+                        cur = end;
+                        advanced = TRUE;
+                    }
+                }
+                if (!advanced) break;
+            }
+            gFreeFrom1MB = cur - 0x100000ULL;
+            gFreeFrom1MBMeasured = TRUE;
+        }
+        Print(L"Memory: %ld MB free below 4 GB, %ld MB free above 4 GB, top 0x%lx, %d entries\n",
+              low_free >> 20, high_free >> 20, top, entries);
+        Print(L"Free from 1 MB (where the kernel is loaded): %ld KB\n", gFreeFrom1MB >> 10);
+        if (high_free > 0) {
+            Print(L"Note: the kernel maps only the first 4 GB today\n");
+        }
+        uefi_call_wrapper(gNeoBS->FreePool, 1, map);
+    }
+    
+    Print(L"ACPI RSDP: 0x%lx\n", find_acpi_rsdp());
+    Print(L"\n");
+}
+
 /* ============ Exit Boot Services & Jump ============ */
 
 static void jump_to_kernel(UINT64 entry_point) {
@@ -653,6 +825,9 @@ static void jump_to_kernel(UINT64 entry_point) {
         gBootInfo.framebuffer_pitch = gGOP->Mode->Info->PixelsPerScanLine * 4;
         gBootInfo.framebuffer_bpp = 32;
     }
+    
+    /* Pixel format and diagnostics flags for the kernel */
+    gBootInfo.reserved[4] = boot_flags_word();
     
     /* Check if NeolyxOS is already installed (Stage 4 per roadmap.pdf) */
     /* Pass installation status to kernel via reserved[0] */
@@ -824,6 +999,12 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
         }
     }
     
+    /* Hardware diagnostics (smoke-test image) */
+    gDiagnostics = boot_volume_has_file(L"\\EFI\\BOOT\\diagnose.flg");
+    if (gDiagnostics) {
+        show_diagnostics();
+    }
+    
     /* Load kernel */
     status = load_kernel(&kernel_entry, &kernel_size);
     if (EFI_ERROR(status)) {
@@ -859,8 +1040,27 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     Print(L"    ✓ Boot info at: 0x%lx\n\n", (UINT64)&gBootInfo);
     uefi_call_wrapper(gNeoST->ConOut->SetAttribute, 2, gNeoST->ConOut, EFI_WHITE);
     
-    /* Brief delay */
-    uefi_call_wrapper(gNeoBS->Stall, 1, 500000);
+    if (gDiagnostics) {
+        /* Redraw the facts on a clean screen, then what was loaded */
+        show_diagnostics();
+        Print(L"Kernel: %ld bytes at 0x%lx, entry 0x%lx%s\n",
+              (UINT64)kernel_size, gBootInfo.kernel_physical_base, kernel_entry,
+              ((UINT64)kernel_size > gFreeFrom1MB) ? L"  (larger than the free space at 1 MB!)" : L"");
+        if (gBootInfo.reserved[3] == NEOLYX_DESKTOP_MAGIC) {
+            Print(L"Desktop: %ld bytes at 0x%lx\n", gBootInfo.reserved[2], gBootInfo.reserved[1]);
+        } else {
+            Print(L"Desktop: NOT loaded (\\EFI\\BOOT\\desktop.elf missing or invalid)\n");
+        }
+        Print(L"\n");
+        /* Time to photograph the diagnostics before the kernel takes over */
+        uefi_call_wrapper(gNeoST->ConOut->SetAttribute, 2, gNeoST->ConOut, EFI_YELLOW);
+        Print(L"    Take a photo of this screen. Starting the kernel in 20 seconds...\n");
+        uefi_call_wrapper(gNeoST->ConOut->SetAttribute, 2, gNeoST->ConOut, EFI_WHITE);
+        uefi_call_wrapper(gNeoBS->Stall, 1, 20000000);
+    } else {
+        /* Brief delay */
+        uefi_call_wrapper(gNeoBS->Stall, 1, 500000);
+    }
     
     /* Jump to kernel - no return */
     jump_to_kernel(kernel_entry);

@@ -103,4 +103,11 @@ void mouse_reset_state(void);
 /* Mouse interrupt handler (IRQ12) */
 void mouse_interrupt_handler(void);
 
+/**
+ * ps2_controller_present - Detect an 8042 PS/2 controller (probed once,
+ * cached, logged). Returns 1 if present, 0 if absent; ports 0x60/0x64 must
+ * not be used when it returns 0. Implemented in src/drivers/input/mouse.c.
+ */
+int ps2_controller_present(void);
+
 #endif /* MOUSE_H */

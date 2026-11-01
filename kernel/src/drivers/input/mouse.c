@@ -130,12 +130,59 @@ static int ps2_wait_output(void) {
     return -1;
 }
 
+/* Most bytes a real controller can have queued; a status port that keeps
+ * reporting data past this is not a working 8042. */
+#define PS2_FLUSH_MAX 64
+
 static void ps2_flush(void) {
-    /* Clear residual data from output buffer */
-    while (inb(PS2_STATUS_PORT) & 0x01) {
+    /* Clear residual data from output buffer (bounded: see PS2_FLUSH_MAX) */
+    for (int n = 0; n < PS2_FLUSH_MAX && (inb(PS2_STATUS_PORT) & 0x01); n++) {
         inb(PS2_DATA_PORT);
         for (int j = 0; j < 100; j++) __asm__ volatile("nop");
     }
+}
+
+/* -1 not probed yet, 0 absent, 1 present */
+static int g_ps2_present = -1;
+
+/**
+ * ps2_controller_present - Detect an 8042 PS/2 controller (probed once).
+ *
+ * Many current PCs and all Intel Macs have no 8042: the status port then
+ * reads 0xFF. A controller is accepted only if it also answers a "read
+ * configuration byte" command within the usual timeouts. The result is
+ * cached and logged. Callers must not touch ports 0x60/0x64 when this
+ * returns 0.
+ *
+ * Returns 1 if present, 0 if absent.
+ */
+int ps2_controller_present(void) {
+    if (g_ps2_present >= 0) return g_ps2_present;
+
+    g_ps2_present = 0;
+    uint8_t status = inb(PS2_STATUS_PORT);
+    if (status == 0xFF) {
+        serial_puts("[PS2] No PS/2 controller (status port reads 0xFF)\n");
+    } else {
+        ps2_flush();
+        if (ps2_wait_input() != 0) {
+            serial_puts("[PS2] No PS/2 controller (input buffer never empties)\n");
+        } else {
+            outb(PS2_COMMAND_PORT, 0x20);   /* Read configuration byte */
+            if (ps2_wait_output() != 0) {
+                serial_puts("[PS2] No PS/2 controller (no reply to command 0x20)\n");
+            } else {
+                (void)inb(PS2_DATA_PORT);
+                g_ps2_present = 1;
+                serial_puts("[PS2] PS/2 controller found\n");
+            }
+        }
+    }
+    if (!g_ps2_present) {
+        serial_puts("[PS2] Keyboard and mouse need USB HID, which is not supported yet: "
+                    "this machine will have no input\n");
+    }
+    return g_ps2_present;
 }
 
 static int ps2_send_mouse_cmd(uint8_t cmd) {
@@ -353,6 +400,11 @@ int nxmouse_kdrv_init(void) {
     
     /* ========== CRITICAL: PS/2 Controller Configuration ========== */
     /* This enables the second PS/2 port (mouse) and enables IRQ12 */
+    
+    if (!ps2_controller_present()) {
+        serial_puts("[NXMouse] No PS/2 controller: mouse not available\n");
+        return -1;
+    }
     
     serial_puts("[NXMouse] Configuring PS/2 controller...\n");
     

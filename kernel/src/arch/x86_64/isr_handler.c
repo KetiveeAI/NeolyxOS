@@ -11,6 +11,7 @@
 #include "arch/x86_64/idt.h"
 #include "drivers/pit.h"
 #include "drivers/keyboard.h"
+#include "video/bootlog.h"
 
 /* ============ External Dependencies ============ */
 
@@ -201,6 +202,8 @@ void isr_handler(registers_t *regs) {
         /* Kernel-space exception — unrecoverable, halt. */
         serial_puts("\n*** KERNEL EXCEPTION — SYSTEM HALTED ***\n");
         serial_puts("Press RESET to restart.\n");
+        /* Show the last log lines on screen: most machines have no serial port */
+        bootlog_show_crash("KERNEL EXCEPTION - SYSTEM HALTED");
         while (1) {
             __asm__ volatile("cli; hlt");
         }

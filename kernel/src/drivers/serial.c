@@ -3,6 +3,7 @@
 // NeolyxOS - Copyright (c) 2025 KetiveeAI
 
 #include <stdint.h>
+#include "video/bootlog.h"
 
 #define COM1_PORT 0x3F8
 
@@ -44,7 +45,10 @@ void serial_init(void) {
 }
 
 // Write a single character to serial
+// Also recorded in the boot log ring, so it can be shown on screen
+// (include/video/bootlog.h) on machines without a serial port.
 void serial_putc(char c) {
+    bootlog_putc(c);
     while (serial_is_transmit_empty() == 0);
     outb(COM1_PORT, c);
 }

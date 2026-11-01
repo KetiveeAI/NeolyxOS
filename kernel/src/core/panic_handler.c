@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include "../include/core/panic_handler.h"
 #include "../include/core/security.h"
+#include "../include/video/bootlog.h"
 
 /* ============ External Dependencies ============ */
 
@@ -148,6 +149,9 @@ void kernel_panic_ex(panic_type_t type, const char *file, int line, const char *
     serial_puts("\n");
     serial_puts("System halted. Please restart manually.\n");
     serial_puts("Press RESET or power cycle the system.\n");
+    
+    /* Show the last log lines on screen: most machines have no serial port */
+    bootlog_show_crash("KERNEL PANIC - SYSTEM HALTED");
     
     /* Halt forever */
     halt_cpu();
