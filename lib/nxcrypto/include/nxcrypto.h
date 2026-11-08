@@ -20,5 +20,6 @@
 #include "nxcrypto/hmac.h"
 #include "nxcrypto/curve25519.h"
 #include "nxcrypto/aead.h"
+#include "nxcrypto/pubkey.h"
 
 #endif /* NXCRYPTO_H */

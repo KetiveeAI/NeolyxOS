@@ -167,4 +167,76 @@ static inline void vec_parse(char *text, vec_cb cb, void *ctx) {
     cb(ctx, "", "");   /* close the last record */
 }
 
+/* ------------------------------------------------------------------ */
+/* A tiny record collector: fields until a blank line, then a handler. */
+/* ------------------------------------------------------------------ */
+
+#define MAXF 16
+typedef struct rec rec;
+typedef void (*rec_fn)(rec *r);
+struct rec {
+    const char *file;
+    char *name[MAXF], *val[MAXF];
+    int n;
+    long sect_taglen, sect_ivlen;
+    char sect[64];              /* last "[...]" header, verbatim */
+    rec_fn fn;
+    int count, skipped;
+};
+
+static inline const char *rget(rec *r, const char *name) {
+    for (int i = 0; i < r->n; i++)
+        if (!strcmp(r->name[i], name)) return r->val[i];
+    return NULL;
+}
+
+static inline void rclear(rec *r) {
+    for (int i = 0; i < r->n; i++) { free(r->name[i]); free(r->val[i]); }
+    r->n = 0;
+}
+
+static inline void rec_cb(void *vctx, const char *name, const char *value) {
+    rec *r = vctx;
+    if (name[0] == 0) {                     /* blank / comment: end of record */
+        if (r->n > 0) r->fn(r);
+        rclear(r);
+        return;
+    }
+    if (!strcmp(name, "[")) {
+        snprintf(r->sect, sizeof(r->sect), "%s", value);
+        const char *eq = strchr(value, '=');
+        if (eq && !strncmp(value, "Taglen", 6)) r->sect_taglen = atol(eq + 1);
+        if (eq && !strncmp(value, "IVlen", 5)) r->sect_ivlen = atol(eq + 1);
+        return;
+    }
+    if (r->n < MAXF) {
+        r->name[r->n] = vec_strdup(name);
+        r->val[r->n] = vec_strdup(value);
+        r->n++;
+    }
+}
+
+static inline void run_file(const char *dir, const char *file, rec_fn fn, int min_count) {
+    rec r;
+    memset(&r, 0, sizeof(r));
+    r.file = file;
+    r.fn = fn;
+    char *text = vec_read_file(dir, file);
+    vec_parse(text, rec_cb, &r);
+    rclear(&r);
+    free(text);
+    CHECK(r.count >= min_count, "%s: %d vectors, want >= %d", file, r.count, min_count);
+    printf("  %-40s %d vectors", file, r.count);
+    if (r.skipped) printf(" (+%d skipped: parameters NeolyxOS does not use)", r.skipped);
+    printf("\n");
+}
+
+static inline uint8_t *field(rec *r, const char *name, size_t *len) {
+    const char *v = rget(r, name);
+    *len = 0;
+    if (!v) return NULL;
+    if (*v == 0) return calloc(1, 1);       /* empty value */
+    return val_decode(v, len);
+}
+
 #endif /* CRYPTO_VEC_H */
