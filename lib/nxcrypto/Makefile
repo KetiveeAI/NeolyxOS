@@ -36,7 +36,8 @@ OBJS    = $(SRCS:src/%.c=$(OBJDIR)/%.o)
 LIB     = $(OBJDIR)/libnxcrypto.a
 
 TESTDIR = ../../tests/host
-TESTS   = crypto_sha2_test crypto_curve25519_test crypto_aead_test crypto_pubkey_test
+TESTS   = crypto_sha2_test crypto_curve25519_test crypto_aead_test crypto_pubkey_test \
+          crypto_wycheproof_test
 
 .PHONY: all test clean vectors ct-test
 
@@ -50,7 +51,7 @@ $(LIB): $(OBJS)
 	$(AR) rcs $@ $^
 	@echo "Built: $@"
 
-$(OBJDIR)/host/%: $(TESTDIR)/%.c $(SRCS) $(TESTDIR)/crypto_vec.h include/nxcrypto.h include/nxcrypto/*.h src/internal.h src/fe25519.h src/bn.h
+$(OBJDIR)/host/%: $(TESTDIR)/%.c $(SRCS) $(TESTDIR)/crypto_vec.h $(TESTDIR)/crypto_json.h include/nxcrypto.h include/nxcrypto/*.h src/internal.h src/fe25519.h src/bn.h
 	@mkdir -p $(OBJDIR)/host
 	$(HOSTCC) $(CFLAGS_HOST) -o $@ $< $(SRCS)
 

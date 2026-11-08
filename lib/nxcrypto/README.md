@@ -35,6 +35,12 @@ generator.
 | `nxcrypto/aead.h` | ChaCha20, Poly1305, ChaCha20-Poly1305, AES-128/256 (encrypt), AES-GCM (96-bit nonces) | RFC 8439 appendix A and section 2.8.2, the BoringSSL and OpenSSL ChaCha20-Poly1305 files (including must-fail cases), NIST CAVP AESAVS ECB KAT/MMT, NIST CAVP GCMVS encrypt and decrypt (including FAIL cases) |
 | `nxcrypto/pubkey.h` | ECDSA P-256/P-384 verify (raw r, s or strict DER), RSA PKCS#1 v1.5 and PSS verify, 1024 to 4096-bit keys | NIST CAVP ECDSA SigVer (FIPS 186-3), NIST CAVP RSA SigVer15 and SigVerPSS (FIPS 186-3), all with valid and invalid cases |
 
+On top of those, `crypto_wycheproof_test` runs the Project Wycheproof edge
+cases for ECDSA, RSA PKCS#1 v1.5 and PSS, Ed25519, X25519, ChaCha20-Poly1305
+and AES-GCM (about 4,400 cases): malformed and non-minimal DER, r or s out of
+range, padding variants, low-order and non-canonical points, modified tags.
+Every "valid" case must verify and every "invalid" case must be refused.
+
 Signature verification works on public data only (the certificate, the
 signature, the hash), so the bignum and curve code in `bn.c`, `ecdsa.c` and
 `rsa.c` is not constant time and must never be given a private key. Signing
@@ -70,7 +76,8 @@ make -C lib/nxcrypto ct-test    # constant-time check (needs valgrind)
 
 `make test` runs `tests/host/crypto_fetch_vectors.sh` the first time. It
 downloads the vector set (NIST CAVP files and RFC examples, packaged on PyPI
-as `cryptography_vectors`), pinned by version and SHA-256, into
+as `cryptography_vectors`, pinned by version and SHA-256) and the Wycheproof
+files (pinned to one commit, each file checked by SHA-256) into
 `build/crypto-vectors/`. The vectors are data and are not stored in the tree.
 A missing vector file fails the test; it never counts as a pass.
 
