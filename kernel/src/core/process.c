@@ -27,6 +27,7 @@
 #include "core/process.h"
 #include "core/sched_queue.h"
 #include "core/nx_mem.h"
+#include "core/nx_fdtab.h"
 #include "core/syscall.h"
 #include "core/elf.h"
 #include "mm/kheap.h"
@@ -229,6 +230,7 @@ static void free_process(process_t *proc) {
         process_table[proc->pid] = NULL;
     }
     release_stacks(proc);
+    nx_fd_free_table(proc); /* closes anything a failed creation path left */
     nx_ipc_release(proc);   /* no-op unless a creation path failed late */
     if (proc->as) {
         addrspace_destroy(proc->as);
@@ -644,7 +646,12 @@ int32_t process_spawn_image(const char *name, const void *image, uint64_t size,
     proc->priority = sq_priority_of(sq_class_of(proc));
     proc->ppid = current_process ? current_process->pid : 0;
     proc->start_time = pit_get_ticks();
-    proc_strcpy(proc->cwd, "/", 256);
+    /* Children start in their parent's working directory */
+    if (current_process && current_process->cwd[0] == '/') {
+        proc_strcpy(proc->cwd, current_process->cwd, 256);
+    } else {
+        proc_strcpy(proc->cwd, "/", 256);
+    }
     proc->as = as;
 
     if (alloc_kernel_stack(proc) != 0 || alloc_fpu_area(proc) != 0) {
@@ -775,40 +782,11 @@ int32_t process_spawn_file(const char *path, int argc, const char *const *argv,
  * Common teardown. The process must not be on the ready queue afterwards
  * and must not be the one whose CR3 is loaded (caller handles current).
  */
-/*
- * Close every file a process still has open. Called from terminate(), so it
- * runs for normal exit, kill and CPU faults alike. Each slot is cleared
- * before vfs_close() so a descriptor can never be closed twice.
- */
-static void close_files(process_t *proc) {
-    uint32_t closed = 0;
-    for (int fd = 0; fd < PROCESS_FD_MAX; fd++) {
-        vfs_file_t *file = (vfs_file_t *)proc->fd_table[fd];
-        if (!file) continue;
-        proc->fd_table[fd] = NULL;
-        if (vfs_close(file) != VFS_OK) {
-            serial_puts("[PROC] WARNING: close failed for fd ");
-            serial_dec((uint32_t)fd);
-            serial_puts(" of PID ");
-            serial_dec(proc->pid);
-            serial_puts("\n");
-        }
-        closed++;
-    }
-    if (closed) {
-        serial_puts("[PROC] Closed ");
-        serial_dec(closed);
-        serial_puts(" open file(s) of PID ");
-        serial_dec(proc->pid);
-        serial_puts("\n");
-    }
-}
-
 static void terminate(process_t *proc, int exit_code) {
     proc->exit_code = exit_code;
 
     /* A process's files are its own: nothing it left open outlives it */
-    close_files(proc);
+    nx_fd_close_all(proc);
     network_process_exit(proc->pid);   /* sockets it still held */
 
     /* Handles and shm mappings die with it; shm frames return to the PMM
@@ -1168,8 +1146,10 @@ int process_exec(const char *path, char *const argv[], char *const envp[]) {
     /* Point of no return: swap images */
     __asm__ volatile("cli");
 
-    /* exec starts the new program with no handles and no mappings */
+    /* exec starts the new program with no handles and no mappings, and
+     * without the fds marked close-on-exec */
     nx_ipc_release(self);
+    nx_fd_close_on_exec(self);
 
     addrspace_t *old = self->as;
     self->as = as;

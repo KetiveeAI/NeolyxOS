@@ -14,6 +14,7 @@
 #include "mm/kheap.h"
 #include "mm/pmm.h"
 #include "mm/addrspace.h"
+#include "core/nx_fdtab.h"
 
 /* ============ External Dependencies ============ */
 
@@ -242,10 +243,10 @@ int64_t sys_exec_impl(uint64_t path_ptr, uint64_t argv_ptr, uint64_t envp_ptr, u
     
     (void)envp_ptr;  /* Environment is not supported yet */
     
-    char path[256];
-    if (syscall_strncpy_from_user(path, (const char *)path_ptr, 256) < 0) {
-        return -EFAULT;
-    }
+    /* Relative paths resolve against the caller's working directory */
+    char path[NX_PATH_MAX];
+    int prc = nx_path_from_user(process_current(), (const char *)path_ptr, path);
+    if (prc < 0) return prc;
     
     /* Arguments are copied into kernel memory before the old image goes away */
     char *storage = (char *)kmalloc(PROCESS_ARGV_MAX * PROCESS_ARG_LEN);
@@ -277,11 +278,10 @@ int64_t sys_spawn_impl(uint64_t path_ptr, uint64_t argv_ptr, uint64_t flags,
     
     if (flags & ~(uint64_t)SPAWN_WAITABLE) return -EINVAL;
     
-    char path[256];
-    if (syscall_strncpy_from_user(path, (const char *)path_ptr, 256) < 0) {
-        return -EFAULT;
-    }
-    if (path[0] != '/') return -EINVAL;  /* Absolute paths only */
+    /* Relative paths resolve against the caller's working directory */
+    char path[NX_PATH_MAX];
+    int prc = nx_path_from_user(process_current(), (const char *)path_ptr, path);
+    if (prc < 0) return prc;
     
     char *storage = (char *)kmalloc(PROCESS_ARGV_MAX * PROCESS_ARG_LEN);
     if (!storage) return -ENOMEM;
@@ -310,6 +310,7 @@ int64_t sys_wait_impl(uint64_t pid, uint64_t status_ptr, uint64_t a3, uint64_t a
     
     int status = 0;
     int32_t result = process_wait((int32_t)pid, &status);
+    if (result < 0) return -ECHILD;     /* no such child (was -1) */
     
     if (result >= 0 && status_ptr) {
         if (syscall_copy_to_user((void *)status_ptr, &status, sizeof(int)) != 0) {
@@ -388,263 +389,8 @@ int64_t sys_brk_impl(uint64_t addr, uint64_t a2, uint64_t a3, uint64_t a4, uint6
     return (int64_t)aligned;
 }
 
-/* File I/O */
-
-/*
- * File descriptors are per process: each PCB owns fd_table[PROCESS_FD_MAX]
- * (see process.h). Two processes never see each other's descriptors, and
- * terminate() closes whatever a process leaves open. Descriptors survive
- * exec (the PCB is kept); spawn starts a child with an empty table.
- */
-
-/* Descriptor table of the calling process, or NULL outside a process */
-static vfs_file_t **fd_slots(void) {
-    process_t *proc = process_current();
-    if (!proc) return NULL;
-    return (vfs_file_t **)proc->fd_table;
-}
-
-/* Open file behind fd for the calling process, or NULL if fd is not open */
-static vfs_file_t *fd_lookup(uint64_t fd) {
-    vfs_file_t **slots = fd_slots();
-    if (!slots || fd >= PROCESS_FD_MAX) return NULL;
-    return slots[fd];
-}
-
-int64_t sys_open_impl(uint64_t path_ptr, uint64_t flags, uint64_t mode, uint64_t a4, uint64_t a5) {
-    (void)mode; (void)a4; (void)a5;
-    
-    vfs_file_t **slots = fd_slots();
-    if (!slots) {
-        serial_puts("[FD] ERROR: open outside a process\n");
-        return -EPERM;
-    }
-    
-    char path[256];
-    if (syscall_strncpy_from_user(path, (const char *)path_ptr, 256) < 0) {
-        return -EFAULT;
-    }
-    
-    /* Reserve the slot first so a full table never opens (or creates) a file */
-    int fd = -1;
-    for (int i = 0; i < PROCESS_FD_MAX; i++) {
-        if (slots[i] == NULL) {
-            fd = i;
-            break;
-        }
-    }
-    if (fd < 0) {
-        process_t *proc = process_current();
-        serial_puts("[FD] PID ");
-        serial_dec(proc ? proc->pid : 0);
-        serial_puts(": descriptor table full\n");
-        return -EMFILE;
-    }
-    
-    vfs_file_t *file = vfs_open(path, (uint32_t)flags);
-    if (!file) return -ENOENT;
-    
-    slots[fd] = file;
-    return fd;
-}
-
-int64_t sys_close_impl(uint64_t fd, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
-    (void)a2; (void)a3; (void)a4; (void)a5;
-    
-    vfs_file_t *file = fd_lookup(fd);
-    if (!file) {
-        return -EBADF;
-    }
-    
-    fd_slots()[fd] = NULL;
-    vfs_close(file);
-    return 0;
-}
-
-int64_t sys_read_impl(uint64_t fd, uint64_t buf_ptr, uint64_t count, uint64_t a4, uint64_t a5) {
-    (void)a4; (void)a5;
-    
-    vfs_file_t *file = fd_lookup(fd);
-    if (!file) {
-        return -EBADF;
-    }
-    
-    if (syscall_validate_ptr((void *)buf_ptr, count, 1) != 0) {
-        return -EFAULT;
-    }
-    
-    return vfs_read(file, (void *)buf_ptr, count);
-}
-
-int64_t sys_write_impl(uint64_t fd, uint64_t buf_ptr, uint64_t count, uint64_t a4, uint64_t a5) {
-    (void)a4; (void)a5;
-    
-    vfs_file_t *file = fd_lookup(fd);
-    if (!file) {
-        return -EBADF;
-    }
-    
-    if (syscall_validate_ptr((void *)buf_ptr, count, 0) != 0) {
-        return -EFAULT;
-    }
-    
-    return vfs_write(file, (void *)buf_ptr, count);
-}
-
-int64_t sys_seek_impl(uint64_t fd, uint64_t offset, uint64_t whence, uint64_t a4, uint64_t a5) {
-    (void)a4; (void)a5;
-    
-    vfs_file_t *file = fd_lookup(fd);
-    if (!file) {
-        return -EBADF;
-    }
-    
-    return vfs_seek(file, (int64_t)offset, (int)whence);
-}
-
-/* Current working directory (global for now, TODO: per-process) */
-static char cwd[256] = "/";
-
-int64_t sys_stat_impl(uint64_t path_ptr, uint64_t stat_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
-    (void)a3; (void)a4; (void)a5;
-    
-    char path[256];
-    if (syscall_strncpy_from_user(path, (const char *)path_ptr, 256) < 0) {
-        return -EFAULT;
-    }
-    
-    vfs_node_t node;
-    int ret = vfs_stat(path, &node);
-    if (ret != 0) {
-        return -ENOENT;
-    }
-    
-    /* Convert to user stat structure */
-    stat_t st;
-    st.st_ino = node.inode;
-    st.st_mode = node.permissions | (node.type == VFS_DIRECTORY ? 0040000 : 0100000);
-    st.st_nlink = 1;
-    st.st_uid = node.uid;
-    st.st_gid = node.gid;
-    st.st_size = node.size;
-    st.st_atime = node.accessed;
-    st.st_mtime = node.modified;
-    st.st_ctime = node.created;
-    
-    if (syscall_copy_to_user((void *)stat_ptr, &st, sizeof(st)) != 0) {
-        return -EFAULT;
-    }
-    
-    return 0;
-}
-
-int64_t sys_readdir_impl(uint64_t path_ptr, uint64_t entries_ptr, uint64_t count, uint64_t read_ptr, uint64_t a5) {
-    (void)a5;
-    
-    char path[256];
-    if (syscall_strncpy_from_user(path, (const char *)path_ptr, 256) < 0) {
-        return -EFAULT;
-    }
-    
-    if (syscall_validate_ptr((void *)entries_ptr, count * sizeof(vfs_dirent_t), 1) != 0) {
-        return -EFAULT;
-    }
-    
-    uint32_t nread = 0;
-    int ret = vfs_readdir(path, (vfs_dirent_t *)entries_ptr, (uint32_t)count, &nread);
-    
-    if (read_ptr) {
-        if (syscall_copy_to_user((void *)read_ptr, &nread, sizeof(uint32_t)) != 0) {
-            return -EFAULT;
-        }
-    }
-    
-    return ret;
-}
-
-int64_t sys_mkdir_impl(uint64_t path_ptr, uint64_t mode, uint64_t a3, uint64_t a4, uint64_t a5) {
-    (void)a3; (void)a4; (void)a5;
-    
-    char path[256];
-    if (syscall_strncpy_from_user(path, (const char *)path_ptr, 256) < 0) {
-        return -EFAULT;
-    }
-    
-    return vfs_create(path, VFS_DIRECTORY, (uint32_t)mode);
-}
-
-int64_t sys_unlink_impl(uint64_t path_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
-    (void)a2; (void)a3; (void)a4; (void)a5;
-    
-    char path[256];
-    if (syscall_strncpy_from_user(path, (const char *)path_ptr, 256) < 0) {
-        return -EFAULT;
-    }
-    
-    return vfs_unlink(path);
-}
-
-/*
- * sys_rename_impl - Rename or move a file or directory on one volume.
- * Both paths are copied from user memory and checked by SIP in
- * vfs_rename. Returns 0 or a negative VFS error code.
- */
-int64_t sys_rename_impl(uint64_t old_ptr, uint64_t new_ptr, uint64_t a3, uint64_t a4, uint64_t a5) {
-    (void)a3; (void)a4; (void)a5;
-    
-    char old_path[256];
-    char new_path[256];
-    if (syscall_strncpy_from_user(old_path, (const char *)old_ptr, 256) < 0) {
-        return -EFAULT;
-    }
-    if (syscall_strncpy_from_user(new_path, (const char *)new_ptr, 256) < 0) {
-        return -EFAULT;
-    }
-    
-    return vfs_rename(old_path, new_path);
-}
-
-int64_t sys_chdir_impl(uint64_t path_ptr, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
-    (void)a2; (void)a3; (void)a4; (void)a5;
-    
-    char path[256];
-    if (syscall_strncpy_from_user(path, (const char *)path_ptr, 256) < 0) {
-        return -EFAULT;
-    }
-    
-    /* Verify path exists and is a directory */
-    vfs_node_t node;
-    int ret = vfs_stat(path, &node);
-    if (ret != 0) {
-        return -ENOENT;
-    }
-    if (node.type != VFS_DIRECTORY) {
-        return -ENOTDIR;
-    }
-    
-    /* Update cwd */
-    sc_strcpy(cwd, path, 256);
-    return 0;
-}
-
-int64_t sys_getcwd_impl(uint64_t buf_ptr, uint64_t size, uint64_t a3, uint64_t a4, uint64_t a5) {
-    (void)a3; (void)a4; (void)a5;
-    
-    if (syscall_validate_ptr((void *)buf_ptr, size, 1) != 0) {
-        return -EFAULT;
-    }
-    
-    int len = sc_strlen(cwd);
-    if ((uint64_t)len + 1 > size) {
-        return -ERANGE;
-    }
-    
-    if (syscall_copy_to_user((void *)buf_ptr, cwd, len + 1) != 0) {
-        return -EFAULT;
-    }
-    
-    return len;
-}
+/* File I/O, metadata and working directory: core/nx_file.c
+ * (docs/kernel/proposals/beta-process-abi.md, sections 4 and 6). */
 
 /* System Info */
 

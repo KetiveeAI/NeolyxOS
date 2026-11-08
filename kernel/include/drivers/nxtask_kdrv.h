@@ -217,12 +217,14 @@ int nxtask_kdrv_set_nice(uint32_t pid, int nice);
 int nxtask_kdrv_set_affinity(uint32_t pid, uint64_t mask);
 
 /**
- * Suspend process
+ * Suspend process. Not supported yet: returns -1 for an unknown PID and
+ * -3 otherwise, and changes nothing (see nxtask_kdrv.c).
  */
 int nxtask_kdrv_suspend(uint32_t pid);
 
 /**
- * Resume process
+ * Resume process. Not supported yet: returns -1 for an unknown PID and
+ * -3 otherwise, and changes nothing (see nxtask_kdrv.c).
  */
 int nxtask_kdrv_resume(uint32_t pid);
 

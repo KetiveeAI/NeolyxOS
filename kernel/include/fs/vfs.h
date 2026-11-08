@@ -25,7 +25,7 @@
 #define VFS_NAME_MAX        255
 #define VFS_PATH_MAX        1024
 #define VFS_MAX_MOUNTS      16
-#define VFS_MAX_OPEN_FILES  64
+#define VFS_MAX_OPEN_FILES  1024    /* system-wide (beta-process-abi.md 4.1) */
 
 /* File types */
 typedef enum {
@@ -44,6 +44,7 @@ typedef enum {
 #define VFS_O_CREATE    0x0100
 #define VFS_O_TRUNC     0x0200
 #define VFS_O_APPEND    0x0400
+#define VFS_O_EXCL      0x0800  /* with CREATE: fail with VFS_ERR_EXIST if it exists */
 
 /* Seek modes */
 #define VFS_SEEK_SET    0
@@ -65,6 +66,7 @@ typedef enum {
 #define VFS_ERR_INVALID     (-10)
 #define VFS_ERR_NO_SPACE    (-11)
 #define VFS_ERR_READ_ONLY   (-12)
+#define VFS_ERR_NFILE       (-13)   /* system open-file table full */
 
 /* ============ VFS Structures ============ */
 
@@ -189,6 +191,17 @@ int vfs_unmount(const char *path);
  * @return File handle or NULL on error
  */
 vfs_file_t *vfs_open(const char *path, uint32_t mode);
+
+/**
+ * Open a file and report why it failed.
+ *
+ * @param path  File path (absolute)
+ * @param mode  VFS_O_* bits
+ * @param err   Out: VFS_OK, or the VFS_ERR_* reason when NULL is returned
+ *              (may be NULL)
+ * @return File handle or NULL on error
+ */
+vfs_file_t *vfs_open_ex(const char *path, uint32_t mode, int *err);
 
 /**
  * Close a file.

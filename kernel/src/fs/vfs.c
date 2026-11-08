@@ -324,7 +324,15 @@ vfs_node_t *vfs_resolve(const char *path) {
     return node;
 }
 
-vfs_file_t *vfs_open(const char *path, uint32_t mode) {
+vfs_file_t *vfs_open_ex(const char *path, uint32_t mode, int *err) {
+    int dummy;
+    if (!err) err = &dummy;
+    *err = VFS_OK;
+    if (!path) {
+        *err = VFS_ERR_INVALID;
+        return NULL;
+    }
+
     serial_puts("[VFS_OPEN] Opening: ");
     serial_puts(path);
     serial_puts("\n");
@@ -336,12 +344,17 @@ vfs_file_t *vfs_open(const char *path, uint32_t mode) {
             serial_puts("[VFS] SIP: Write denied to ");
             serial_puts(path);
             serial_puts("\n");
+            *err = VFS_ERR_PERM;
             return NULL;
         }
     }
     
     serial_puts("[VFS_OPEN] Calling vfs_resolve...\n");
     vfs_node_t *node = vfs_resolve(path);
+    if (node && (mode & VFS_O_CREATE) && (mode & VFS_O_EXCL)) {
+        *err = VFS_ERR_EXIST;
+        return NULL;
+    }
     if (!node && (mode & VFS_O_CREATE)) {
         /* Create the file; its parent directory must already exist */
         int rc = vfs_create(path, VFS_FILE, 0644);
@@ -349,12 +362,14 @@ vfs_file_t *vfs_open(const char *path, uint32_t mode) {
             serial_puts("[VFS_OPEN] create failed for ");
             serial_puts(path);
             serial_puts("\n");
+            *err = rc;
             return NULL;
         }
         node = vfs_resolve(path);
     }
     if (!node) {
         serial_puts("[VFS_OPEN] vfs_resolve returned NULL!\n");
+        *err = VFS_ERR_NOT_FOUND;
         return NULL;
     }
     serial_puts("[VFS_OPEN] vfs_resolve found node\n");
@@ -362,6 +377,7 @@ vfs_file_t *vfs_open(const char *path, uint32_t mode) {
     int writing = (mode & VFS_O_WRONLY) != 0;   /* VFS_O_RDWR includes this bit */
     if (writing && node->type == VFS_DIRECTORY) {
         serial_puts("[VFS_OPEN] cannot open a directory for writing\n");
+        *err = VFS_ERR_IS_DIR;
         return NULL;
     }
     
@@ -376,6 +392,7 @@ vfs_file_t *vfs_open(const char *path, uint32_t mode) {
     
     if (!file) {
         serial_puts("[VFS_OPEN] No free file handles!\n");
+        *err = VFS_ERR_NFILE;
         return NULL;
     }
     
@@ -383,6 +400,7 @@ vfs_file_t *vfs_open(const char *path, uint32_t mode) {
     if (node->ops && node->ops->open) {
         if (node->ops->open(node, mode) != VFS_OK) {
             serial_puts("[VFS_OPEN] Filesystem open() failed!\n");
+            *err = VFS_ERR_IO;
             return NULL;
         }
     }
@@ -394,6 +412,7 @@ vfs_file_t *vfs_open(const char *path, uint32_t mode) {
             serial_puts(path);
             serial_puts("\n");
             if (node->ops && node->ops->close) node->ops->close(node);
+            *err = VFS_ERR_IO;
             return NULL;
         }
     }
@@ -406,6 +425,10 @@ vfs_file_t *vfs_open(const char *path, uint32_t mode) {
     
     serial_puts("[VFS_OPEN] Success!\n");
     return file;
+}
+
+vfs_file_t *vfs_open(const char *path, uint32_t mode) {
+    return vfs_open_ex(path, mode, NULL);
 }
 
 int vfs_close(vfs_file_t *file) {
