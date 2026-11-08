@@ -68,7 +68,7 @@ run_test() {
     fi
 }
 
-KNOWN=(bootlog_test mem_reclaim_test nx_fb_clip_test nx_malloc_test nxgfx_canvas_test
+KNOWN=(bootlog_test mem_reclaim_test nx_fb_clip_test nx_ldisc_test nx_malloc_test nx_path_test nxgfx_canvas_test
        nxs_damage_test nxw_check_test nxwindow_test pmm_test sched_queue_test)
 
 # Tests run by their library's own make target (see the suites below):
@@ -94,8 +94,12 @@ run_test bootlog_test -- -std=gnu11 -Wall -Wextra -iquote kernel/include -iquote
     tests/host/bootlog_test.c kernel/src/video/bootlog.c
 run_test mem_reclaim_test -- -std=c11 -O1 -Wall -Wextra -Ikernel/include tests/host/mem_reclaim_test.c
 run_test nx_fb_clip_test -- -std=c11 -Wall -Wextra -iquote kernel/include tests/host/nx_fb_clip_test.c
+run_test nx_ldisc_test -- -std=c11 -O1 -Wall -Wextra -Ikernel/include \
+    tests/host/nx_ldisc_test.c kernel/src/core/nx_ring.c kernel/src/core/nx_ldisc.c
 run_test nx_malloc_test -- -std=c11 -O1 -Wall -Wextra -DNX_HOST_PREVIEW -Ikernel/include/core \
     tests/host/nx_malloc_test.c
+run_test nx_path_test -- -std=c11 -O1 -Wall -Wextra -Ikernel/include \
+    tests/host/nx_path_test.c kernel/src/core/nx_path.c
 run_test nxs_damage_test -- -std=c11 -O1 -Wall -Wextra tests/host/nxs_damage_test.c
 run_test nxw_check_test -- -std=c11 -O1 -Wall -Wextra tests/host/nxw_check_test.c
 run_test nxwindow_test -- -std=c11 -O1 -Wall -Wextra -DNX_HOST_PREVIEW -Isdk/nxwindow \

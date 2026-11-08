@@ -56,12 +56,17 @@ extern "C" {
 #define NXSYS_WAIT               9
 #define NXSYS_BRK                10
 #define NXSYS_SPAWN              13
+#define NXSYS_DUP                14
+#define NXSYS_DUP2               15
+#define NXSYS_FD_CTL             18
 #define NXSYS_OPEN               20
 #define NXSYS_CLOSE              21
 #define NXSYS_READ               22
 #define NXSYS_WRITE              23
 #define NXSYS_SEEK               24
 #define NXSYS_STAT               25
+#define NXSYS_FSTAT              26
+#define NXSYS_UNLINK             27
 #define NXSYS_READDIR            30
 #define NXSYS_MKDIR              31
 #define NXSYS_RMDIR              32
