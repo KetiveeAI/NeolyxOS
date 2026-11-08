@@ -17,6 +17,9 @@
  *   ECDSA P-256/SHA-256, ECDSA P-384/SHA-384, RSA-2048 PKCS#1 v1.5 and
  *   PSS verify (Project Wycheproof valid cases), and rejection of a
  *   tampered hash or signature
+ *   X.509 path validation (lib/nxtls) of a real server chain from
+ *   x509-limbo, and refusal of an expired certificate, a wrong host, an
+ *   untrusted root and a missing intermediate
  *
  * It also times Ed25519, X25519, the two ciphers and signature
  * verification in the VM.
@@ -30,6 +33,8 @@
 
 #include <stdint.h>
 #include "nxcrypto.h"
+#include "nxtls/x509_verify.h"
+#include "x509_fixture.h"
 
 #define SYS_EXIT        1
 #define SYS_TIME        3
@@ -358,6 +363,49 @@ static void test_pubkey(void) {
            nxc_rsa_verify_pss(n, 256, e, 3, NXC_HASH_SHA256, h, 32, 32, sig, 256) == NXC_ERR_VERIFY);
 }
 
+/*
+ * X.509 path validation (lib/nxtls) on a real chain: the fastly.com
+ * server certificate, its intermediate and its root, from x509-limbo.
+ * Also the refusals HTTPS depends on: expired, self-signed (no trusted
+ * root) and wrong host. Each refusal prints its reason, as the TLS
+ * client will log it.
+ */
+static void x509_case(const char *name, int want, const nxt_x509_cert *chain, size_t n,
+                      const nxt_trust_store *ts, int64_t now, const char *host) {
+    nxt_verify_opts o = { now, host, 0 };
+    nxt_verify_result r;
+    int rc = nxt_x509_verify_server(chain, n, ts, &o, &r);
+    report(name, rc == want);
+    out_str("[CRYPTOTEST]   -> ");
+    out_str(nxt_x509_err_str(rc));
+    flush();
+}
+
+static void test_x509(void) {
+    static nxt_x509_cert chain[2], root;
+    int ok = nxt_x509_parse(&chain[0], FIXTURE_LEAF, sizeof(FIXTURE_LEAF)) == NXT_X509_OK &&
+             nxt_x509_parse(&chain[1], FIXTURE_INTERMEDIATE, sizeof(FIXTURE_INTERMEDIATE)) == NXT_X509_OK &&
+             nxt_x509_parse(&root, FIXTURE_ROOT, sizeof(FIXTURE_ROOT)) == NXT_X509_OK;
+    report("X.509 parse leaf, intermediate, root", ok);
+    if (!ok) return;
+    nxt_trust_store ts = { &root, 1 };
+    nxt_trust_store empty = { &root, 0 };
+
+    uint64_t t0 = now_ms();
+    x509_case("X.509 chain for " FIXTURE_HOST " verifies", NXT_X509_OK, chain, 2, &ts,
+              FIXTURE_TIME, FIXTURE_HOST);
+    uint64_t t1 = now_ms();
+    x509_case("X.509 expired certificate refused", NXT_X509_ERR_EXPIRED, chain, 2, &ts,
+              FIXTURE_TIME + 90LL * 86400, FIXTURE_HOST);
+    x509_case("X.509 wrong host refused", NXT_X509_ERR_HOST_MISMATCH, chain, 2, &ts,
+              FIXTURE_TIME, "evil.example.com");
+    x509_case("X.509 chain to an untrusted root refused", NXT_X509_ERR_UNKNOWN_ISSUER, chain, 2,
+              &empty, FIXTURE_TIME, FIXTURE_HOST);
+    x509_case("X.509 missing intermediate refused", NXT_X509_ERR_UNKNOWN_ISSUER, chain, 1, &ts,
+              FIXTURE_TIME, FIXTURE_HOST);
+    report_time("X.509 chain verify", t1 - t0);
+}
+
 void _start(void) {
     out_str("[CRYPTOTEST] start (lib/nxcrypto known-answer tests)");
     flush();
@@ -366,6 +414,7 @@ void _start(void) {
     test_ed25519();
     test_aead();
     test_pubkey();
+    test_x509();
     out_str(g_fail ? "[CRYPTOTEST] RESULT: FAIL" : "[CRYPTOTEST] RESULT: PASS");
     flush();
     sc1(SYS_EXIT, g_fail ? 1 : 0);
