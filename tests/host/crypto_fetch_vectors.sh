@@ -3,11 +3,11 @@
 #
 # The vectors (NIST CAVP response files, RFC 4231/5869/7748/8032/8439
 # examples, Project Wycheproof edge cases, x509-limbo path-validation
-# cases) are data, not code, and are not
+# cases, the RFC 8448 TLS 1.3 traces) are data, not code, and are not
 # stored in the tree. The NIST and RFC sets come from the
 # "cryptography_vectors" package on PyPI, which collects them in one
-# archive; the Wycheproof and x509-limbo files come from their GitHub
-# repositories. All are pinned (by version or commit) and checked by SHA-256 so every run tests
+# archive; the others come from their GitHub repositories. All are
+# pinned (by version or commit) and checked by SHA-256 so every run tests
 # against identical data; a mismatch stops the script.
 #
 # Usage: tests/host/crypto_fetch_vectors.sh [dest_dir]
@@ -33,6 +33,20 @@ WP_URL="https://raw.githubusercontent.com/C2SP/wycheproof/$WP_COMMIT/testvectors
 LIMBO_COMMIT="1080e565f26e544bbe9cf99953be8a57c08e7e20"
 LIMBO_URL="https://raw.githubusercontent.com/C2SP/x509-limbo/$LIMBO_COMMIT/limbo.json"
 LIMBO_SHA256="611e337b9fb477b927bae65434650692cb9d2070ff5b05f975d0403510acd4de"
+
+# The RFC 8448 TLS 1.3 example handshakes, read by
+# crypto_tls13_trace_test. The IETF site is not reachable from every build
+# machine, so the trace comes from two independent transcriptions of the
+# RFC: Botan's machine-readable copy of every record (the test replays
+# it) and Mbed TLS's test data, which quotes RFC 8448 secrets and records
+# (the test checks the two agree, and checks its own key schedule output
+# against the Mbed TLS copy). Pinned to one commit each, with SHA-256.
+TRACE_COMMIT="6107761857d6d9b1eaeb971d076f12898e599ed0"
+TRACE_URL="https://raw.githubusercontent.com/randombit/botan/$TRACE_COMMIT/src/tests/data/tls_13_rfc8448/transcripts.vec"
+TRACE_SHA256="aff741f819c2742905af5e5221701074a1456720b2b542bdec62ae9697350fd5"
+XCHECK_COMMIT="eff4330ae387a694b49848777a8a426daf74fdb2"
+XCHECK_URL="https://raw.githubusercontent.com/Mbed-TLS/mbedtls/$XCHECK_COMMIT/tests/suites/test_suite_ssl.data"
+XCHECK_SHA256="1c50ef73683f5cb5e9d975432e0982f52954518c698e71ab057ee48154c272a0"
 
 WP_FILES="
 985e5ecc172e181eaf49e89508b9470dcf478002eb7e8559c707eb42dc97dfe7 aes_gcm_test.json
@@ -123,6 +137,30 @@ if [ ! -f "$LIMBO_DIR/.ok-$LIMBO_COMMIT" ]; then
     fi
     mv "$LIMBO_DIR/limbo.json.part" "$LIMBO_DIR/limbo.json"
     touch "$LIMBO_DIR/.ok-$LIMBO_COMMIT"
+fi
+
+# --- 4. RFC 8448 TLS 1.3 traces (two pinned transcriptions) ----------
+TRACE_DIR="$VECDIR/rfc8448"
+if [ ! -f "$TRACE_DIR/.ok-$TRACE_COMMIT-$XCHECK_COMMIT" ]; then
+    mkdir -p "$TRACE_DIR"
+    echo "crypto_fetch_vectors: downloading RFC 8448 traces" >&2
+    while read -r name url sum; do
+        [ -n "$name" ] || continue
+        curl -fsSL -o "$TRACE_DIR/$name.part" "$url"
+        GOT="$(sha256sum "$TRACE_DIR/$name.part" | cut -d' ' -f1)"
+        if [ "$GOT" != "$sum" ]; then
+            echo "crypto_fetch_vectors: checksum mismatch for rfc8448/$name" >&2
+            echo "  expected $sum" >&2
+            echo "  got      $GOT" >&2
+            rm -f "$TRACE_DIR/$name.part"
+            exit 1
+        fi
+        mv "$TRACE_DIR/$name.part" "$TRACE_DIR/$name"
+    done <<EOT
+transcripts.vec $TRACE_URL $TRACE_SHA256
+mbedtls_ssl.data $XCHECK_URL $XCHECK_SHA256
+EOT
+    touch "$TRACE_DIR/.ok-$TRACE_COMMIT-$XCHECK_COMMIT"
 fi
 
 echo "$VECDIR"

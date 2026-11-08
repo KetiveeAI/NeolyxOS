@@ -20,9 +20,13 @@
  *   X.509 path validation (lib/nxtls) of a real server chain from
  *   x509-limbo, and refusal of an expired certificate, a wrong host, an
  *   untrusted root and a missing intermediate
+ *   TLS 1.3 key schedule and record protection (lib/nxtls), replaying
+ *   the RFC 8448 section 3 handshake: the server's records must decrypt
+ *   to the recorded messages and the client's records must come out
+ *   byte for byte as recorded; a tampered record must be refused
  *
- * It also times Ed25519, X25519, the two ciphers and signature
- * verification in the VM.
+ * It also times Ed25519, X25519, the two ciphers, signature
+ * verification, chain validation and the TLS key schedule in the VM.
  * Results go to the serial log as "[CRYPTOTEST] PASS/FAIL ..." ending
  * with "[CRYPTOTEST] RESULT: PASS" or "[CRYPTOTEST] RESULT: FAIL".
  * Exit code 0 on PASS, 1 on FAIL.
@@ -35,6 +39,10 @@
 #include "nxcrypto.h"
 #include "nxtls/x509_verify.h"
 #include "x509_fixture.h"
+#include "tls_fixture.h"
+/* The TLS key schedule and record layer are internal to lib/nxtls; this
+ * test calls them directly, as the host test does. */
+#include "../../../lib/nxtls/src/tls13.h"
 
 #define SYS_EXIT        1
 #define SYS_TIME        3
@@ -406,6 +414,109 @@ static void test_x509(void) {
     report_time("X.509 chain verify", t1 - t0);
 }
 
+/*
+ * TLS 1.3 key schedule and record protection on the RFC 8448 section 3
+ * handshake. The ClientHello/ServerHello and the client's X25519 key
+ * come from the trace; everything after that is computed here.
+ */
+static uint8_t g_rec[NXT_TLS_MAX_RECORD];
+
+static size_t load_rec(const uint8_t *src, size_t n) {
+    for (size_t i = 0; i < n && i < sizeof(g_rec); i++) g_rec[i] = src[i];
+    return n <= sizeof(g_rec) ? n : 0;
+}
+
+static void test_tls13(void) {
+    const nxt__suite *suite = nxt__suite_find(TLS_FIXTURE_SUITE);
+    report("TLS 1.3 suite from the trace is supported", suite != NULL);
+    if (!suite) return;
+    uint64_t t0 = now_ms();
+
+    uint8_t shared[32], th[NXT__MAX_HASH];
+    nxc_hash_ctx h;
+    static nxt__keysched ks;
+    int ok = nxc_x25519(shared, TLS_CLIENT_PRIV, TLS_SERVER_PUB) == NXC_OK &&
+             nxc_hash_init(&h, suite->hash) == NXC_OK &&
+             nxc_hash_update(&h, TLS_CLIENT_HELLO, sizeof(TLS_CLIENT_HELLO)) == NXC_OK &&
+             nxc_hash_update(&h, TLS_SERVER_HELLO, sizeof(TLS_SERVER_HELLO)) == NXC_OK;
+    nxc_hash_ctx h2 = h;
+    ok = ok && nxc_hash_final(&h2, th, sizeof(th)) == NXC_OK &&
+         nxt__ks_init(&ks, suite) == NXT_TLS_OK &&
+         nxt__ks_handshake(&ks, shared, sizeof(shared), th) == NXT_TLS_OK;
+    report("TLS 1.3 handshake secrets", ok);
+    if (!ok) return;
+
+    /* Server flight: one protected record holding EE, Certificate, CV, Finished. */
+    static nxt__rprot srv, cli;
+    uint8_t type = 0;
+    size_t len = 0, n = load_rec(TLS_SERVER_FLIGHT_REC, sizeof(TLS_SERVER_FLIGHT_REC));
+    ok = nxt__rprot_init(&srv, suite, ks.server_hs) == NXT_TLS_OK &&
+         nxt__rprot_init(&cli, suite, ks.client_hs) == NXT_TLS_OK &&
+         nxt__rprot_open(&srv, g_rec, n, &type, &len) == NXT_TLS_OK && type == 22 &&
+         len == sizeof(TLS_SERVER_MSGS) + sizeof(TLS_SERVER_FINISHED) &&
+         same(g_rec + 5, TLS_SERVER_MSGS, (int)sizeof(TLS_SERVER_MSGS)) &&
+         same(g_rec + 5 + sizeof(TLS_SERVER_MSGS), TLS_SERVER_FINISHED,
+              (int)sizeof(TLS_SERVER_FINISHED));
+    report("TLS 1.3 server handshake record decrypts to the recorded messages", ok);
+    if (!ok) return;
+
+    /* Server Finished over ClientHello..CertificateVerify. */
+    uint8_t mac[NXT__MAX_HASH];
+    h2 = h;
+    ok = nxc_hash_update(&h2, TLS_SERVER_MSGS, sizeof(TLS_SERVER_MSGS)) == NXC_OK &&
+         nxc_hash_final(&h2, th, sizeof(th)) == NXC_OK &&
+         nxt__finished_mac(suite, ks.server_hs, th, mac) == NXT_TLS_OK &&
+         same(mac, TLS_SERVER_FINISHED + 4, suite->hash_len);
+    report("TLS 1.3 server Finished verifies", ok);
+
+    /* Client Finished over ClientHello..server Finished, sealed as recorded. */
+    uint8_t cfin[4 + NXT__MAX_HASH] = { 20, 0, 0, (uint8_t)suite->hash_len };
+    nxc_hash_update(&h, TLS_SERVER_MSGS, sizeof(TLS_SERVER_MSGS));
+    nxc_hash_update(&h, TLS_SERVER_FINISHED, sizeof(TLS_SERVER_FINISHED));
+    ok = nxc_hash_final(&h, th, sizeof(th)) == NXC_OK &&
+         nxt__finished_mac(suite, ks.client_hs, th, cfin + 4) == NXT_TLS_OK &&
+         nxt__rprot_seal(&cli, 22, cfin, 4 + suite->hash_len, 0, g_rec, sizeof(g_rec), &len)
+             == NXT_TLS_OK &&
+         len == sizeof(TLS_CLIENT_FINISHED_REC) &&
+         same(g_rec, TLS_CLIENT_FINISHED_REC, (int)len);
+    report("TLS 1.3 client Finished record matches RFC 8448", ok);
+
+    /* Application traffic. */
+    nxt__rprot_wipe(&srv);
+    nxt__rprot_wipe(&cli);
+    ok = nxt__ks_application(&ks, th) == NXT_TLS_OK &&
+         nxt__rprot_init(&srv, suite, ks.server_ap) == NXT_TLS_OK &&
+         nxt__rprot_init(&cli, suite, ks.client_ap) == NXT_TLS_OK;
+    uint64_t t1 = now_ms();
+    n = load_rec(TLS_NST_REC, sizeof(TLS_NST_REC));
+    ok = ok && nxt__rprot_open(&srv, g_rec, n, &type, &len) == NXT_TLS_OK && type == 22 &&
+         g_rec[5] == 4;
+    n = load_rec(TLS_SERVER_APP_REC, sizeof(TLS_SERVER_APP_REC));
+    ok = ok && nxt__rprot_open(&srv, g_rec, n, &type, &len) == NXT_TLS_OK && type == 23 &&
+         len == sizeof(TLS_SERVER_APP) && same(g_rec + 5, TLS_SERVER_APP, (int)len);
+    report("TLS 1.3 server ticket and application data decrypt", ok);
+    ok = nxt__rprot_seal(&cli, 23, TLS_CLIENT_APP, sizeof(TLS_CLIENT_APP), 0, g_rec,
+                         sizeof(g_rec), &len) == NXT_TLS_OK &&
+         len == sizeof(TLS_CLIENT_APP_REC) && same(g_rec, TLS_CLIENT_APP_REC, (int)len);
+    report("TLS 1.3 client application data record matches RFC 8448", ok);
+
+    /* A record with one flipped bit is refused and wiped. */
+    nxt__rprot r2;
+    for (size_t i = 0; i < sizeof(r2); i++) ((uint8_t *)&r2)[i] = 0;
+    n = load_rec(TLS_SERVER_APP_REC, sizeof(TLS_SERVER_APP_REC));
+    g_rec[n - 1] ^= 0x01;
+    ok = nxt__rprot_init(&r2, suite, ks.server_ap) == NXT_TLS_OK &&
+         nxt__rprot_open(&r2, g_rec, n, &type, &len) == NXT_TLS_ERR_BAD_RECORD_MAC;
+    report("TLS 1.3 tampered record refused", ok);
+
+    nxt__rprot_wipe(&r2);
+    nxt__rprot_wipe(&srv);
+    nxt__rprot_wipe(&cli);
+    nxt__ks_wipe(&ks);
+    nxc_memzero(shared, sizeof(shared));
+    report_time("TLS 1.3 key schedule (X25519 + HKDF + 2 records)", t1 - t0);
+}
+
 void _start(void) {
     out_str("[CRYPTOTEST] start (lib/nxcrypto known-answer tests)");
     flush();
@@ -415,6 +526,7 @@ void _start(void) {
     test_aead();
     test_pubkey();
     test_x509();
+    test_tls13();
     out_str(g_fail ? "[CRYPTOTEST] RESULT: FAIL" : "[CRYPTOTEST] RESULT: PASS");
     flush();
     sc1(SYS_EXIT, g_fail ? 1 : 0);

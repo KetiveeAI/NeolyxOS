@@ -4,8 +4,9 @@ The NeolyxOS TLS 1.3 client library, written from scratch for NeolyxOS
 (stream S6 of the public beta plan). It is built on `lib/nxcrypto` and will
 carry HTTPS for `lib/nxhttp` and the `fetch` command.
 
-So far it contains the X.509 certificate code. The TLS 1.3 handshake and
-record layer come next.
+So far it contains the X.509 certificate code and the TLS 1.3 key
+schedule and record protection. The handshake and the connection API
+come next.
 
 ## Rules the code follows
 
@@ -106,6 +107,48 @@ pathLen, no intermediate signature check, a wildcard spanning labels, no
 CA check, CA as leaf) each make the limbo test fail. Both tests are clean
 under ASan and UBSan.
 
+## TLS 1.3 key schedule and records
+
+| File | Provides |
+| --- | --- |
+| `nxtls/tls.h` | Result codes (`nxt_tls_err_t`, `nxt_tls_err_str()`), cipher suite ids, record size limits |
+| `src/tls13.h` (internal) | HKDF-Expand-Label, the key schedule for a full handshake (RFC 8446 7.1), the Finished MAC (4.4.4), KeyUpdate (7.2), and record protection (5.2, 5.3) |
+
+**Cipher suites:**
+- TLS_AES_128_GCM_SHA256
+- TLS_AES_256_GCM_SHA384
+- TLS_CHACHA20_POLY1305_SHA256
+
+Only TLS 1.3 is supported, with no fallback to TLS 1.2. There is no
+pre-shared key or session resumption, so every connection does a full
+handshake.
+
+**Record rules:**
+- Plaintext is at most 2^14 bytes and ciphertext at most 2^14 + 256 bytes.
+  Longer records are refused.
+- A record of padding only, with no content type, is refused.
+- A record that fails authentication is wiped before the error returns.
+- Sequence numbers never wrap. At 2^64 - 1 the record layer refuses to
+  continue.
+
+### Tests
+
+| Test | What it runs | Result |
+| --- | --- | --- |
+| `tests/host/crypto_tls13_trace_test.c` | Replays the RFC 8448 example handshakes from the client's side (section 3 simple 1-RTT, section 7 middlebox compatibility mode) and checks the server's flight in section 6 (client authentication). The server's encrypted handshake must decrypt to the recorded messages. The server Finished must verify. The client Finished, application data and close_notify records built here must equal the recorded ones byte for byte. Derived secrets, keys and IVs are also looked up in a second, independent transcription of RFC 8448. Also covers every record-layer failure path for all three suites: each single-bit change, replay, wrong sequence number, length limits, padding-only records, the nonce at large sequence numbers, sequence exhaustion, KeyUpdate and wiping. | 282 checks pass |
+| `cryptotest` in QEMU | Replays RFC 8448 section 3 inside NeolyxOS, the same way, plus a tampered record | `RESULT: PASS`; key schedule with two records took 32 ms under TCG |
+
+The IETF site is not reachable from every build machine, so the RFC 8448
+trace comes from two transcriptions. Botan's machine-readable copy of
+every record is the one the test replays. Mbed TLS's test data quotes
+RFC 8448 secrets and records, and the test checks that the two agree.
+Both are pinned by commit and SHA-256 in `crypto_fetch_vectors.sh`.
+
+Nine deliberately injected bugs were tried, such as a wrong label, a wrong
+"derived" context, a wrong nonce, a wrong record length, no padding
+removal, a missing sequence increment and no wipe on failure. Each one
+makes the test fail. The test is clean under ASan and UBSan.
+
 ## Building
 
 ```sh
@@ -114,8 +157,8 @@ make -C lib/nxtls test        # host tests (downloads the pinned vectors once)
 ```
 
 The vectors are data and are not stored in the tree. They are the
-`cryptography_vectors` package (which includes PKITS) and x509-limbo
-`limbo.json`. `tests/host/crypto_fetch_vectors.sh` downloads them, pinned
+`cryptography_vectors` package (which includes PKITS), x509-limbo
+`limbo.json`, and the two RFC 8448 transcriptions. `tests/host/crypto_fetch_vectors.sh` downloads them, pinned
 by version or commit and checked by SHA-256.
 
 ## Root certificates

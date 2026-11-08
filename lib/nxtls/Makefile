@@ -1,4 +1,4 @@
-# nxtls - NeolyxOS TLS 1.3 client library (X.509 so far)
+# nxtls - NeolyxOS TLS 1.3 client library (X.509, key schedule, records)
 #
 #   make           build build/libnxtls.a for NeolyxOS (freestanding, x86_64);
 #                  link it together with lib/nxcrypto/build/libnxcrypto.a
@@ -18,7 +18,8 @@ AR      ?= ar
 HOSTCC  ?= gcc
 
 CRYPTO  = ../nxcrypto
-SRCS    = src/der.c src/names.c src/x509.c src/x509_verify.c
+SRCS    = src/der.c src/names.c src/x509.c src/x509_verify.c \
+          src/tls13_keys.c src/tls13_record.c
 CRYPTO_SRCS = $(wildcard $(CRYPTO)/src/*.c)
 
 STRICT  = -Werror=implicit-function-declaration -Werror=implicit-int \
@@ -38,7 +39,7 @@ LIB     = $(OBJDIR)/libnxtls.a
 HDRS    = include/nxtls/*.h src/*.h $(CRYPTO)/include/nxcrypto.h $(CRYPTO)/include/nxcrypto/*.h
 
 TESTDIR = ../../tests/host
-TESTS   = crypto_x509_test crypto_x509_limbo_test
+TESTS   = crypto_x509_test crypto_x509_limbo_test crypto_tls13_trace_test
 
 .PHONY: all test clean
 
