@@ -11,8 +11,11 @@
  *   X25519 RFC 7748 section 6.1 (both sides of the exchange)
  *   Ed25519 RFC 8032 section 7.1 TEST 2 (key, signature, verify) and
  *   rejection of a tampered message
+ *   ChaCha20-Poly1305 RFC 8439 section 2.8.2, AES-128-GCM (NIST CAVP
+ *   gcmEncryptExtIV128, PTlen 408 / AADlen 160 / Taglen 128, Count 0),
+ *   and rejection of a flipped tag bit for both
  *
- * It also times Ed25519 signing and X25519 in the VM.
+ * It also times Ed25519, X25519 and the two ciphers in the VM.
  * Results go to the serial log as "[CRYPTOTEST] PASS/FAIL ..." ending
  * with "[CRYPTOTEST] RESULT: PASS" or "[CRYPTOTEST] RESULT: FAIL".
  * Exit code 0 on PASS, 1 on FAIL.
@@ -186,12 +189,84 @@ static void test_ed25519(void) {
     flush();
 }
 
+/* Bulk-throughput sample: seal 64 KiB `rounds` times, report KiB/s. */
+static uint8_t g_bulk[65536];
+
+static void time_cipher(const char *name, int which, const nxc_gcm_ctx *g, const uint8_t *key) {
+    uint8_t nonce[12] = { 0 }, tag[16];
+    int rounds = which == 0 ? 32 : 2;
+    uint64_t t0 = now_ms();
+    for (int i = 0; i < rounds; i++) {
+        nonce[0] = (uint8_t)i;
+        if (which == 0)
+            nxc_chacha20poly1305_seal(g_bulk, tag, key, nonce, NULL, 0, g_bulk, sizeof(g_bulk));
+        else
+            nxc_gcm_seal(g, g_bulk, tag, nonce, NULL, 0, g_bulk, sizeof(g_bulk));
+    }
+    uint64_t ms = now_ms() - t0;
+    out_str("[CRYPTOTEST] time ");
+    out_str(name);
+    out_str(": ");
+    out_dec(ms ? (uint64_t)rounds * 64 * 1000 / ms : 0);
+    out_str(" KiB/s");
+    flush();
+}
+
+static void test_aead(void) {
+    static const char pt_text[] = "Ladies and Gentlemen of the class of '99: If I could offer you "
+                                  "only one tip for the future, sunscreen would be it.";
+    uint8_t key[32], nonce[12], aad[20], ct[114], out[114], tag[16];
+    unhex("808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f", key, 32);
+    unhex("070000004041424344454647", nonce, 12);
+    unhex("50515253c0c1c2c3c4c5c6c7", aad, 12);
+    int rc = nxc_chacha20poly1305_seal(ct, tag, key, nonce, aad, 12,
+                                       (const uint8_t *)pt_text, 114);
+    uint8_t want[114];
+    int ok = rc == NXC_OK &&
+             unhex("d31a8d34648e60db7b86afbc53ef7ec2a4aded51296e08fea9e2b5a736ee62d6"
+                   "3dbea45e8ca9671282fafb69da92728b1a71de0a9e060b2905d6a5b67ecd3b36"
+                   "92ddbd7f2d778b8c9803aee328091b58fab324e4fad675945585808b4831d7bc"
+                   "3ff4def08e4b7a9de576d26586cec64b6116", want, 114) == 0 &&
+             same(ct, want, 114);
+    report("ChaCha20-Poly1305 RFC 8439 2.8.2 ciphertext", ok);
+    expect("ChaCha20-Poly1305 RFC 8439 2.8.2 tag", rc, tag, "1ae10b594f09e26a7e902ecbd0600691", 16);
+    rc = nxc_chacha20poly1305_open(out, key, nonce, aad, 12, ct, 114, tag);
+    report("ChaCha20-Poly1305 open", rc == NXC_OK && same(out, (const uint8_t *)pt_text, 114));
+    tag[5] ^= 0x20;
+    report("ChaCha20-Poly1305 flipped tag refused",
+           nxc_chacha20poly1305_open(out, key, nonce, aad, 12, ct, 114, tag) == NXC_ERR_VERIFY);
+
+    uint8_t gk[16], giv[12], gpt[51], gct[51];
+    nxc_gcm_ctx g;
+    unhex("fe47fcce5fc32665d2ae399e4eec72ba", gk, 16);
+    unhex("5adb9609dbaeb58cbd6e7275", giv, 12);
+    unhex("7c0e88c88899a779228465074797cd4c2e1498d259b54390b85e3eef1c02df60"
+          "e743f1b840382c4bccaf3bafb4ca8429bea063", gpt, 51);
+    unhex("88319d6e1d3ffa5f987199166c8a9b56c2aeba5a", aad, 20);
+    rc = nxc_gcm_init(&g, gk, 16);
+    if (rc == NXC_OK) rc = nxc_gcm_seal(&g, gct, tag, giv, aad, 20, gpt, 51);
+    uint8_t gwant[51];
+    ok = rc == NXC_OK &&
+         unhex("98f4826f05a265e6dd2be82db241c0fbbbf9ffb1c173aa83964b7cf539304373"
+               "6365253ddbc5db8778371495da76d269e5db3e", gwant, 51) == 0 && same(gct, gwant, 51);
+    report("AES-128-GCM CAVP ciphertext", ok);
+    expect("AES-128-GCM CAVP tag", rc, tag, "291ef1982e4defedaa2249f898556b47", 16);
+    tag[0] ^= 1;
+    report("AES-128-GCM flipped tag refused",
+           nxc_gcm_open(&g, out, giv, aad, 20, gct, 51, tag) == NXC_ERR_VERIFY);
+
+    time_cipher("ChaCha20-Poly1305", 0, &g, key);
+    time_cipher("AES-128-GCM", 1, &g, key);
+    nxc_gcm_wipe(&g);
+}
+
 void _start(void) {
     out_str("[CRYPTOTEST] start (lib/nxcrypto known-answer tests)");
     flush();
     test_hashes();
     test_x25519();
     test_ed25519();
+    test_aead();
     out_str(g_fail ? "[CRYPTOTEST] RESULT: FAIL" : "[CRYPTOTEST] RESULT: PASS");
     flush();
     sc1(SYS_EXIT, g_fail ? 1 : 0);

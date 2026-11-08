@@ -19,5 +19,6 @@
 #include "nxcrypto/sha2.h"
 #include "nxcrypto/hmac.h"
 #include "nxcrypto/curve25519.h"
+#include "nxcrypto/aead.h"
 
 #endif /* NXCRYPTO_H */

@@ -32,10 +32,23 @@ generator.
 | `nxcrypto/sha2.h` | SHA-256, SHA-384, SHA-512 (streaming and one-shot), generic `nxc_hash_*` | NIST CAVP SHAVS ShortMsg, LongMsg and Monte Carlo for all three |
 | `nxcrypto/hmac.h` | HMAC-SHA-256/384/512, HKDF extract and expand | RFC 4231 (all three hashes), RFC 5869 |
 | `nxcrypto/curve25519.h` | X25519, Ed25519 key, sign and verify | RFC 7748 section 5.2 (including 1000 iterations) and section 6.1, the 1024-entry Ed25519 reference set (includes RFC 8032 section 7.1) |
+| `nxcrypto/aead.h` | ChaCha20, Poly1305, ChaCha20-Poly1305, AES-128/256 (encrypt), AES-GCM (96-bit nonces) | RFC 8439 appendix A and section 2.8.2, the BoringSSL and OpenSSL ChaCha20-Poly1305 files (including must-fail cases), NIST CAVP AESAVS ECB KAT/MMT, NIST CAVP GCMVS encrypt and decrypt (including FAIL cases) |
 
-Coming next, in this order: ChaCha20-Poly1305 (RFC 8439), AES-GCM with
-constant-time software AES, ECDSA P-256/P-384 and RSA verification, then
-X.509.
+Coming next: ECDSA P-256/P-384 and RSA verification, then X.509.
+
+### Speed
+
+| | Host (x86_64, one core) | NeolyxOS in QEMU TCG (no KVM) |
+| --- | --- | --- |
+| ChaCha20-Poly1305 | 118 MB/s | 15 MB/s |
+| AES-128-GCM | 2.5 MB/s | 0.3 MB/s |
+| SHA-256 | 162 MB/s | |
+| Ed25519 sign / verify | | 4 ms / 3 ms |
+
+AES is slow because its S-box is computed (field inversion) rather than
+looked up, to stay constant-time without AES-NI. For that reason the TLS
+client will list ChaCha20-Poly1305 first. A bitsliced AES is a possible
+later speed-up.
 
 Include `nxcrypto.h` to get everything.
 
