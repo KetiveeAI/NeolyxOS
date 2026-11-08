@@ -71,11 +71,17 @@ run_test() {
 KNOWN=(bootlog_test mem_reclaim_test nx_fb_clip_test nx_malloc_test nxgfx_canvas_test
        nxs_damage_test nxw_check_test nxwindow_test pmm_test sched_queue_test)
 
+# Tests run by their library's own make target (see the suites below):
+#   crypto_*  lib/nxcrypto and lib/nxtls "make test" (crypto_ct_test: "make ct-test")
+#   libc_*    sdk/libc "make check-host" (tests/host/libc.mk)
+SUITE_PREFIXES=(crypto_ libc_)
+
 # Every tests/host/*.c must be known here
 for f in tests/host/*.c; do
     base="$(basename "$f" .c)"
     found=0
     for k in "${KNOWN[@]}"; do [ "$k" = "$base" ] && found=1; done
+    for p in "${SUITE_PREFIXES[@]}"; do [[ "$base" == "$p"* ]] && found=1; done
     if [ $found -eq 0 ]; then
         echo "  FAIL  $base (tests/host/$base.c has no entry in scripts/run_host_tests.sh)"
         FAILED=$((FAILED + 1)); FAILED_NAMES+=("$base")
@@ -107,6 +113,34 @@ else
     echo "  FAIL  nxgfx_canvas_test (host render library build; see $OUT/nxrender_host_lib.log)"
     FAILED=$((FAILED + 1)); FAILED_NAMES+=(nxgfx_canvas_test)
 fi
+
+# run_suite <name> <make arguments>
+# Runs a library's own host test target; its log goes to $OUT/<name>.log.
+run_suite() {
+    local name="$1"; shift
+    local log="$OUT/$name.log"
+    if make "$@" > "$log" 2>&1; then
+        echo "  PASS  $name"
+        PASSED=$((PASSED + 1))
+    else
+        echo "  FAIL  $name (see $log)"
+        tail -15 "$log" | sed 's/^/        /'
+        FAILED=$((FAILED + 1)); FAILED_NAMES+=("$name")
+    fi
+}
+
+# Crypto and TLS: known-answer, Wycheproof and handshake tests. The
+# Wycheproof vectors are fetched once (tests/host/crypto_fetch_vectors.sh).
+run_suite nxcrypto_tests -C lib/nxcrypto test
+run_suite nxtls_tests -C lib/nxtls test
+# The constant-time check needs Valgrind; say so when it is missing.
+if command -v valgrind > /dev/null 2>&1; then
+    run_suite nxcrypto_ct_test -C lib/nxcrypto ct-test
+else
+    echo "  SKIP  nxcrypto_ct_test (valgrind not installed)"
+fi
+# nxlibc: printf, scanf, strtod, math, malloc, stdio, time and ABI checks
+run_suite nxlibc_tests -C sdk/libc check-host
 
 echo "[HOST-TESTS] $PASSED passed, $FAILED failed${FAILED_NAMES[*]:+: ${FAILED_NAMES[*]}}"
 [ $FAILED -eq 0 ]
