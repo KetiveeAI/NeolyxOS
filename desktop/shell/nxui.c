@@ -645,17 +645,26 @@ nxc_status_t nxui_panel_ex(nxc_canvas_t *c, nxc_rect_t r, float radius, const nx
     int32_t sw = ex - ox, sh = ey - oy;
 
     g_panel_tick++;
-    nxui_panel_slot_t *hit = 0, *victim = 0;
+    nxui_panel_slot_t *hit = 0, *victim = 0, *moved = 0;
     for (int32_t i = 0; i < NXUI_PANEL_CACHE_SLOTS; i++) {
         nxui_panel_slot_t *sl = &g_panels[i];
-        if (sl->used && sl->x == x && sl->y == y && sl->w == w && sl->h == h && sl->radius == radius &&
-            sl->elevation == elevation && sl->appearance == g_ui.appearance && material_eq(&sl->mat, m) &&
-            sl->decor == decor && sl->decor_key == decor_key) {
+        int same_look = sl->used && sl->radius == radius && sl->elevation == elevation &&
+                        sl->appearance == g_ui.appearance && material_eq(&sl->mat, m) && sl->decor == decor;
+        if (same_look && sl->x == x && sl->y == y && sl->w == w && sl->h == h && sl->decor_key == decor_key) {
             hit = sl;
             break;
         }
+        /* The same panel moved, resized or changed its decoration: its old
+         * pixels are stale, so its slot is the one to replace. Taking the
+         * least recently used slot instead would keep the stale copy and
+         * allocate a second buffer for the new one. */
+        if (same_look && ((sl->x == x && sl->y == y) || (sl->w == w && sl->h == h)) &&
+            (!moved || sl->last_use < moved->last_use)) {
+            moved = sl;
+        }
         if (!victim || !sl->used || (victim->used && sl->last_use < victim->last_use)) victim = sl;
     }
+    if (!hit && moved) victim = moved;
     if (!hit) {
         nxui_panel_slot_t *sl = victim;
         if (!sl->surf.pixels || sl->cap_w < sw || sl->cap_h < sh) {
@@ -1046,10 +1055,8 @@ nxc_status_t nxui_init(void) {
         ui_log("[NXUI] fb_info failed or unsupported format\n");
         return NXC_ERR_UNSUPPORTED;
     }
-    if (!nx_fb_map()) {
-        ui_log("[NXUI] fb_map failed\n");
-        return NXC_ERR_STATE;
-    }
+    /* No fb.map: the screen is written only by the kernel, which copies
+     * the back buffer below in fb.flip_rects / fb.flip. */
 
     nxc_env_t env;
     env.alloc = ui_alloc;

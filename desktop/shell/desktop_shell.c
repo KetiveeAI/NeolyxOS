@@ -59,127 +59,6 @@ static inline void serial_putc(char c);
 
 /* ============ Userspace Syscall Wrappers ============ */
 
-/* Framebuffer info (obtained via syscall on init) */
-static fb_info_t g_fb_info;
-static volatile uint32_t *g_framebuffer = 0;  /* Front buffer (visible) */
-static uint32_t *g_backbuffer = 0;            /* Back buffer (render target) */
-static uint32_t *g_static_cache = 0;          /* Static layer cache (background + UI widgets) */
-static uint64_t g_buffer_size = 0;            /* Size in bytes */
-static int g_fb_initialized = 0;
-static int g_static_cache_valid = 0;          /* Set to 1 after static layer is rendered */
-
-/* Initialize framebuffer via syscall */
-static int init_framebuffer(void) {
-    if (g_fb_initialized) return 0;
-    
-    /* Get framebuffer info */
-    if (nx_fb_info(&g_fb_info) != 0) {
-        nx_debug_print("[DESKTOP] fb_info failed\n");
-        return -1;
-    }
-    
-    /* Map framebuffer (front buffer) to our address space */
-    g_framebuffer = (volatile uint32_t*)nx_fb_map();
-    if (!g_framebuffer) {
-        nx_debug_print("[DESKTOP] fb_map failed\n");
-        return -1;
-    }
-    
-    /*
-     * CRITICAL FIX: For backbuffer (allocated linear memory), use width*4 as stride.
-     * The hardware pitch may have padding that doesn't apply to our linear buffer.
-     * The kernel's fb_flip will handle the pitch conversion.
-     */
-    uint32_t bb_stride = g_fb_info.width * 4;  /* Bytes per row for linear backbuffer */
-    g_buffer_size = (uint64_t)bb_stride * g_fb_info.height;
-    
-    /*
-     * Double buffering: Allocate backbuffer from userspace heap.
-     * Desktop renders to backbuffer, then kernel copies to framebuffer.
-     * This eliminates flicker by showing complete frames only.
-     */
-    nx_debug_print("[DESKTOP] Allocating backbuffer...\n");
-    
-    /* TEMPORARY: Force single-buffer mode to bypass pitch issues
-     * Renders directly to hardware framebuffer (may have tearing but should work)
-     */
-    g_backbuffer = NULL;  /* Force fallback to framebuffer */
-    nx_debug_print("[DESKTOP] nx_alloc skipped (forcing single buffer)\n");
-    
-    if (!g_backbuffer) {
-        nx_debug_print("[DESKTOP] Using single buffer mode (direct to HW FB)\n");
-        g_backbuffer = (uint32_t*)g_framebuffer;
-        /* For direct framebuffer access, use hardware pitch */
-        g_buffer_size = (uint64_t)g_fb_info.pitch * g_fb_info.height;
-    } else {
-        nx_debug_print("[DESKTOP] Double buffering enabled\n");
-        /* Clear backbuffer to black */
-        for (uint64_t i = 0; i < g_buffer_size / 4; i++) {
-            g_backbuffer[i] = 0xFF000000;
-        }
-    }
-    
-    /*
-     * Static layer cache: Stores rendered background + unchanging UI widgets.
-     * This is rendered once and copied to backbuffer each frame, avoiding
-     * the need to redraw static elements and eliminating flicker.
-     */
-    g_static_cache = (uint32_t*)nx_alloc(g_buffer_size);
-    if (!g_static_cache) {
-        nx_debug_print("[DESKTOP] static cache alloc failed - no static caching\n");
-    } else {
-        nx_debug_print("[DESKTOP] Static layer caching enabled\n");
-    }
-    g_static_cache_valid = 0;
-    
-    /* Initialize NXRender graphics library */
-    if (nxr_bridge_init(g_backbuffer, g_fb_info.width, g_fb_info.height, g_fb_info.pitch) < 0) {
-        nx_debug_print("[DESKTOP] NXRender init failed - using fallback rendering\n");
-        /* Continue without NXRender - use direct pixel rendering */
-    } else {
-        nx_debug_print("[DESKTOP] NXRender initialized successfully\n");
-    }
-    
-    g_fb_initialized = 1;
-    return 0;
-}
-
-/* Flip back buffer to front buffer via kernel (VSync synchronized) */
-static void flip_buffer(void) {
-    /* Debug: trace first few flips to verify syscall is called */
-    static int flip_cnt = 0;
-    flip_cnt++;
-    if (flip_cnt <= 5) {
-        nx_debug_print("[FLIP] called\n");
-    }
-    
-    if (g_backbuffer == (uint32_t*)g_framebuffer) {
-        /* Single buffer mode - still need to trigger kernel cursor draw! */
-        /* Pass NULL to signal single-buffer mode, kernel still draws cursor */
-        nx_fb_flip(0);
-        return;
-    }
-    
-    /* Use kernel syscall for VSync-synchronized flip */
-    nx_fb_flip(g_backbuffer);
-}
-
-/*
- * Restore the static layer cache to the backbuffer.
- * This is called at the start of each frame to provide a clean
- * background (with nav bar, clock, search, icons already rendered)
- * before drawing dynamic content (windows, dock hover state, cursor).
- */
-static void restore_static_layer(void) {
-    if (!g_static_cache || !g_static_cache_valid) return;
-    
-    /* Fast copy using optimized loop */
-    uint64_t count = g_buffer_size / 4;  /* Number of 32-bit pixels */
-    for (uint64_t i = 0; i < count; i++) {
-        g_backbuffer[i] = g_static_cache[i];
-    }
-}
-
 /* Memory allocation wrappers */
 #define kmalloc(size)   nx_alloc(size)
 #define kfree(ptr)      nx_free(ptr)
@@ -3671,7 +3550,6 @@ int desktop_init(uint64_t fb_addr, uint32_t width, uint32_t height, uint32_t pit
     
     /* Back buffer is now the render target */
     nx_debug_print("[DESKTOP] FB init success, setting up mouse...\n");
-    g_fb_initialized = 1;
     
     g_desktop.mouse_x = g_desktop.width / 2;
     g_desktop.mouse_y = g_desktop.height / 2;
