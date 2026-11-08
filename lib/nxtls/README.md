@@ -4,9 +4,9 @@ The NeolyxOS TLS 1.3 client library, written from scratch for NeolyxOS
 (stream S6 of the public beta plan). It is built on `lib/nxcrypto` and will
 carry HTTPS for `lib/nxhttp` and the `fetch` command.
 
-So far it contains the X.509 certificate code and the TLS 1.3 key
-schedule and record protection. The handshake and the connection API
-come next.
+It contains the X.509 certificate code, the TLS 1.3 key schedule and
+record protection, and a blocking TLS 1.3 client (`nxt_tls_connect`,
+`nxt_tls_read`, `nxt_tls_write`, `nxt_tls_close`).
 
 ## Rules the code follows
 
@@ -149,6 +149,72 @@ Nine deliberately injected bugs were tried, such as a wrong label, a wrong
 removal, a missing sequence increment and no wipe on failure. Each one
 makes the test fail. The test is clean under ASan and UBSan.
 
+## TLS 1.3 client
+
+`nxtls/tls.h` declares the client. The caller supplies the connection
+memory (`nxt_tls_conn`, 96 KiB, static or heap), the transport as two
+callbacks (send and recv on a connected socket), a random source (the
+`random.get` syscall on NeolyxOS), the host name, the trust store and the
+current time. The library does no I/O, allocation or logging of its own.
+
+```c
+static nxt_tls_conn conn;
+nxt_tls_config cfg = { "example.org", &roots, now, { &sock, tcp_send, tcp_recv },
+                       os_random, NULL, "http/1.1" };
+int rc = nxt_tls_connect(&conn, &cfg);
+if (rc != NXT_TLS_OK) {
+    const nxt_tls_info *in = nxt_tls_get_info(&conn);
+    log("tls: %s (certificate: %s, alert sent: %s)", nxt_tls_err_str(rc),
+        nxt_x509_err_str(in->cert_error), nxt_tls_alert_str(in->alert_sent));
+}
+```
+
+**What it does:**
+- TLS 1.3 only, X25519 only. Suites in order of preference:
+  ChaCha20-Poly1305 (fast without AES instructions), then AES-128-GCM,
+  then AES-256-GCM.
+- CertificateVerify signatures accepted: ECDSA P-256 and P-384, Ed25519,
+  RSA-PSS. PKCS#1 v1.5 is accepted only inside certificates, as RFC 8446
+  requires.
+- The chain is checked with `nxt_x509_verify_server` (the web PKI policy
+  above). An expired, self-signed, untrusted or wrong-host certificate
+  ends the handshake with `NXT_TLS_ERR_CERTIFICATE` and the matching alert
+  (`certificate_expired`, `unknown_ca`, `certificate_unknown`,
+  `bad_certificate`); `nxt_tls_get_info` gives the X.509 reason and the
+  index of the refused certificate.
+- SNI for DNS names (not for IP literals), optional ALPN, the
+  HelloRetryRequest cookie, middlebox compatibility mode, KeyUpdate both
+  ways, and record_size_limit (RFC 8449).
+- A CertificateRequest is answered with an empty Certificate. Session
+  tickets are read and dropped; there is no resumption or 0-RTT.
+- Every protocol violation ends the handshake with a fatal alert and its
+  own result code, and every secret is wiped on failure and on close.
+- `nxt_tls_read` returns 0 only after the server's close_notify. A
+  connection that ends without it returns `NXT_TLS_ERR_CLOSED`, so a cut
+  short download is never mistaken for a complete one.
+
+Timeouts belong to the transport: a recv callback that gives up returns a
+negative value and the call fails with `NXT_TLS_ERR_IO`.
+
+### Tests
+
+| Test | What it runs | Result |
+| --- | --- | --- |
+| `tests/host/crypto_tls13_client_test.c` | Part 1 runs the RFC 8448 handshakes (simple, middlebox compatibility, client authentication) through the real `nxt_tls_connect` with a mock transport, whole records and one byte per read; every record the client sends must equal the trace. It also checks that the trace's RSA-1024 certificate is refused as too weak. Part 2 runs a scripted TLS 1.3 server built from the key schedule above and a test PKI of Ed25519 certificates (`crypto_certgen.h`): good handshakes with all three suites, ALPN, a 40 KB write, HRR with cookie, CertificateRequest, KeyUpdate both ways, close_notify, truncation, record_size_limit, 12 certificate refusals, 43 handshake violations and 8 after the handshake, each with the exact result code and alert on the wire. | 698 checks pass |
+| `cryptotest` in QEMU | `nxt_tls_connect` inside NeolyxOS against canned server answers: the ClientHello it sends (SNI, ALPN), refusal of a TLS 1.2 server and of a ServerHello that does not echo the session id, with the right alert | `RESULT: PASS` |
+
+The test hooks the RFC 8448 replay needs (fixed ClientHello and key) are
+compiled only with `-DNXT_TESTING`; `make test` fails if they ever end up
+in `libnxtls.a`. A full handshake inside NeolyxOS is tested by the `fetch`
+step against a test server on the host.
+
+22 injected bugs were tried in `tls_client.c`, such as skipping the
+Finished or signature check, ignoring the chain result, accepting a second
+HelloRetryRequest, ignoring the server's record size limit or accepting
+application data in the middle of a handshake message. 21 make the test
+fail; the 22nd was in code that could never run, which was removed. The
+test is clean under ASan and UBSan.
+
 ## Building
 
 ```sh
@@ -165,4 +231,4 @@ by version or commit and checked by SHA-256.
 
 The trust store is passed in by the caller as parsed certificates. Which
 root list NeolyxOS ships (for example the Mozilla/CCADB list) is owner
-decision D5. Loading that file is part of the TLS client step.
+decision D5. Loading that file comes with the `fetch` step.

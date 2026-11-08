@@ -24,6 +24,10 @@
  *   the RFC 8448 section 3 handshake: the server's records must decrypt
  *   to the recorded messages and the client's records must come out
  *   byte for byte as recorded; a tampered record must be refused
+ *   TLS 1.3 client (lib/nxtls nxt_tls_connect) against canned server
+ *   answers: the ClientHello it sends, and refusal with the right alert
+ *   of a TLS 1.2 server and of a ServerHello that does not echo the
+ *   session id (the full handshake is tested on the host and by fetch)
  *
  * It also times Ed25519, X25519, the two ciphers, signature
  * verification, chain validation and the TLS key schedule in the VM.
@@ -38,6 +42,7 @@
 #include <stdint.h>
 #include "nxcrypto.h"
 #include "nxtls/x509_verify.h"
+#include "nxtls/tls.h"
 #include "x509_fixture.h"
 #include "tls_fixture.h"
 /* The TLS key schedule and record layer are internal to lib/nxtls; this
@@ -517,6 +522,108 @@ static void test_tls13(void) {
     report_time("TLS 1.3 key schedule (X25519 + HKDF + 2 records)", t1 - t0);
 }
 
+/*
+ * TLS 1.3 client smoke test: nxt_tls_connect() over a canned transport.
+ * What the client sends is kept in g_tx; recv hands out one server record.
+ */
+static uint8_t g_tx[2048];
+static size_t g_tx_len;
+static const uint8_t *g_srv;
+static size_t g_srv_len;
+
+static long smoke_send(void *ctx, const uint8_t *d, size_t n) {
+    (void)ctx;
+    for (size_t i = 0; i < n && g_tx_len < sizeof(g_tx); i++) g_tx[g_tx_len++] = d[i];
+    return (long)n;
+}
+
+static long smoke_recv(void *ctx, uint8_t *b, size_t cap) {
+    (void)ctx;
+    size_t k = g_srv_len < cap ? g_srv_len : cap;
+    for (size_t i = 0; i < k; i++) b[i] = g_srv[i];
+    g_srv += k;
+    g_srv_len -= k;
+    return (long)k;
+}
+
+/* Deterministic bytes: this test checks behaviour, not secrecy. */
+static int smoke_random(void *ctx, uint8_t *out, size_t len) {
+    unsigned *ctr = ctx;
+    for (size_t i = 0; i < len; i++) out[i] = (uint8_t)(*ctr * 131u + i * 7u + 1u);
+    (*ctr)++;
+    return 0;
+}
+
+static int has_bytes(const uint8_t *hay, size_t n, const char *needle) {
+    size_t k = 0;
+    while (needle[k]) k++;
+    for (size_t i = 0; i + k <= n; i++) {
+        size_t j = 0;
+        while (j < k && hay[i + j] == (uint8_t)needle[j]) j++;
+        if (j == k) return 1;
+    }
+    return 0;
+}
+
+static nxt_tls_conn g_tls;
+static uint8_t g_sh_rec[5 + sizeof(TLS_SERVER_HELLO)];
+
+static int smoke_connect(const uint8_t *srv, size_t srv_len) {
+    static const nxt_trust_store none = { 0, 0 };
+    static unsigned ctr;
+    nxt_tls_config cfg = { "example.test", &none, 1767225600, { 0, smoke_send, smoke_recv },
+                           smoke_random, &ctr, "http/1.1" };
+    g_tx_len = 0;
+    g_srv = srv;
+    g_srv_len = srv_len;
+    return nxt_tls_connect(&g_tls, &cfg);
+}
+
+/* The last 7 bytes the client sent are a plaintext fatal alert `desc`. */
+static int sent_alert(uint8_t desc) {
+    static const uint8_t hdr[6] = { 21, 3, 3, 0, 2, 2 };
+    if (g_tx_len < 7) return 0;
+    return same(g_tx + g_tx_len - 7, hdr, 6) && g_tx[g_tx_len - 1] == desc;
+}
+
+static void test_tls_client(void) {
+    /* A TLS 1.2 ServerHello (ECDHE-RSA-AES128-GCM-SHA256, renegotiation_info):
+     * no supported_versions extension. */
+    static const uint8_t tls12[] = {
+        22, 3, 3, 0, 49,  2, 0, 0, 45,  3, 3,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+        0,  0xc0, 0x2f,  0,  0, 5,  0xff, 0x01, 0, 1, 0 };
+    uint64_t t0 = now_ms();
+    int rc = smoke_connect(tls12, sizeof(tls12));
+    uint64_t t1 = now_ms();
+    const nxt_tls_info *in = nxt_tls_get_info(&g_tls);
+    int hello_ok = g_tx_len > 9 && g_tx[0] == 22 && g_tx[1] == 3 && g_tx[2] == 1 && g_tx[5] == 1 &&
+                   has_bytes(g_tx, g_tx_len, "example.test") &&
+                   has_bytes(g_tx, g_tx_len, "http/1.1");
+    report("TLS client sends a ClientHello with SNI and ALPN", hello_ok);
+    report("TLS client refuses a TLS 1.2 server with protocol_version",
+           rc == NXT_TLS_ERR_PROTOCOL_VERSION && sent_alert(70) && in->alert_sent == 70);
+
+    /* RFC 8448's TLS 1.3 ServerHello: valid, but its session id is empty
+     * and ours is 32 bytes, so it must be refused as illegal_parameter. */
+    g_sh_rec[0] = 22;
+    g_sh_rec[1] = 3;
+    g_sh_rec[2] = 3;
+    g_sh_rec[3] = (uint8_t)(sizeof(TLS_SERVER_HELLO) >> 8);
+    g_sh_rec[4] = (uint8_t)sizeof(TLS_SERVER_HELLO);
+    for (size_t i = 0; i < sizeof(TLS_SERVER_HELLO); i++) g_sh_rec[5 + i] = TLS_SERVER_HELLO[i];
+    rc = smoke_connect(g_sh_rec, sizeof(g_sh_rec));
+    report("TLS client refuses a ServerHello without our session id",
+           rc == NXT_TLS_ERR_ILLEGAL_PARAMETER && sent_alert(47));
+
+    /* Nothing from the server at all. */
+    rc = smoke_connect(0, 0);
+    report("TLS client reports a closed connection", rc == NXT_TLS_ERR_CLOSED);
+    nxt_tls_close(&g_tls);
+    report_time("TLS ClientHello (X25519 key) and refusal", t1 - t0);
+}
+
 void _start(void) {
     out_str("[CRYPTOTEST] start (lib/nxcrypto known-answer tests)");
     flush();
@@ -527,6 +634,7 @@ void _start(void) {
     test_pubkey();
     test_x509();
     test_tls13();
+    test_tls_client();
     out_str(g_fail ? "[CRYPTOTEST] RESULT: FAIL" : "[CRYPTOTEST] RESULT: PASS");
     flush();
     sc1(SYS_EXIT, g_fail ? 1 : 0);

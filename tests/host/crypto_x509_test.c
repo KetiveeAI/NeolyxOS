@@ -21,6 +21,7 @@
 
 #include "crypto_vec.h"
 #include "crypto_pem.h"
+#include "crypto_certgen.h"
 #include "nxtls/x509.h"
 #include "nxtls/x509_verify.h"
 #include "nxcrypto.h"
@@ -291,39 +292,6 @@ static void test_pkits_signatures(const char *d) {
 /* ------------------------------------------------------------------ */
 /* A self-signed server certificate, built here with nxcrypto Ed25519  */
 /* ------------------------------------------------------------------ */
-
-typedef struct { uint8_t b[2048]; size_t n; } dbuf;
-
-static void put(dbuf *d, const void *p, size_t n) {
-    if (d->n + n > sizeof(d->b)) { printf("ERROR: dbuf overflow\n"); exit(2); }
-    memcpy(d->b + d->n, p, n);
-    d->n += n;
-}
-
-/* Append tag, DER length and the contents of `in`. */
-static void wrap(dbuf *out, uint8_t tag, const dbuf *in) {
-    uint8_t h[4] = { tag };
-    size_t hl;
-    if (in->n < 0x80) { h[1] = (uint8_t)in->n; hl = 2; }
-    else if (in->n < 0x100) { h[1] = 0x81; h[2] = (uint8_t)in->n; hl = 3; }
-    else { h[1] = 0x82; h[2] = (uint8_t)(in->n >> 8); h[3] = (uint8_t)in->n; hl = 4; }
-    put(out, h, hl);
-    put(out, in->b, in->n);
-}
-
-static void wrap_bytes(dbuf *out, uint8_t tag, const void *p, size_t n) {
-    dbuf t = { .n = 0 };
-    put(&t, p, n);
-    wrap(out, tag, &t);
-}
-
-static void extension(dbuf *exts, const uint8_t oid[3], int critical, const dbuf *value) {
-    dbuf e = { .n = 0 };
-    wrap_bytes(&e, 0x06, oid, 3);
-    if (critical) put(&e, "\x01\x01\xff", 3);
-    wrap(&e, 0x04, value);
-    wrap(exts, 0x30, &e);
-}
 
 /* Self-signed Ed25519 certificate for "self.example", valid 2025-2035,
  * shaped like a real server certificate (SAN, EKU serverAuth, KU, AKI). */
