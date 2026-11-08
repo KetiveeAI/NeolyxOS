@@ -189,6 +189,23 @@ int main(void) {
     row_text(ROWS - 1, text, sizeof text);
     check(strcmp(text, "[USB] n99") == 0, "summary keeps the newest matches when full");
 
+    /* Copy for the log file: oldest first, newest kept when it does not fit */
+    {
+        static char copy[BOOTLOG_RING_SIZE + 16];
+        for (int i = 0; i < 7000; i++) log_str("wrap the ring\n");
+        log_str("[USB] n99\n");
+        uint32_t n = bootlog_copy(copy, sizeof copy);
+        check(n == BOOTLOG_RING_SIZE, "copy returns the whole ring once it has wrapped");
+        check(n >= 10 && memcmp(copy + n - 10, "[USB] n99\n", 10) == 0,
+              "copy ends with the newest line");
+        char small[16];
+        uint32_t m = bootlog_copy(small, sizeof small);
+        check(m == sizeof small && memcmp(small + 6, "[USB] n99\n", 10) == 0,
+              "a small copy keeps the newest bytes");
+        check(bootlog_copy(NULL, 10) == 0 && bootlog_copy(small, 0) == 0,
+              "copy rejects a NULL buffer or zero size");
+    }
+
     /* Boot flags word */
     uint32_t flags = 99, fmt = 99;
     check(bootlog_boot_flags(0, &flags, &fmt) == 0 && flags == 0 && fmt == NEOLYX_PIXFMT_BGRX8,

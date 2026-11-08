@@ -27,6 +27,7 @@
 #include <utils/string.h>
 #include <video/splash.h>
 #include <video/bootlog.h>
+#include <core/boot_logfile.h>
 #include <core/boot_image.h>
 
 /* ============ Framebuffer Globals for Syscalls ============ */
@@ -452,6 +453,9 @@ void nx_kernel_start(void) {
             if (desktop_pid > 0) {
                 svc_set_state(desktop_svc_id, SVC_STATE_RUNNING);
                 serial_puts("[KERNEL] Desktop service state: RUNNING\n");
+                /* Leave this boot's log on the boot volume for machines
+                 * without a serial port (\EFI\NEOLYX\boot.log) */
+                (void)boot_logfile_save("desktop started");
                 /* The desktop owns the screen from here; the boot log stays
                  * in memory for the crash screen. */
                 if (bootlog_mirror_active()) {

@@ -1282,6 +1282,11 @@ void kernel_main(NeolyxBootInfo *boot_info) {
      * timer ran at the reset default of 18.2 Hz. */
     extern void pit_init(void);
     pit_init();
+
+    /* Wall clock: read the CMOS RTC once, with the PIT running, so
+     * rtc.unix (132) = boot time + PIT milliseconds since. */
+    extern void rtc_init(void);
+    rtc_init();
     
     g_boot_info = boot_info;  /* Save for kernel */
     
