@@ -3219,6 +3219,7 @@ static const struct {
     const char *path;   /* program on the boot volume */
 } g_disk_apps[] = {
     { "Calculator", "/apps/Calculator" },
+    { "Path",       "/apps/Path" },      /* Files: the Path view in desktop/viewhost */
 };
 #define DISK_APP_COUNT ((int)(sizeof(g_disk_apps) / sizeof(g_disk_apps[0])))
 
@@ -3229,6 +3230,25 @@ static const struct {
 #define DISK_APP_LAUNCH_GRACE_MS 3000u
 static uint64_t g_disk_app_launch_ms[DISK_APP_COUNT];
 static int      g_disk_app_launch_pid[DISK_APP_COUNT];
+/* The last few PIDs started for each disk app (several copies can be open,
+ * e.g. Path windows on different folders). The shell trusts a client
+ * window as "its" app only when the PID is one it started here, never by
+ * the window title, which any client can set. */
+#define DISK_APP_PID_RING 8
+static uint32_t g_disk_app_pids[DISK_APP_COUNT][DISK_APP_PID_RING];
+static uint32_t g_disk_app_pid_next[DISK_APP_COUNT];
+
+int desktop_app_started_pid(const char *name, uint32_t pid) {
+    if (!name || pid == 0) return 0;
+    for (int i = 0; i < DISK_APP_COUNT; i++) {
+        if (!shell_streq_ci(name, g_disk_apps[i].name)) continue;
+        for (int k = 0; k < DISK_APP_PID_RING; k++) {
+            if (g_disk_app_pids[i][k] == pid) return 1;
+        }
+        return 0;
+    }
+    return 0;
+}
 
 /*
  * Start the program behind a built-in app name.
@@ -3236,12 +3256,25 @@ static int      g_disk_app_launch_pid[DISK_APP_COUNT];
  * not a disk app, -1 when the program is missing or would not start; the
  * caller must not open a placeholder window then (the user is told why).
  */
+static int desktop_launch_disk_app_arg(const char *name, const char *arg);
+
 static int desktop_launch_disk_app(const char *name) {
+    return desktop_launch_disk_app_arg(name, 0);
+}
+
+int desktop_start_app_with(const char *name, const char *arg) {
+    return desktop_launch_disk_app_arg(name, arg);
+}
+
+/* arg (may be NULL) becomes argv[1], e.g. the folder Files opens at. A
+ * launch with an argument always starts the program, even while another
+ * copy is starting: it is a new window on a different place. */
+static int desktop_launch_disk_app_arg(const char *name, const char *arg) {
     if (!name) return 1;
     for (int i = 0; i < DISK_APP_COUNT; i++) {
         if (!shell_streq_ci(name, g_disk_apps[i].name)) continue;
         uint64_t now = nx_gettime();
-        if (g_disk_app_launch_pid[i] > 0 &&
+        if (!arg && g_disk_app_launch_pid[i] > 0 &&
             now - g_disk_app_launch_ms[i] < DISK_APP_LAUNCH_GRACE_MS &&
             !nxserver_pid_has_connected((uint32_t)g_disk_app_launch_pid[i])) {
             serial_puts("[DESKTOP] ");
@@ -3263,7 +3296,11 @@ static int desktop_launch_disk_app(const char *name) {
         serial_puts("[DESKTOP] Starting ");
         serial_puts(g_disk_apps[i].path);
         serial_puts("\n");
-        int pid = nx_spawn(g_disk_apps[i].path, NULL, 0);
+        char *argv[3];
+        argv[0] = (char *)g_disk_apps[i].path;
+        argv[1] = (char *)arg;
+        argv[2] = 0;
+        int pid = nx_spawn(g_disk_apps[i].path, arg ? argv : NULL, 0);
         if (pid <= 0) {
             serial_puts("[DESKTOP] ERROR: could not start ");
             serial_puts(g_disk_apps[i].path);
@@ -3276,6 +3313,8 @@ static int desktop_launch_disk_app(const char *name) {
         }
         g_disk_app_launch_pid[i] = pid;
         g_disk_app_launch_ms[i] = now;
+        g_disk_app_pids[i][g_disk_app_pid_next[i] % DISK_APP_PID_RING] = (uint32_t)pid;
+        g_disk_app_pid_next[i]++;
         return 0;
     }
     return 1;
@@ -3804,6 +3843,17 @@ void desktop_start_apps(void) {
 
 /* Launch a specific app by name */
 int desktop_launch_app(const char *name) {
+    /* Apps that are their own program: focus the open window, else start it */
+    for (int i = 0; i < DISK_APP_COUNT; i++) {
+        if (!shell_streq_ci(name, g_disk_apps[i].name)) continue;
+        for (int w = 0; w < MAX_WINDOWS; w++) {
+            if (g_windows[w].id != 0 && shell_streq_ci(g_windows[w].title, g_disk_apps[i].name)) {
+                window_activate(&g_windows[w]);
+                return 0;
+            }
+        }
+        return desktop_launch_disk_app(name) == 0 ? 0 : -1;
+    }
     /* Shell-hosted app views (app_view.h) */
     const app_view_t *view = app_view_find(name);
     if (view) {

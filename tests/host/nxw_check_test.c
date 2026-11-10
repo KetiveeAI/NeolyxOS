@@ -3,7 +3,8 @@
  * (desktop/shell/nxserver/nxw_check.c).
  *
  * Covers every framing violation that must close a connection, the size,
- * buffer and title rules that give a recoverable ERROR, and damage clipping.
+ * buffer and title rules that give a recoverable ERROR, damage clipping, and
+ * the protocol 1.1 shell-open path check and per-op minor version.
  *
  * Build and run on the development machine:
  *   gcc -std=c11 -O1 -Wall -Wextra -o /tmp/nxw_check_test nxw_check_test.c
@@ -130,6 +131,47 @@ int main(void) {
     check(nxw_clip_rect(&r, 100, 100, &o) == 0, "huge rect does not overflow");
     r.x = INT32_MIN; r.y = INT32_MIN; r.w = UINT32_MAX; r.h = UINT32_MAX;
     check(nxw_clip_rect(&r, 100, 100, &o) == 1 && o.x == 0 && o.w == 100, "rect covering everything");
+
+
+    /* ---- Protocol 1.1: SHELL_OPEN ---- */
+    check(nxw_request_size(NXW_OP_SHELL_OPEN) == sizeof(nxw_shell_open_t) &&
+          sizeof(nxw_shell_open_t) == 272, "SHELL_OPEN request size");
+    check(nxw_request_minor(NXW_OP_SHELL_OPEN) == 1 && nxw_request_minor(NXW_OP_COMMIT) == 0 &&
+          nxw_request_minor(NXW_OP_HELLO) == 0, "per-op minor version");
+    hdr(buf, NXW_OP_SHELL_OPEN, sizeof(nxw_shell_open_t));
+    check(nxw_check_frame(buf, sizeof(nxw_shell_open_t), 0, 1, &op) == NXW_FRAME_OK &&
+          op == NXW_OP_SHELL_OPEN, "SHELL_OPEN frames at its full size");
+
+    /* ---- Protocol 1.1: paths ---- */
+    char pin[NXW_PATH_MAX], pout[NXW_PATH_MAX];
+#define PATH_OK(s, want, what) do { memset(pin, 0, sizeof(pin)); strcpy(pin, s); \
+        memset(pout, 'x', sizeof(pout)); \
+        check(nxw_path_check(pin, pout) == 0 && strcmp(pout, want) == 0 && \
+              pout[NXW_PATH_MAX - 1] == '\0', what); } while (0)
+#define PATH_BAD(s, what) do { memset(pin, 0, sizeof(pin)); strcpy(pin, s); \
+        check(nxw_path_check(pin, pout) == -NXW_EINVAL, what); } while (0)
+    PATH_OK("/", "/", "root path");
+    PATH_OK("/Users/Shared/hello.txt", "/Users/Shared/hello.txt", "plain absolute path");
+    PATH_OK("/Users/Shared/", "/Users/Shared/", "trailing slash allowed");
+    PATH_OK("/Users/Caf\xC3\xA9/.notes", "/Users/Caf\xC3\xA9/.notes", "UTF-8 and dot-files allowed");
+    PATH_BAD("", "empty path");
+    PATH_BAD("Users/Shared", "relative path");
+    PATH_BAD("/Users/../System", "'..' component");
+    PATH_BAD("/Users/./Shared", "'.' component");
+    PATH_BAD("/Users/..", "trailing '..'");
+    PATH_BAD("/Users//Shared", "empty component");
+    PATH_BAD("/Users\\Shared", "backslash");
+    PATH_BAD("/Users/a\x01" "b", "control character");
+    PATH_BAD("/Users/a\x7F", "DEL");
+    PATH_BAD("/Users/a\xFF", "invalid UTF-8");
+    PATH_BAD("/Users/a\xC0\xAF", "overlong UTF-8");
+    memset(pin, 'a', sizeof(pin));
+    pin[0] = '/';
+    check(nxw_path_check(pin, pout) == -NXW_EINVAL, "path without a NUL refused");
+    pin[NXW_PATH_MAX - 1] = '\0';
+    check(nxw_path_check(pin, pout) == 0 && strlen(pout) == NXW_PATH_MAX - 1, "255-byte path accepted");
+#undef PATH_OK
+#undef PATH_BAD
 
     printf("%d checks\n", g_checks);
     printf(g_fail ? "RESULT: FAIL\n" : "RESULT: PASS\n");

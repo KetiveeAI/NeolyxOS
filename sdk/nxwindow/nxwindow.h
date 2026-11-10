@@ -45,7 +45,7 @@ extern "C" {
 #endif
 
 #define NXWL_API_MAJOR 1
-#define NXWL_API_MINOR 0
+#define NXWL_API_MINOR 1
 
 /* Error codes returned negated, in addition to the NXW_E* values of
  * nxwin_proto.h. The first six are the kernel's numbers; the kernel has no
@@ -92,6 +92,7 @@ typedef struct {
 #define NXW_EV_FRAME         5  /* the last commit is on screen; the buffer is free */
 #define NXW_EV_ERROR         6  /* the server refused an asynchronous request */
 #define NXW_EV_DISCONNECTED  7  /* the server went away; every window is gone */
+#define NXW_EV_OPEN_PATH     8  /* protocol 1.1: the shell asks the window to show open_path.path */
 
 typedef struct {
     uint32_t      type;         /* NXW_EV_* */
@@ -102,6 +103,7 @@ typedef struct {
         struct { uint8_t scancode, ascii, pressed, modifiers; uint32_t time_ms; } key;
         struct { uint32_t kind; int32_t x, y; uint32_t buttons; int32_t wheel; uint32_t time_ms; } pointer;
         struct { uint16_t op; int32_t code; } error;            /* code: negative errno */
+        struct { char path[NXW_PATH_MAX]; } open_path;          /* absolute, NUL-terminated */
     };
 } nxw_event_t;
 
@@ -135,6 +137,13 @@ int nxw_window_destroy(nxw_window_t *w);
 
 /* -NXW_EINVAL (title), -NXW_EBADF, -NXW_ENOTCONN, -NXW_EPIPE. */
 int nxw_window_set_title(nxw_window_t *w, const char *title);
+
+/* Protocol 1.1: ask the shell to open path (absolute; a folder opens in
+ * Files, a text file in Notes) on behalf of window w, which must have the
+ * focus. Returns once sent; a refusal arrives as NXW_EV_ERROR with op
+ * NXW_OP_SHELL_OPEN. -NXW_EPROTO (server is 1.0), -NXW_EINVAL (path),
+ * -NXW_EBADF, -NXW_ENOTCONN, -NXW_EPIPE. */
+int nxw_shell_open(nxw_window_t *w, const char *path);
 
 /* Current content size and NXW_STATE_* (from the last CONFIGURE, or the
  * size granted at creation). Any out pointer may be NULL. -NXW_EBADF. */

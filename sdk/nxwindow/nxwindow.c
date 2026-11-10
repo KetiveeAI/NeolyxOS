@@ -281,6 +281,7 @@ static uint16_t expected_len(uint16_t op) {
         case NXW_OP_KEY:           return (uint16_t)sizeof(nxw_key_t);
         case NXW_OP_POINTER:       return (uint16_t)sizeof(nxw_pointer_t);
         case NXW_OP_ERROR:         return (uint16_t)sizeof(nxw_error_t);
+        case NXW_OP_OPEN_PATH:     return g.info.proto_minor >= 1 ? (uint16_t)sizeof(nxw_open_path_t) : 0;
         default:                   return 0;
     }
 }
@@ -415,6 +416,20 @@ static void handle_msg(const uint8_t *data, uint32_t len) {
         e.key.pressed = m.pressed ? 1 : 0;
         e.key.modifiers = m.modifiers;
         e.key.time_ms = m.time_ms;
+        break;
+    }
+    case NXW_OP_OPEN_PATH: {
+        nxw_open_path_t m;
+        c_mem(&m, data, sizeof(m));
+        /* The server checked the path; still never hand an unterminated one on */
+        uint32_t n = 0;
+        while (n < NXW_PATH_MAX && m.path[n] != '\0') n++;
+        if (n == 0 || n >= NXW_PATH_MAX || m.path[0] != '/' || m.flags != 0) {
+            lg_begin(); lg_str("OPEN_PATH with a bad path dropped"); lg_end();
+            return;
+        }
+        e.type = NXW_EV_OPEN_PATH;
+        c_mem(e.open_path.path, m.path, NXW_PATH_MAX);
         break;
     }
     case NXW_OP_POINTER: {
@@ -642,7 +657,7 @@ int nxw_connect(nxw_display_info_t *info) {
     if (r != 0) {
         int code = r;
         const char *why = "HELLO not sent";
-        if (g.await_done) { why = "the server refused protocol 1.0"; code = -NXW_EPROTO; }
+        if (g.await_done) { why = "the server refused protocol 1.x"; code = -NXW_EPROTO; }
         else if (r == -NXW_ETIMEDOUT) why = "no WELCOME within 2 s";
         else if (r == -NXW_EPIPE) why = "the server closed the connection";
         nx_handle_close(ch);
@@ -657,7 +672,8 @@ int nxw_connect(nxw_display_info_t *info) {
         return fail("nxw_connect", "bad WELCOME", -NXW_EPROTO);
     }
     g.info.proto_major = w->major;
-    g.info.proto_minor = w->minor;
+    /* Negotiated minor: never above what this library speaks */
+    g.info.proto_minor = w->minor < NXW_PROTO_MINOR ? w->minor : NXW_PROTO_MINOR;
     g.info.screen_w = w->screen_w;
     g.info.screen_h = w->screen_h;
     g.info.max_windows = w->max_windows < NXW_WINDOWS_PER_CLIENT ? w->max_windows : NXW_WINDOWS_PER_CLIENT;
@@ -771,6 +787,25 @@ int nxw_window_set_title(nxw_window_t *w, const char *title) {
     title_copy(m.title, title);
     int r = send_msg(&m, (uint16_t)sizeof(m), 0);
     if (r != 0) return fail("nxw_window_set_title", "send failed", r);
+    return 0;
+}
+
+int nxw_shell_open(nxw_window_t *w, const char *path) {
+    int err = 0;
+    nxwl_win_t *s = live("nxw_shell_open", w, &err);
+    if (!s) return err;
+    if (g.info.proto_minor < 1) return fail("nxw_shell_open", "the server speaks protocol 1.0 (no shell open)", -NXW_EPROTO);
+    if (!path || path[0] != '/') return fail("nxw_shell_open", "path missing or not absolute", -NXW_EINVAL);
+    nxw_shell_open_t m;
+    z_mem(&m, sizeof(m));
+    uint32_t n = 0;
+    while (n < NXW_PATH_MAX - 1 && path[n]) { m.path[n] = path[n]; n++; }
+    if (path[n] != '\0') return fail("nxw_shell_open", "path longer than 255 bytes", -NXW_EINVAL);
+    hdr(&m.hdr, NXW_OP_SHELL_OPEN, (uint16_t)sizeof(m), next_seq());
+    m.win = s->id;
+    m.flags = 0;
+    int r = send_msg(&m, (uint16_t)sizeof(m), 0);
+    if (r != 0) return fail("nxw_shell_open", "send failed", r);
     return 0;
 }
 

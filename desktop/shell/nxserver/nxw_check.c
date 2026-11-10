@@ -23,6 +23,8 @@ const char *nxw_violation_str(int v) {
     return g_reasons[v];
 }
 
+static uint32_t utf8_seq_len(const uint8_t *s, uint32_t n);
+
 uint32_t nxw_request_size(uint16_t op) {
     switch (op) {
         case NXW_OP_HELLO:         return (uint32_t)sizeof(nxw_hello_t);
@@ -31,8 +33,44 @@ uint32_t nxw_request_size(uint16_t op) {
         case NXW_OP_WIN_SET_TITLE: return (uint32_t)sizeof(nxw_win_set_title_t);
         case NXW_OP_BUF_ATTACH:    return (uint32_t)sizeof(nxw_buf_attach_t);
         case NXW_OP_COMMIT:        return (uint32_t)sizeof(nxw_commit_t);
+        case NXW_OP_SHELL_OPEN:    return (uint32_t)sizeof(nxw_shell_open_t);
         default:                   return 0;
     }
+}
+
+uint16_t nxw_request_minor(uint16_t op) {
+    return op == NXW_OP_SHELL_OPEN ? 1u : 0u;
+}
+
+int nxw_path_check(const char in[NXW_PATH_MAX], char out[NXW_PATH_MAX]) {
+    if (!in || !out) return -NXW_EINVAL;
+    uint32_t n = 0;
+    while (n < NXW_PATH_MAX && in[n] != '\0') n++;
+    if (n == 0 || n >= NXW_PATH_MAX) return -NXW_EINVAL;   /* empty, or no NUL inside */
+    if (in[0] != '/') return -NXW_EINVAL;                  /* absolute only */
+    const uint8_t *s = (const uint8_t *)in;
+    uint32_t i = 0;
+    while (i < n) {
+        uint32_t len = utf8_seq_len(s + i, n - i);
+        if (len == 0) return -NXW_EINVAL;                   /* not UTF-8 */
+        if (len == 1 && (s[i] < 0x20u || s[i] == 0x7Fu || s[i] == '\\')) return -NXW_EINVAL;
+        i += len;
+    }
+    /* No "." or ".." component and no empty one ("//"): the shell gets the
+     * one spelling of the path, never one that climbs out of a folder. */
+    i = 1;
+    while (i <= n) {
+        uint32_t start = i;
+        while (i < n && s[i] != '/') i++;
+        uint32_t clen = i - start;
+        if (clen == 0 && i < n) return -NXW_EINVAL;                       /* "//" */
+        if (clen == 1 && s[start] == '.') return -NXW_EINVAL;
+        if (clen == 2 && s[start] == '.' && s[start + 1] == '.') return -NXW_EINVAL;
+        i++;
+    }
+    for (uint32_t k = 0; k < n; k++) out[k] = in[k];
+    for (uint32_t k = n; k < NXW_PATH_MAX; k++) out[k] = '\0';
+    return 0;
 }
 
 int nxw_check_frame(const void *data, uint32_t data_len, uint32_t handle_count,

@@ -246,6 +246,87 @@ destroy (PID, window id, size), every protocol violation (PID, op, reason),
 every dropped-event burst. Commits and frames are not logged in normal builds
 (hundreds per second); an `NXSERVER_TRACE` build flag logs them.
 
+## Protocol 1.1: shell open (implemented 2026-11-10)
+
+Added so the built-in apps can leave the desktop process (stream S2) and
+still hand work to each other, starting with Files (Path) opening a text file
+in Notes. Approved by the project owner on 2026-11-10. No kernel change.
+
+### Negotiation
+
+- `NXW_PROTO_MINOR` is 1. `HELLO` carries the client's minor; `WELCOME`
+  answers with `min(client minor, server minor)`, the **negotiated minor**.
+  libnxwindow also caps a server's answer at its own minor.
+- A 1.1 request on a connection that negotiated 1.0 is a protocol violation
+  (`NXW_V_OP`, the same as an unknown op), and the connection is closed.
+- The server sends 1.1 events only to clients that negotiated 1.1, so a 1.0
+  client never receives an op it does not know. Every 1.0 struct, number and
+  rule is unchanged.
+- Ops 0x0107 to 0x010B and 0x0208 to 0x0209 stay reserved for the display
+  security batch (cursor shapes, clipboard, translucent content), which
+  becomes protocol 1.2 (`docs/desktop/proposals/display-security-and-protocol-1.1.md`, Part B).
+
+```c
+#define NXW_PATH_MAX               256   /* bytes including the NUL */
+#define NXW_SHELL_OPEN_INTERVAL_MS 500   /* per client */
+#define NXW_ENOENT_PATH            2     /* ERROR code -2: nothing at the path */
+#define NXW_ENOEXEC                8     /* ERROR code -8: no app opens it */
+```
+
+| Op | Name | Direction | Body (after the header) | Size |
+| --- | --- | --- | --- | --- |
+| 0x010C | `SHELL_OPEN` | client to server | `u32 win, u32 flags (0), char path[256]` | 272 |
+| 0x020A | `OPEN_PATH` | server to client | `u32 win, u32 flags (0), char path[256]` | 272 |
+
+### `SHELL_OPEN`: an app asks the desktop to open a path
+
+The desktop decides what opens it: a folder opens in Path, a `.txt` or `.md`
+file in Notes. An app can never start an arbitrary program this way. The
+server checks, in this order, and answers a failure with `ERROR` (the
+connection stays open):
+
+1. `win` is one of the client's own windows (`-EBADF` or `-EPERM`, as for
+   every 1.0 request).
+2. `flags` is 0 and the path passes `nxw_path_check`
+   (`desktop/shell/nxserver/nxw_check.c`): NUL inside the field, not empty,
+   absolute, valid UTF-8, no control characters, DEL or backslash, no empty,
+   `.` or `..` component. A trailing `/` is allowed. Otherwise `-EINVAL`.
+3. That window has the focus, so a background app cannot open things on its
+   own (`-EPERM`).
+4. At most one request per 500 ms per client (`-EPERM`).
+5. The shell normalizes the path again and looks it up
+   (`desktop_shell_open_path`, `desktop/shell/files_launcher.c`): nothing
+   there is `-2` (`NXW_ENOENT_PATH`), a file no app opens is `-8`
+   (`NXW_ENOEXEC`).
+
+Every accepted request is logged with the PID and the path, and every refusal
+with the PID and the reason.
+
+### `OPEN_PATH`: the desktop asks an app to show a path
+
+Sent when the user opens a folder (desktop icon, Notes "Show in Path") while
+Path is already running. The desktop sends it only to a window whose process
+it started itself from `/apps/Path` (it keeps the last 8 PIDs it started per
+app), never because of the window title, which any client can set. The path
+has passed `nxw_path_check`. Because the message is larger than an event
+queue slot, the server sends it only when nothing is queued ahead of it for
+that client; otherwise the desktop opens a new Path window at the folder
+instead. libnxwindow drops an `OPEN_PATH` that is empty, relative,
+unterminated or has flags set, and gives the app `NXW_EV_OPEN_PATH`.
+
+### Library and tests
+
+- libnxwindow: `nxw_shell_open(w, path)` (returns `-EPROTO` on a 1.0
+  server, `-EINVAL` for a missing, relative or over-long path) and the
+  `NXW_EV_OPEN_PATH` event.
+- `tests/host/nxw_check_test.c`: sizes, per-op minor, and every path rule.
+- `tests/host/nxwindow_test.c` (`test_proto_1_1`): negotiation with 1.0, 1.1
+  and newer servers, refused calls send nothing, `OPEN_PATH` dropped from a
+  1.0 server and when malformed.
+- QEMU (2026-11-10): Path opens a `.txt` in Notes through `SHELL_OPEN`, and
+  Notes' folder button shows the folder in the running Path through
+  `OPEN_PATH`.
+
 ## Work plan (one PR each, tested in QEMU, merged before the next)
 
 1. **Kernel:** `fb.flip_rects` (148), `nx_fb.h`, ABI 1.2, and a userland test
@@ -275,7 +356,7 @@ every dropped-event burst. Commits and frames are not logged in normal builds
 - `libnxwindow` (week 4), moving existing apps out of process (week 5).
 - Transparent windows, other pixel formats, HiDPI scaling, per-client cursor
   shapes, clipboard, drag and drop, popup/menu surfaces. Each is a later
-  protocol minor version; unknown ops are refused, so old servers fail
+  protocol minor version (1.1 added only shell open, above); unknown ops are refused, so old servers fail
   cleanly.
 - Restricting `fb.map`/`fb.flip`/`cursor.set`/`input.poll` (week 5, see above).
 

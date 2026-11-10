@@ -57,6 +57,10 @@ int nxserver_wait(uint32_t timeout_ms);
  * frame the way it does for windows drawn by the shell's own views. */
 int nxserver_owns_window(uint32_t shell_id);
 
+/* PID of the live client that owns shell window shell_id, 0 if it is not
+ * a client window. */
+uint32_t nxserver_window_pid(uint32_t shell_id);
+
 /*
  * The user asked to close shell window shell_id (close button, NX+W, dock).
  * @return 1 if it is a live client window (CLOSE_REQUEST was sent and the
@@ -72,5 +76,15 @@ void nxserver_window_destroyed(uint32_t shell_id);
  * the last 16 to connect), 0 otherwise. The shell uses it to tell an app
  * that is still starting from one that already came and went. */
 int nxserver_pid_has_connected(uint32_t pid);
+
+/* Ask client window shell_id to show path (OPEN_PATH, protocol 1.1).
+ * 0 when sent; negative when the window is not a 1.1 client window, the
+ * path is not valid, or the client has events queued (try a new window). */
+int nxserver_open_path(uint32_t shell_id, const char *path);
+
+/* Provided by the shell: open a checked absolute path the way the user
+ * would (folder: Files, text file: Notes). 0, or a negative NXW error:
+ * -NXW_ENOENT_PATH, -NXW_ENOEXEC, -NXW_EINVAL. Called for SHELL_OPEN. */
+int desktop_shell_open_path(const char *path);
 
 #endif /* NXSERVER_H */

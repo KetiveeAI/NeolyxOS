@@ -104,6 +104,10 @@ int nxrelay_ensure_home(void);
  * (NXRELAY_ERR_INVALID); the relay never walks above a path it was given. */
 int nxrelay_normalize(const char *in, char *out, int cap);
 
+/* 1 when the last component of path names a plain-text file Notes edits
+ * (.txt, .md, any case), else 0. */
+int nxrelay_is_text_name(const char *path);
+
 /* dir + "/" + name, validated. name must be a single component. */
 int nxrelay_join(const char *dir, const char *name, char *out, int cap);
 

@@ -28,7 +28,7 @@
 #define APP_NAME_MAX            32      /* Max app name length */
 #define APP_PATH_MAX            128     /* Max app path length */
 #define APP_DISK_DIR            "/apps" /* Programs here appear in the drawer */
-#define APP_DISK_SCAN_MAX       16      /* Max programs listed from disk */
+#define APP_DISK_SCAN_MAX       32      /* Max /apps entries read (MAX_APPS caps the drawer) */
 
 /* ============ App Entry Structure ============ */
 

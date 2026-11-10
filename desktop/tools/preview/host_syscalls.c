@@ -64,7 +64,7 @@ static int64_t host_readdir(const char *vpath, host_dirent_t *ents, uint64_t cou
     if (!getenv("NX_PREVIEW_FSROOT")) return -38;
     if (host_fs_path(vpath, hp, sizeof hp) != 0 || !ents) return -14;
     DIR *d = opendir(hp);
-    if (!d) return -1;                                  /* VFS_ERR_NOT_FOUND */
+    if (!d) return -2;                                  /* -ENOENT, as the kernel */
     uint32_t n = 0;
     struct dirent *de;
     while ((de = readdir(d)) && n < count) {
@@ -90,7 +90,7 @@ static int64_t host_stat(const char *vpath, host_stat_t *out) {
     struct stat st;
     if (!getenv("NX_PREVIEW_FSROOT")) return -38;
     if (host_fs_path(vpath, hp, sizeof hp) != 0 || !out) return -14;
-    if (stat(hp, &st) != 0) return -1;
+    if (stat(hp, &st) != 0) return -2;                  /* -ENOENT, as the kernel */
     memset(out, 0, sizeof *out);
     out->mode = S_ISDIR(st.st_mode) ? 0040755u : 0100644u;
     out->size = (uint64_t)st.st_size;

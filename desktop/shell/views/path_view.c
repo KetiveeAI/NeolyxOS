@@ -144,26 +144,12 @@ static void pv_up(void) {
     if (nxrelay_parent(P.path, parent, (int)sizeof(parent)) == NXRELAY_OK) pv_go(parent, 1);
 }
 
-/* Plain-text files Notes can edit. */
-static int pv_is_text(const char *name) {
-    const char *dot = 0;
-    for (const char *s = name; *s; s++) if (*s == '.') dot = s;
-    if (!dot || dot == name) return 0;
-    static const char *const ext[] = { ".txt", ".md" };
-    for (unsigned i = 0; i < sizeof(ext) / sizeof(ext[0]); i++) {
-        const char *a = dot, *b = ext[i];
-        while (*a && *b && (*a == *b || (*a >= 'A' && *a <= 'Z' && *a + 32 == *b))) { a++; b++; }
-        if (!*a && !*b) return 1;
-    }
-    return 0;
-}
-
 static void pv_open_selected(void) {
     const nxrelay_listing_t *l = pv_listing();
     if (P.selected < 0 || (uint32_t)P.selected >= l->count) return;
     const nxrelay_entry_t *e = &l->entries[P.selected];
     char next[NXRELAY_PATH_MAX];
-    if (e->kind == NXRELAY_KIND_FILE && pv_is_text(e->name)) {
+    if (e->kind == NXRELAY_KIND_FILE && nxrelay_is_text_name(e->name)) {
         /* Text files open in Notes */
         if (nxrelay_join(P.path, e->name, next, (int)sizeof(next)) != NXRELAY_OK || notes_view_open_file(next) != 0)
             pv_log("could not open in Notes:", P.path);
