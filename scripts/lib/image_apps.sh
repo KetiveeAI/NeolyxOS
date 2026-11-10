@@ -6,7 +6,7 @@
 #   image_apps_load <repo root>
 # On success it fills three parallel arrays, one entry per program:
 #   IMAGE_APP_DIRS   build folder (relative to the root)
-#   IMAGE_APP_FILES  built file name in that folder
+#   IMAGE_APP_FILES  built file, relative to that folder (e.g. bin/app)
 #   IMAGE_APP_DESTS  absolute path on the boot image
 # and returns 0. On any bad line it prints the line number and the reason
 # to stderr and returns 1, so a typo never builds a half-filled image.
@@ -50,7 +50,7 @@ image_apps_load() {
             esac
         done
         case "$dir" in /*) echo "[IMAGE-APPS] ERROR: $list:$n: build folder must be relative: '$dir'" >&2; return 1 ;; esac
-        case "$file" in */*) echo "[IMAGE-APPS] ERROR: $list:$n: built file must be a plain name: '$file'" >&2; return 1 ;; esac
+        case "$file" in /*|*/) echo "[IMAGE-APPS] ERROR: $list:$n: built file must be a relative file path: '$file'" >&2; return 1 ;; esac
         case "$dest" in
             /apps/?*|/System/?*) ;;
             *) echo "[IMAGE-APPS] ERROR: $list:$n: image path must start with /apps/ or /System/: '$dest'" >&2; return 1 ;;

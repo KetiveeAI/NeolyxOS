@@ -488,6 +488,19 @@ static void violation(nxs_client_t *c, uint16_t op, int v) {
     disconnect(c, "protocol violation");
 }
 
+/* PIDs that connected recently, newest last (nxserver_pid_has_connected).
+ * PIDs are not reused while the kernel's counter grows, so a short ring is
+ * enough for the shell's "is the app I started up yet" question. */
+#define NXS_SEEN_PIDS 16
+static uint32_t g_seen_pids[NXS_SEEN_PIDS];
+static uint32_t g_seen_next;
+
+int nxserver_pid_has_connected(uint32_t pid) {
+    if (pid == 0) return 0;
+    for (uint32_t i = 0; i < NXS_SEEN_PIDS; i++) if (g_seen_pids[i] == pid) return 1;
+    return 0;
+}
+
 static void accept_clients(void) {
     for (int guard = 0; guard < NX_PORT_BACKLOG; guard++) {
         uint32_t pid = 0;
@@ -508,6 +521,8 @@ static void accept_clients(void) {
         c->used = 1;
         c->chan = h;
         c->pid = pid;
+        g_seen_pids[g_seen_next % NXS_SEEN_PIDS] = pid;
+        g_seen_next++;
         lg_begin(); lg_client(c); lg_str(" connected"); lg_end();
     }
 }

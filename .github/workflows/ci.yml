@@ -3,6 +3,7 @@
 #   registry    syscall numbers match docs/kernel/syscall-registry.md
 #   build       kernel, desktop, loader and image programs with the GCC 15
 #               error flags (-Werror=implicit-function-declaration, ...),
+#               REOX apps with reoxc built from KetiveeAI/Reox,
 #               then the boot image; uploads the image for the smoke job
 #   host-tests  every test in tests/host, built with the same flags
 #   qemu-smoke  boots the image in QEMU (OVMF), waits for the desktop and
@@ -47,7 +48,19 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq gnu-efi mtools dosfstools xxd
+      # REOX apps on the image (Calculator) need reoxc and the REOX runtime
+      # from the REOX repository (sdk/toolchain.env, REOX_ROOT).
+      - name: Check out REOX
+        uses: actions/checkout@v4
+        with:
+          repository: KetiveeAI/Reox
+          ref: main
+          path: .reox
+      - name: Build reoxc
+        run: cargo build --release --manifest-path .reox/Cargo.toml -p reoxc
       - name: Build everything
+        env:
+          REOX_ROOT: ${{ github.workspace }}/.reox
         run: ./build_all.sh --werror
       - name: Build the boot image
         run: ./rebuild_image.sh

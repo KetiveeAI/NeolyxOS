@@ -128,9 +128,42 @@ if ! image_apps_load "$SCRIPT_DIR"; then
     echo "ERROR: config/image-apps.list is invalid"
     exit 1
 fi
+# REOX apps (their Makefile lists REOX_SRCS for sdk/reox.mk) need reoxc and the REOX
+# runtime library from the REOX checkout (REOX_ROOT, see sdk/toolchain.env).
+# A missing toolchain stops the build: an image without its apps is not a
+# NeolyxOS image. NX_SKIP_REOX_APPS=1 leaves them out on purpose, with a
+# warning, for kernel or desktop work on a machine without REOX.
+REOX_RUNTIME_BUILT=0
+SKIP_DESTS=()
 for i in "${!IMAGE_APP_DESTS[@]}"; do
     dir="${IMAGE_APP_DIRS[$i]}"
     file="${IMAGE_APP_FILES[$i]}"
+    if grep -q '^REOX_SRCS' "$dir/Makefile" 2>/dev/null; then
+        if [ "${NX_SKIP_REOX_APPS:-0}" = "1" ]; then
+            echo "      WARNING: NX_SKIP_REOX_APPS=1: ${IMAGE_APP_DESTS[$i]} is NOT on this image"
+            SKIP_DESTS+=("${IMAGE_APP_DESTS[$i]}")
+            continue
+        fi
+        if [ "$REOX_RUNTIME_BUILT" = "0" ]; then
+            if ! make -C "$dir" "${MAKE_CC[@]}" reox-runtime >/dev/null; then
+                echo "ERROR: the REOX runtime did not build for $dir."
+                echo "       Set REOX_ROOT to your REOX checkout (now: ${REOX_ROOT:-sdk/toolchain.env default}),"
+                echo "       or NX_SKIP_REOX_APPS=1 to build an image without the REOX apps."
+                exit 1
+            fi
+            REOX_RUNTIME_BUILT=1
+        fi
+        # No -B here: it would remake the runtime library, which reox.mk
+        # only reports as missing. clean drops the generated C and objects.
+        make -C "$dir" clean >/dev/null 2>&1 || true
+        if ! make -C "$dir" "${MAKE_CC[@]}" >/dev/null || [ ! -f "$dir/$file" ]; then
+            echo "ERROR: $dir/$file build failed! (run 'make -C $dir' for details;"
+            echo "       reoxc comes from 'cargo build --release' in REOX_ROOT)"
+            exit 1
+        fi
+        echo "      Built $dir/$file (REOX)"
+        continue
+    fi
     # -B: object files are committed for some programs, so their
     # timestamps cannot be trusted after a checkout.
     if ! make -B -C "$dir" "${MAKE_CC[@]}" >/dev/null || [ ! -f "$dir/$file" ]; then
@@ -155,6 +188,11 @@ if mcopy -i neolyx.img -o kernel/kernel.bin ::/EFI/BOOT/kernel.bin 2>/dev/null; 
     for i in "${!IMAGE_APP_DESTS[@]}"; do
         src="${IMAGE_APP_DIRS[$i]}/${IMAGE_APP_FILES[$i]}"
         dest="${IMAGE_APP_DESTS[$i]}"
+        skip=0
+        for s in "${SKIP_DESTS[@]}"; do
+            if [ "$s" = "$dest" ]; then skip=1; fi
+        done
+        if [ "$skip" = "1" ]; then continue; fi
         if ! image_apps_mkdirs neolyx.img "$dest" || ! mcopy -i neolyx.img -o "$src" "::$dest"; then
             echo "ERROR: cannot install $src as $dest in neolyx.img"
             exit 1

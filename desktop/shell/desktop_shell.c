@@ -3207,6 +3207,80 @@ static int shell_streq_ci(const char *a, const char *b) {
     return *a == 0 && *b == 0;
 }
 
+/*
+ * Built-in apps that ship as their own program on the boot image
+ * (config/image-apps.list, section S2). Launching one starts a process that
+ * opens its window through the window server; the desktop never draws it.
+ * Names here are the window titles the apps give themselves, so a second
+ * launch focuses the open window (the loop in desktop_on_app_launched).
+ */
+static const struct {
+    const char *name;   /* launch name (dock label, drawer name) */
+    const char *path;   /* program on the boot volume */
+} g_disk_apps[] = {
+    { "Calculator", "/apps/Calculator" },
+};
+#define DISK_APP_COUNT ((int)(sizeof(g_disk_apps) / sizeof(g_disk_apps[0])))
+
+/* A program needs a moment to connect and open its window; a second click
+ * in that time must not start a second copy. Once it has connected, the
+ * open-window check above decides instead, so closing and reopening at
+ * once works. Milliseconds (nx_gettime). */
+#define DISK_APP_LAUNCH_GRACE_MS 3000u
+static uint64_t g_disk_app_launch_ms[DISK_APP_COUNT];
+static int      g_disk_app_launch_pid[DISK_APP_COUNT];
+
+/*
+ * Start the program behind a built-in app name.
+ * Returns 0 when it was started (or is still starting), 1 when the name is
+ * not a disk app, -1 when the program is missing or would not start; the
+ * caller must not open a placeholder window then (the user is told why).
+ */
+static int desktop_launch_disk_app(const char *name) {
+    if (!name) return 1;
+    for (int i = 0; i < DISK_APP_COUNT; i++) {
+        if (!shell_streq_ci(name, g_disk_apps[i].name)) continue;
+        uint64_t now = nx_gettime();
+        if (g_disk_app_launch_pid[i] > 0 &&
+            now - g_disk_app_launch_ms[i] < DISK_APP_LAUNCH_GRACE_MS &&
+            !nxserver_pid_has_connected((uint32_t)g_disk_app_launch_pid[i])) {
+            serial_puts("[DESKTOP] ");
+            serial_puts(g_disk_apps[i].name);
+            serial_puts(" is still starting; not starting a second copy\n");
+            return 0;
+        }
+        int fd = nx_open(g_disk_apps[i].path, O_RDONLY);
+        if (fd < 0) {
+            serial_puts("[DESKTOP] ERROR: ");
+            serial_puts(g_disk_apps[i].path);
+            serial_puts(" is not installed on the boot volume\n");
+            notification_push(g_disk_apps[i].name, "Can't open the app",
+                              "The program is missing from this system. Reinstall NeolyxOS.",
+                              0xFFFF453A);
+            return -1;
+        }
+        (void)nx_close(fd);
+        serial_puts("[DESKTOP] Starting ");
+        serial_puts(g_disk_apps[i].path);
+        serial_puts("\n");
+        int pid = nx_spawn(g_disk_apps[i].path, NULL, 0);
+        if (pid <= 0) {
+            serial_puts("[DESKTOP] ERROR: could not start ");
+            serial_puts(g_disk_apps[i].path);
+            serial_puts("\n");
+            notification_push(g_disk_apps[i].name, "Can't open the app",
+                              "The system could not start it. Close some apps and try again.",
+                              0xFFFF453A);
+            g_disk_app_launch_pid[i] = 0;
+            return -1;
+        }
+        g_disk_app_launch_pid[i] = pid;
+        g_disk_app_launch_ms[i] = now;
+        return 0;
+    }
+    return 1;
+}
+
 static void desktop_on_app_launched(const nx_event_t *event, void *userdata) {
     (void)userdata;
     if (!event || !event->data || event->data_size < sizeof(nx_app_data_t)) return;
@@ -3227,6 +3301,13 @@ static void desktop_on_app_launched(const nx_event_t *event, void *userdata) {
             dock_set_running(app->app_id, 1);
             return;
         }
+    }
+    /* Apps that are their own program: start the process, never a
+     * placeholder (its window arrives through the window server) */
+    int disk = desktop_launch_disk_app(name);
+    if (disk <= 0) {
+        if (disk == 0) dock_set_running(app->app_id, 1);
+        return;
     }
     if (desktop_launch_app(name) != 0) {
         /* No registered window: cascade a generic one */
