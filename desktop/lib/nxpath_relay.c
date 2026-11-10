@@ -40,11 +40,13 @@ typedef struct {
 } relay_kstat_t;
 _Static_assert(sizeof(relay_kstat_t) == 56, "stat_t layout changed");
 
-/* Kernel VFS error codes (kernel/include/fs/vfs.h) and errno values. */
-#define K_VFS_NOT_FOUND  (-1)
-#define K_VFS_PERM       (-2)
-#define K_VFS_NOT_DIR    (-6)
+/* Kernel results are -errno (kernel/src/core/nx_file.c, nx_errno_from_vfs),
+ * never raw VFS codes. */
+#define K_EPERM          (-1)
+#define K_ENOENT         (-2)
+#define K_EACCES         (-13)
 #define K_EFAULT         (-14)
+#define K_ENOTDIR        (-20)
 #define K_ENOSYS         (-38)
 
 /* ============ Small helpers (freestanding) ============ */
@@ -107,6 +109,21 @@ static void relay_log(const char *msg, const char *path, int err) {
 static int name_char_ok(char c) {
     /* No control characters, no separators inside a component. */
     return (unsigned char)c >= 0x20 && c != 0x7F && c != '/' && c != '\\';
+}
+
+int nxrelay_is_text_name(const char *path) {
+    if (!path) return 0;
+    const char *name = path, *dot = 0;
+    for (const char *s = path; *s; s++) if (*s == '/') name = s + 1;
+    for (const char *s = name; *s; s++) if (*s == '.') dot = s;
+    if (!dot || dot == name) return 0;
+    static const char *const ext[] = { ".txt", ".md" };
+    for (unsigned i = 0; i < sizeof(ext) / sizeof(ext[0]); i++) {
+        const char *a = dot, *b = ext[i];
+        while (*a && *b && (*a == *b || (*a >= 'A' && *a <= 'Z' && *a + 32 == *b))) { a++; b++; }
+        if (!*a && !*b) return 1;
+    }
+    return 0;
 }
 
 int nxrelay_normalize(const char *in, char *out, int cap) {
@@ -176,9 +193,10 @@ const char *nxrelay_basename(const char *path) {
 
 static int map_kernel_err(int64_t r) {
     switch (r) {
-        case K_VFS_NOT_FOUND: return NXRELAY_ERR_NOT_FOUND;
-        case K_VFS_PERM:      return NXRELAY_ERR_DENIED;
-        case K_VFS_NOT_DIR:   return NXRELAY_ERR_NOT_DIR;
+        case K_ENOENT:        return NXRELAY_ERR_NOT_FOUND;
+        case K_EACCES:
+        case K_EPERM:         return NXRELAY_ERR_DENIED;
+        case K_ENOTDIR:       return NXRELAY_ERR_NOT_DIR;
         case K_ENOSYS:        return NXRELAY_ERR_NO_KERNEL;
         case K_EFAULT:        return NXRELAY_ERR_INVALID;
         default:              return NXRELAY_ERR_IO;
@@ -258,11 +276,8 @@ int nxrelay_stat(const char *path, nxrelay_kind_t *kind, uint64_t *size) {
     relay_kstat_t st;
     r_zero(&st, sizeof(st));
     int64_t k = syscall2(RELAY_SYS_STAT, (int64_t)(uintptr_t)canon, (int64_t)(uintptr_t)&st);
-    /* SYS_STAT answers -EFAULT for a bad pointer and -ENOENT (-2) for every
-     * failed lookup. -2 is also the VFS "permission" code that
-     * map_kernel_err expects from other calls, so map it here: a missing
-     * item must read as "not found", not "denied". */
-    if (k == -2) return NXRELAY_ERR_NOT_FOUND;
+    /* SYS_STAT answers -EFAULT for a bad pointer and -ENOENT for every
+     * failed lookup. */
     if (k != 0) return map_kernel_err(k);
     if (kind) *kind = (st.st_mode & 0170000u) == 0040000u ? NXRELAY_KIND_FOLDER : NXRELAY_KIND_FILE;
     if (size) *size = st.st_size;

@@ -39,6 +39,13 @@
  * copy, and initialize the icon cache. Logs every step. */
 nxc_status_t nxui_init(void);
 
+/* The same toolkit for an app process that draws one window through the
+ * window server (desktop/viewhost): no framebuffer, no wallpaper, no
+ * cursor. The backbuffer is max_width x max_height (the window's largest
+ * size); the caller copies it into the window buffer. Never touches the
+ * screen or the cursor. */
+nxc_status_t nxui_init_app(uint32_t max_width, uint32_t max_height);
+
 /* Start a frame: resets canvas state and draws the wallpaper. */
 void nxui_frame_begin(void);
 /* Finish a frame: draws the cursor at (cursor_x, cursor_y) and presents

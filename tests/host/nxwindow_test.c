@@ -4,7 +4,7 @@
  * The library is built with NX_HOST_PREVIEW, so its syscalls come here: a
  * small fake kernel (handles with rights, shared memory, one channel, a
  * fake clock for obj.wait timeouts) and a scripted window server on the
- * other end of the channel that follows protocol 1.0 and records what it
+ * other end of the channel that follows protocol 1.0 (1.1 when asked) and records what it
  * received. The test checks the library's behaviour from the approved spec
  * (docs/desktop/proposals/libnxwindow.md):
  *
@@ -133,6 +133,7 @@ typedef struct { int used; uint32_t id; int buf_shm; uint32_t bw, bh; int owed; 
 
 static struct {
     int      refuse_version;
+    uint16_t minor;             /* minor version the WELCOME offers */
     int      silent_hello;
     int      silent_create;     /* no WIN_CREATED reply */
     uint32_t key_before_reply;  /* a KEY for this window first, then the reply */
@@ -148,6 +149,7 @@ static struct {
     uint32_t last_attach_rights, last_attach_stride, last_attach_w, last_attach_h;
     uint32_t last_destroy;
     char     last_title[NXW_TITLE_MAX];
+    nxw_shell_open_t last_shell_open;
     uint32_t destroyed[64];
     int      n_destroyed;
 } S;
@@ -199,6 +201,15 @@ static void srv_close_request(uint32_t win) {
 }
 
 /* The server's frame tick: FRAME_DONE for every commit owed. */
+static void srv_open_path(uint32_t win, const char *path, uint32_t flags) {
+    nxw_open_path_t m;
+    memset(&m, 0, sizeof(m));
+    m.hdr.op = NXW_OP_OPEN_PATH; m.hdr.len = sizeof(m);
+    m.win = win; m.flags = flags;
+    strncpy(m.path, path, NXW_PATH_MAX);    /* a full field has no NUL on purpose */
+    srv_send(&m, sizeof(m));
+}
+
 static void srv_present(void) {
     for (int i = 0; i < 16; i++) {
         srv_win_t *w = &S.win[i];
@@ -229,7 +240,7 @@ static void srv_handle(const uint8_t *data, uint32_t len, int handle_shm) {
         nxw_welcome_t w;
         memset(&w, 0, sizeof(w));
         w.hdr.op = NXW_OP_WELCOME; w.hdr.len = sizeof(w); w.hdr.seq = h.seq;
-        w.major = 1; w.minor = 0; w.screen_w = 1280; w.screen_h = 800;
+        w.major = 1; w.minor = S.minor; w.screen_w = 1280; w.screen_h = 800;
         w.max_windows = 8; w.max_size = 4096;
         srv_send(&w, sizeof(w));
         return;
@@ -309,6 +320,9 @@ static void srv_handle(const uint8_t *data, uint32_t len, int handle_shm) {
         w->commit_seq = h.seq;
         return;
     }
+    case NXW_OP_SHELL_OPEN:
+        memcpy(&S.last_shell_open, data, sizeof(S.last_shell_open));
+        return;
     default:
         printf("FAIL client sent unknown op 0x%x\n", h.op);
         g_fail = 1;
@@ -945,12 +959,62 @@ static void test_cleanup(void) {
     check(live == 0, "cleanup: every shm object freed once the server drops it too");
 }
 
+
+/* Protocol 1.1: SHELL_OPEN goes out only on a 1.1 connection, OPEN_PATH
+ * becomes an event only on one, and a bad OPEN_PATH is dropped. */
+static void test_proto_1_1(void) {
+    nxw_event_t e;
+    nxw_display_info_t info;
+
+    reset_all();                                /* a 1.0 server */
+    check(nxw_connect(&info) == 0 && info.proto_minor == 0, "1.1: a 1.0 server negotiates 1.0");
+    nxw_window_t *a = mkwin("a", 40, 40);
+    check(nxw_shell_open(a, "/Users/Shared/a.txt") == -NXW_EPROTO && S.n_ops[NXW_OP_SHELL_OPEN] == 0,
+          "1.1: shell open on a 1.0 server is -EPROTO and sends nothing");
+    srv_open_path(sid(a), "/Users", 0);
+    check(next_ev(&e) == 0, "1.1: OPEN_PATH from a 1.0 server is dropped");
+
+    reset_all();
+    S.minor = 7;                                /* a newer server */
+    check(nxw_connect(&info) == 0 && info.proto_minor == NXW_PROTO_MINOR,
+          "1.1: a newer server is capped at the library's minor");
+
+    reset_all();
+    S.minor = 1;
+    nxw_connect(NULL);
+    a = mkwin("a", 40, 40);
+    check(nxw_shell_open(NULL, "/x") == -NXW_EBADF, "1.1: shell open needs a window");
+    check(nxw_shell_open(a, NULL) == -NXW_EINVAL && nxw_shell_open(a, "rel/x") == -NXW_EINVAL,
+          "1.1: shell open needs an absolute path");
+    char longp[NXW_PATH_MAX + 1];
+    memset(longp, 'a', sizeof(longp));
+    longp[0] = '/'; longp[NXW_PATH_MAX] = '\0';
+    check(nxw_shell_open(a, longp) == -NXW_EINVAL, "1.1: a 256-byte path is refused");
+    check(S.n_ops[NXW_OP_SHELL_OPEN] == 0, "1.1: refused calls send nothing");
+    check(nxw_shell_open(a, "/Users/Shared/a.txt") == 0 && S.n_ops[NXW_OP_SHELL_OPEN] == 1 &&
+          S.last_shell_open.win == sid(a) && S.last_shell_open.flags == 0 &&
+          strcmp(S.last_shell_open.path, "/Users/Shared/a.txt") == 0 &&
+          S.last_shell_open.path[NXW_PATH_MAX - 1] == '\0', "1.1: shell open sends the path");
+
+    srv_open_path(sid(a), "/Users/Shared", 0);
+    check(next_ev(&e) == 1 && e.type == NXW_EV_OPEN_PATH && e.window == a &&
+          strcmp(e.open_path.path, "/Users/Shared") == 0, "1.1: OPEN_PATH event");
+    srv_open_path(sid(a), "Users", 0);
+    srv_open_path(sid(a), "", 0);
+    srv_open_path(sid(a), "/Users", 1);
+    memset(longp, 'b', sizeof(longp)); longp[0] = '/';
+    srv_open_path(sid(a), longp, 0);
+    check(next_ev(&e) == 0, "1.1: relative, empty, flagged and unterminated OPEN_PATH dropped");
+    check(nxw_window_destroy(a) == 0, "1.1: window destroyed");
+}
+
 int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "-v") == 0) g_verbose = 1;
     test_connect();
     test_create();
     test_frames();
     test_events();
+    test_proto_1_1();
     test_tokens();
     test_send_full();
     test_server_gone();

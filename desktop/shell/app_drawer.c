@@ -138,6 +138,9 @@ static int app_drawer_scan_disk_apps(void) {
         return 0;
     }
     if (count > APP_DISK_SCAN_MAX) count = APP_DISK_SCAN_MAX;
+    if (count == APP_DISK_SCAN_MAX) {
+        serial_puts("[DRAWER] warning: " APP_DISK_DIR " has more entries than the scan reads; some programs are not listed\n");
+    }
     
     int added = 0;
     for (uint32_t i = 0; i < count; i++) {

@@ -1,9 +1,15 @@
 /*
- * NeolyxOS window protocol, version 1.0 (nxserver <-> apps)
+ * NeolyxOS window protocol, version 1.1 (nxserver <-> apps)
  *
- * Spec: docs/desktop/proposals/nxserver-window-protocol.md (approved by the
- * project owner on 2026-11-01). libnxwindow (week 4) is the supported way to
- * speak it; this header is the wire format both sides compile against.
+ * Spec: docs/desktop/proposals/nxserver-window-protocol.md (1.0 approved by
+ * the project owner on 2026-11-01; 1.1 shell open approved 2026-11-10).
+ * libnxwindow (week 4) is the supported way to speak it; this header is the
+ * wire format both sides compile against.
+ *
+ * Versions: the client sends its minor in HELLO and WELCOME answers with
+ * min(client minor, server minor), the negotiated minor. A 1.1 request on a
+ * connection that negotiated 1.0 is an unknown op (a protocol violation);
+ * the server sends 1.1 events only to clients that negotiated 1.1.
  *
  * Transport: an app calls port.connect("nx.display") and gets a channel.
  * Every message is exactly one channel message holding exactly one of the
@@ -30,7 +36,7 @@
 /* ============ Version, names and limits ============ */
 
 #define NXW_PROTO_MAJOR        1
-#define NXW_PROTO_MINOR        0
+#define NXW_PROTO_MINOR        1
 
 #define NXW_PORT_NAME          "nx.display"
 
@@ -41,6 +47,7 @@
 #define NXW_WINDOWS_PER_CLIENT 8
 #define NXW_WINDOWS_TOTAL      16          /* shared with the shell's own windows */
 #define NXW_CLIENTS_MAX        16
+#define NXW_PATH_MAX           256         /* SHELL_OPEN / OPEN_PATH path, NUL included (1.1) */
 
 /* WIN_CREATE x and y: let the server place the window */
 #define NXW_POS_AUTO           ((int32_t)(-2147483647 - 1))
@@ -77,6 +84,8 @@
 #define NXW_ENOMEM             12          /* the server is out of mappings or memory */
 #define NXW_EINVAL             22          /* bad size, flags, buffer, title or order */
 #define NXW_EMFILE             24          /* too many windows */
+#define NXW_ENOENT_PATH        2           /* SHELL_OPEN: no such item (1.1) */
+#define NXW_ENOEXEC            8           /* SHELL_OPEN: no app opens it (1.1) */
 
 /* ============ Ops ============ */
 
@@ -87,6 +96,10 @@
 #define NXW_OP_WIN_SET_TITLE   0x0104u
 #define NXW_OP_BUF_ATTACH      0x0105u
 #define NXW_OP_COMMIT          0x0106u
+/* 0x0107-0x010B are reserved for the display-security batch (cursor,
+ * buffers with alpha, opaque region, clipboard); see
+ * docs/desktop/proposals/display-security-and-protocol-1.1.md */
+#define NXW_OP_SHELL_OPEN      0x010Cu     /* 1.1 */
 
 /* Events and replies (server to client) */
 #define NXW_OP_WELCOME         0x0201u
@@ -96,6 +109,8 @@
 #define NXW_OP_CLOSE_REQUEST   0x0205u
 #define NXW_OP_KEY             0x0206u
 #define NXW_OP_POINTER         0x0207u
+/* 0x0208-0x0209 reserved for the clipboard (see above) */
+#define NXW_OP_OPEN_PATH       0x020Au     /* 1.1 */
 #define NXW_OP_ERROR           0x02FFu
 
 /* ============ Common parts ============ */
@@ -165,6 +180,21 @@ typedef struct {
     nxw_rect_t rects[NXW_DAMAGE_MAX];
 } nxw_commit_t;
 
+/* 1.1. Ask the shell to open path the way the user would from the desktop:
+ * a folder in Files, a text file in Notes. path is absolute, NUL-terminated
+ * inside the array, the rest zero. Only a client whose window has the focus
+ * may ask (an app the user is working in), at most once per
+ * NXW_SHELL_OPEN_INTERVAL_MS. No reply on success; ERROR with -NXW_EPERM
+ * (not focused, or too soon), -NXW_EINVAL (bad path or flags), -NXW_ENOENT_PATH
+ * (no such item) or -NXW_ENOEXEC (no app opens that kind of file). */
+#define NXW_SHELL_OPEN_INTERVAL_MS 500u
+typedef struct {
+    nxw_hdr_t hdr;
+    uint32_t  win;          /* the asking window (must have the focus) */
+    uint32_t  flags;        /* 0 */
+    char      path[NXW_PATH_MAX];
+} nxw_shell_open_t;
+
 /* ============ Events and replies ============ */
 
 typedef struct {
@@ -220,6 +250,16 @@ typedef struct {
     uint32_t  time_ms;
 } nxw_pointer_t;
 
+/* 1.1. The shell asks a window to show path (Files: a folder the user
+ * opened from the desktop while Files was already open). Same path rules
+ * as SHELL_OPEN; the server checked it. */
+typedef struct {
+    nxw_hdr_t hdr;
+    uint32_t  win;
+    uint32_t  flags;        /* 0 */
+    char      path[NXW_PATH_MAX];
+} nxw_open_path_t;
+
 typedef struct {
     nxw_hdr_t hdr;
     uint16_t  op;           /* the request's op */
@@ -246,5 +286,7 @@ _Static_assert(sizeof(nxw_close_request_t) == 12, "nxw_close_request_t is frozen
 _Static_assert(sizeof(nxw_key_t) == 20, "nxw_key_t is frozen at 20 bytes");
 _Static_assert(sizeof(nxw_pointer_t) == 36, "nxw_pointer_t is frozen at 36 bytes");
 _Static_assert(sizeof(nxw_error_t) == 20, "nxw_error_t is frozen at 20 bytes");
+_Static_assert(sizeof(nxw_shell_open_t) == 272, "nxw_shell_open_t is frozen at 272 bytes");
+_Static_assert(sizeof(nxw_open_path_t) == 272, "nxw_open_path_t is frozen at 272 bytes");
 
 #endif /* NEOLYX_NXWIN_PROTO_H */

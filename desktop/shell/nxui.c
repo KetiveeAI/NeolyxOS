@@ -1046,26 +1046,17 @@ static void fonts_register(void) {
     }
 }
 
-nxc_status_t nxui_init(void) {
-    if (g_ui.ready) return NXC_OK;
-    ui_log("[NXUI] init\n");
-
-    if (nx_fb_info(&g_ui.fb) != 0 || g_ui.fb.width == 0 || g_ui.fb.height == 0 ||
-        g_ui.fb.width > 8192 || g_ui.fb.height > 8192 || g_ui.fb.bpp != 32) {
-        ui_log("[NXUI] fb_info failed or unsupported format\n");
-        return NXC_ERR_UNSUPPORTED;
-    }
-    /* No fb.map: the screen is written only by the kernel, which copies
-     * the back buffer below in fb.flip_rects / fb.flip. */
-
+/* Steps shared by the desktop and by app processes (nxui_init_app):
+ * NXCanvas, the backbuffer at g_ui.fb's size, the fonts and the theme. */
+static nxc_status_t ui_init_core(uint32_t glyph_cache_bytes, uint32_t shadow_cache_bytes) {
     nxc_env_t env;
     env.alloc = ui_alloc;
     env.free = ui_free;                 /* surfaces and caches return memory */
     env.log = ui_log;
     env.max_width = (int32_t)g_ui.fb.width;
     env.max_height = (int32_t)g_ui.fb.height;
-    env.glyph_cache_bytes = 3u * 1024u * 1024u;
-    env.shadow_cache_bytes = 4u * 1024u * 1024u;
+    env.glyph_cache_bytes = glyph_cache_bytes;
+    env.shadow_cache_bytes = shadow_cache_bytes;
     nxc_status_t st = nxc_init(&env);
     if (st != NXC_OK) { ui_log_status("nxc_init", st); return st; }
 
@@ -1097,6 +1088,23 @@ nxc_status_t nxui_init(void) {
 
     g_ui.appearance = NXUI_APPEARANCE_DARK;
     theme_build(&g_ui.theme, g_ui.appearance);
+    return NXC_OK;
+}
+
+nxc_status_t nxui_init(void) {
+    if (g_ui.ready) return NXC_OK;
+    ui_log("[NXUI] init\n");
+
+    if (nx_fb_info(&g_ui.fb) != 0 || g_ui.fb.width == 0 || g_ui.fb.height == 0 ||
+        g_ui.fb.width > 8192 || g_ui.fb.height > 8192 || g_ui.fb.bpp != 32) {
+        ui_log("[NXUI] fb_info failed or unsupported format\n");
+        return NXC_ERR_UNSUPPORTED;
+    }
+    /* No fb.map: the screen is written only by the kernel, which copies
+     * the back buffer below in fb.flip_rects / fb.flip. */
+
+    nxc_status_t st = ui_init_core(3u * 1024u * 1024u, 4u * 1024u * 1024u);
+    if (st != NXC_OK) return st;
 
     /* Wallpaper + blurred copy for materials */
     st = nxc_surface_create(&g_ui.wallpaper, (int32_t)g_ui.fb.width, (int32_t)g_ui.fb.height,
@@ -1132,6 +1140,37 @@ nxc_status_t nxui_init(void) {
     g_ui.dt = 1.0f / 60.0f;
     g_ui.ready = 1;
     ui_log("[NXUI] ready\n");
+    return NXC_OK;
+}
+
+nxc_status_t nxui_init_app(uint32_t max_width, uint32_t max_height) {
+    if (g_ui.ready) return NXC_OK;
+    ui_log("[NXUI] init (app window)\n");
+    if (max_width == 0 || max_height == 0 || max_width > 8192 || max_height > 8192) {
+        ui_log("[NXUI] app window size out of range\n");
+        return NXC_ERR_INVALID_ARG;
+    }
+    /* No screen at all: the backbuffer is the window's largest size, and
+     * the host copies it into the window buffer the server shows. */
+    g_ui.fb.width = max_width;
+    g_ui.fb.height = max_height;
+    g_ui.fb.pitch = max_width * 4u;
+    g_ui.fb.bpp = 32;
+
+    /* One window: smaller caches than the desktop's whole screen */
+    nxc_status_t st = ui_init_core(1u * 1024u * 1024u, 1u * 1024u * 1024u);
+    if (st != NXC_OK) return st;
+
+    /* No wallpaper (passes start from the window background) and no
+     * cursor: the desktop owns the pointer. */
+    st = nxicons_init(2u * 1024u * 1024u);
+    if (st != NXC_OK) ui_log_status("icons", st);
+
+    g_ui.t0_ms = nx_gettime();
+    g_ui.last_frame_ms = g_ui.t0_ms;
+    g_ui.dt = 1.0f / 60.0f;
+    g_ui.ready = 1;
+    ui_log("[NXUI] ready (app window)\n");
     return NXC_OK;
 }
 
@@ -1174,7 +1213,13 @@ int nxui_pass_begin(int32_t x, int32_t y, int32_t w, int32_t h, int first_pass) 
         return 0;
     }
     nxc_clip_rect(&g_ui.canvas, r);
-    nxc_surface_copy(&g_ui.back, r.x, r.y, &g_ui.wallpaper, r);
+    if (g_ui.wallpaper.pixels) {
+        nxc_surface_copy(&g_ui.back, r.x, r.y, &g_ui.wallpaper, r);
+    } else {
+        /* App window (nxui_init_app): the window background */
+        nxc_fill_rect(&g_ui.canvas, nxc_rect((float)r.x, (float)r.y, (float)r.w, (float)r.h),
+                      g_ui.theme.window_bg);
+    }
     return 1;
 }
 

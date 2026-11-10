@@ -89,6 +89,8 @@ typedef struct {
     nx_handle_t chan;
     uint32_t    pid;
     int         hello;
+    uint16_t    minor;          /* negotiated protocol minor (after HELLO) */
+    uint64_t    last_open_ms;   /* last accepted SHELL_OPEN (1.1), 0 = none */
     int         dead;           /* chan.send saw the peer gone */
     nxs_qmsg_t  q[NXS_QUEUE];
     int         qhead, qcount;
@@ -563,12 +565,14 @@ static void req_hello(nxs_client_t *c, const nxw_hello_t *m) {
         return;
     }
     c->hello = 1;
+    /* Negotiated minor: the lower of the two; 1.1 ops and events only then */
+    c->minor = m->minor < NXW_PROTO_MINOR ? m->minor : NXW_PROTO_MINOR;
     nxw_welcome_t r;
     s_zero(&r, sizeof(r));
     r.hdr.op = NXW_OP_WELCOME;
     r.hdr.seq = m->hdr.seq;
     r.major = NXW_PROTO_MAJOR;
-    r.minor = NXW_PROTO_MINOR;
+    r.minor = c->minor;
     r.screen_w = g_screen_w;
     r.screen_h = g_screen_h;
     r.max_windows = NXW_WINDOWS_PER_CLIENT;
@@ -725,6 +729,69 @@ static void req_commit(nxs_client_t *c, const nxw_commit_t *m) {
     w->commit_seq = seq;
 }
 
+/*
+ * SHELL_OPEN (1.1): the app the user is working in asks the shell to open a
+ * path (Files: a text file in Notes). Only from the window that has the
+ * focus, at most once per NXW_SHELL_OPEN_INTERVAL_MS, with a checked path;
+ * the shell (desktop_shell_open_path) decides what opens it. Logged.
+ */
+static void req_shell_open(nxs_client_t *c, const nxw_shell_open_t *m) {
+    uint32_t seq = m->hdr.seq;
+    nxs_win_t *w = own_window(c, seq, NXW_OP_SHELL_OPEN, m->win);
+    if (!w) return;
+    char path[NXW_PATH_MAX];
+    if (m->flags != 0 || nxw_path_check(m->path, path) != 0) {
+        lg_begin(); lg_client(c); lg_str(" SHELL_OPEN refused: bad path or flags"); lg_end();
+        send_error(c, seq, NXW_OP_SHELL_OPEN, -NXW_EINVAL, m->win);
+        return;
+    }
+    desktop_window_info_t info;
+    if (!w->shell_id || desktop_window_info(w->shell_id, &info) != 0 || !info.focused) {
+        lg_begin(); lg_client(c); lg_str(" SHELL_OPEN refused: window "); lg_dec(m->win);
+        lg_str(" does not have the focus"); lg_end();
+        send_error(c, seq, NXW_OP_SHELL_OPEN, -NXW_EPERM, m->win);
+        return;
+    }
+    uint64_t now = nx_gettime();
+    if (c->last_open_ms && now - c->last_open_ms < NXW_SHELL_OPEN_INTERVAL_MS) {
+        lg_begin(); lg_client(c); lg_str(" SHELL_OPEN refused: too soon after the last one"); lg_end();
+        send_error(c, seq, NXW_OP_SHELL_OPEN, -NXW_EPERM, m->win);
+        return;
+    }
+    c->last_open_ms = now;
+    lg_begin(); lg_client(c); lg_str(" SHELL_OPEN "); lg_str(path); lg_end();
+    int r = desktop_shell_open_path(path);
+    if (r != 0) {
+        lg_begin(); lg_str("  refused by the shell: "); lg_dec(r); lg_end();
+        send_error(c, seq, NXW_OP_SHELL_OPEN, r < 0 ? r : -NXW_EINVAL, m->win);
+    }
+}
+
+int nxserver_open_path(uint32_t shell_id, const char *path) {
+    nxs_win_t *w = win_by_shell(shell_id);
+    if (!w || w->closing || !path) return -NXW_EINVAL;
+    nxs_client_t *c = &g_clients[w->client];
+    if (!c->used || c->dead || !c->hello) return -NXW_EINVAL;
+    if (c->minor < 1) return -NXW_EINVAL;             /* a 1.0 client never gets 1.1 events */
+    nxw_open_path_t m;
+    s_zero(&m, sizeof(m));
+    uint32_t n = 0;
+    while (n < NXW_PATH_MAX - 1 && path[n]) { m.path[n] = path[n]; n++; }
+    if (path[n] != '\0') return -NXW_EINVAL;          /* too long for the field */
+    char checked[NXW_PATH_MAX];
+    if (nxw_path_check(m.path, checked) != 0) return -NXW_EINVAL;
+    m.hdr.op = NXW_OP_OPEN_PATH;
+    m.hdr.len = (uint16_t)sizeof(m);
+    m.win = w->id;
+    /* Too big for the event queue: sent only when nothing is queued ahead
+     * of it, so it never overtakes earlier events. */
+    if (c->qcount != 0) return -NXS_EAGAIN;
+    int r = raw_send(c, &m, sizeof(m));
+    if (r != 0) return r;
+    lg_begin(); lg_str("OPEN_PATH to "); lg_client(c); lg_str(": "); lg_str(m.path); lg_end();
+    return 0;
+}
+
 /* Handle every queued request of one client (bounded per frame). */
 static void serve_client(nxs_client_t *c) {
     for (int n = 0; n < NXS_MSGS_PER_POLL && c->used; n++) {
@@ -752,6 +819,10 @@ static void serve_client(nxs_client_t *c) {
             violation(c, m.data_len >= sizeof(nxw_hdr_t) ? ((const nxw_hdr_t *)(const void *)g_rx)->op : 0, v);
             return;
         }
+        if (nxw_request_minor(op) > c->minor) {
+            violation(c, op, NXW_V_OP);     /* a 1.1 request on a 1.0 connection */
+            return;
+        }
         switch (op) {
             case NXW_OP_HELLO:         req_hello(c, (const nxw_hello_t *)(const void *)g_rx); break;
             case NXW_OP_WIN_CREATE:    req_win_create(c, (const nxw_win_create_t *)(const void *)g_rx); break;
@@ -762,6 +833,7 @@ static void serve_client(nxs_client_t *c) {
                 if (v != NXW_FRAME_OK) { violation(c, op, v); return; }
                 break;
             case NXW_OP_COMMIT:        req_commit(c, (const nxw_commit_t *)(const void *)g_rx); break;
+            case NXW_OP_SHELL_OPEN:    req_shell_open(c, (const nxw_shell_open_t *)(const void *)g_rx); break;
             default:                   break;   /* nxw_check_frame admits requests only */
         }
     }
@@ -933,6 +1005,14 @@ int nxserver_wait(uint32_t timeout_ms) {
 
 int nxserver_owns_window(uint32_t shell_id) {
     return g_ready && shell_id != 0 && win_by_shell(shell_id) != NULL;
+}
+
+uint32_t nxserver_window_pid(uint32_t shell_id) {
+    if (!g_ready || shell_id == 0) return 0;
+    nxs_win_t *w = win_by_shell(shell_id);
+    if (!w) return 0;
+    const nxs_client_t *c = &g_clients[w->client];
+    return (c->used && !c->dead) ? c->pid : 0;
 }
 
 void nxserver_poll(void) {

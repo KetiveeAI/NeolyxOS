@@ -75,7 +75,9 @@ AREA_TASKMGR_SRC  = shell/views/taskmgr_view.c lib/nxproc.c
 
 AREA_WINDOWS_SRC  = shell/stage.c shell/overview.c shell/switcher.c
 
-AREA_PATH_SRC     = lib/nxpath_relay.c shell/views/path_view.c shell/desktop_items.c
+# The Path view itself runs as its own process (desktop/viewhost/files);
+# the desktop keeps the launcher (path_view_open_at, SHELL_OPEN handling).
+AREA_PATH_SRC     = lib/nxpath_relay.c shell/files_launcher.c shell/desktop_items.c
 
 AREA_SHELL_SRC    = shell/views/shell_view.c
 

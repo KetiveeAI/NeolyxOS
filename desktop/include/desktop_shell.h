@@ -242,6 +242,13 @@ const desktop_window_t *desktop_window_slot(int i);
 uint32_t desktop_focused_window_id(void);
 /* Restore (if minimized) and focus a window. Returns 0, or -1 if unknown. */
 int desktop_activate_window(uint32_t window_id);
+/* Start a built-in app that is its own program (/apps/...) with arg as
+ * argv[1] (may be NULL). 0 started, 1 not such an app, -1 failed (the user
+ * was told). */
+int desktop_start_app_with(const char *name, const char *arg);
+/* 1 if pid is one of the last 8 processes the shell started for disk app
+ * name (e.g. "Path"), 0 otherwise. */
+int desktop_app_started_pid(const char *name, uint32_t pid);
 /* Animated close, as the close button does. Returns 0, or -1 if unknown. */
 int desktop_close_window(uint32_t window_id);
 

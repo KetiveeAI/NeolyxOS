@@ -1,4 +1,10 @@
-# Proposal: display and input security, window protocol 1.1 (S1, Beta ABI batch)
+# Proposal: display and input security, window protocol 1.2 (S1, Beta ABI batch)
+
+> **Renumbered 2026-11-10.** Protocol 1.1 went to shell open (`SHELL_OPEN`,
+> `OPEN_PATH`; see `nxserver-window-protocol.md`), so Part B below becomes
+> **protocol 1.2**. Its op numbers (0x0107 to 0x010B, 0x0208 to 0x0209) stay
+> reserved for it and are unchanged. Where this document says 1.1 for Part B,
+> read 1.2. The file name is kept so existing links work.
 
 Status: **proposal, needs the project owner's sign-off** (Beta ABI batch,
 decision D2 in the beta plan). Nothing here is implemented yet.
@@ -10,7 +16,7 @@ This document asks for two things:
 1. **Part A, display and input security.** Only system processes (today: the
    desktop) can touch the screen, the cursor or the global input queue. Apps
    draw and get input only through the window server.
-2. **Part B, window protocol 1.1.** Three additions for the beta: cursor
+2. **Part B, window protocol 1.2** (was 1.1). Three additions for the beta: cursor
    shapes, a text clipboard, and translucent content with an opaque region.
 
 **Syscall numbers: none.** Part A changes the behaviour of existing calls.
@@ -156,11 +162,11 @@ The serial log must show each refusal once and the fault. The desktop must
 still draw, take keyboard and mouse input, and run `wintest`, `nxwtest` and
 `nxuitest` unchanged.
 
-## Part B: window protocol 1.1
+## Part B: window protocol 1.2 (was 1.1)
 
 ### Version negotiation
 
-- `NXW_PROTO_MINOR` becomes 1. Every 1.0 struct, number and rule stays as it
+- `NXW_PROTO_MINOR` becomes 2 (1 is shell open). Every 1.0 and 1.1 struct, number and rule stays as it
   is (the header is frozen for 1.x).
 - The client sends its minor in `HELLO`; `WELCOME` answers with
   `min(client minor, server minor)`. That is the **negotiated minor**.

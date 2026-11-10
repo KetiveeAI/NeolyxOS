@@ -39,3 +39,6 @@ tests/userland/memprobe    memprobe    /apps/memprobe
 # runtime: build_all.sh finds them through REOX_ROOT (sdk/toolchain.env).
 # The desktop launches these by name (g_disk_apps in desktop_shell.c).
 desktop/apps/Calculator.app   bin/calculator   /apps/Calculator
+# Built-in desktop views run by the view host (desktop/viewhost). The
+# window title ("Path") is the name the shell launches and focuses.
+desktop/viewhost              files/Files      /apps/Path

@@ -58,3 +58,6 @@ build/
 kernel/boot_guard.o
 desktop/shell/main.o
 /.reox/
+
+# View host app binaries (built by desktop/viewhost/Makefile)
+desktop/viewhost/files/Files

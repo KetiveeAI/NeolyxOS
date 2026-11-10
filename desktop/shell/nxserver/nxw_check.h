@@ -46,6 +46,18 @@ uint32_t nxw_request_size(uint16_t op);
 int nxw_check_frame(const void *data, uint32_t data_len, uint32_t handle_count,
                     int hello_done, uint16_t *op_out);
 
+/* Lowest negotiated minor that may send this request (0 for 1.0 ops). A
+ * request above the connection's minor is an unknown op (NXW_V_OP). */
+uint16_t nxw_request_minor(uint16_t op);
+
+/*
+ * SHELL_OPEN / OPEN_PATH path: NUL inside the field, absolute, valid UTF-8,
+ * no control characters or backslash, no empty, "." or ".." component (a
+ * trailing "/" is allowed). Copies it to out with the rest zeroed.
+ * 0 or -NXW_EINVAL.
+ */
+int nxw_path_check(const char in[NXW_PATH_MAX], char out[NXW_PATH_MAX]);
+
 /* Content size of a window or buffer: 1..NXW_SIZE_MAX each. 0 or -NXW_EINVAL. */
 int nxw_check_size(uint32_t width, uint32_t height);
 
