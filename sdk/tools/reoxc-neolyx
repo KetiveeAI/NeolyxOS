@@ -27,21 +27,31 @@ ENV_FILE="$SDK_DIR/toolchain.env"
 
 die() { printf 'reoxc-neolyx: %s\n' "$*" >&2; exit 2; }
 
+# toolchain.env holds the defaults; values already in the environment win
+# (the file says so), so remember them before sourcing it.
+env_reox_root=${REOX_ROOT:-}
+env_host_path=${REOXC_HOST_PATH:-}
 if [ -r "$ENV_FILE" ]; then
     # shellcheck disable=SC1090
     . "$ENV_FILE"
 else
     die "missing $ENV_FILE"
 fi
+[ -n "$env_reox_root" ] && REOX_ROOT=$env_reox_root
+[ -n "$env_host_path" ] && REOXC_HOST_PATH=$env_host_path
 
 REOXC_BIN=${REOXC_REAL:-}
 if [ -z "$REOXC_BIN" ]; then
-    for cand in "${REOXC_SYSTEM_PATH:-}" "${REOXC_HOST_PATH:-}"; do
+    # $REOX_ROOT/target is where `cargo build --release` puts reoxc in the
+    # REOX workspace (the repository root has the workspace Cargo.toml).
+    for cand in "${REOXC_SYSTEM_PATH:-}" "${REOXC_HOST_PATH:-}" \
+                "$REOX_ROOT/target/release/reoxc" \
+                "$REOX_ROOT/reox-lang/target/release/reoxc"; do
         if [ -n "$cand" ] && [ -x "$cand" ]; then REOXC_BIN=$cand; break; fi
     done
 fi
 [ -n "$REOXC_BIN" ] && [ -x "$REOXC_BIN" ] || \
-    die "no reoxc found (set REOXC_REAL, or build $REOX_ROOT/reox-lang with 'cargo build --release')"
+    die "no reoxc found (set REOXC_REAL or REOX_ROOT, or run 'cargo build --release' in $REOX_ROOT)"
 
 # ---- argument parsing ------------------------------------------------------
 subcmd=""

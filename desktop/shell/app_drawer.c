@@ -173,8 +173,23 @@ int app_drawer_scan_apps(void) {
     /* Programs on disk first: they are the ones that launch as processes */
     app_drawer_scan_disk_apps();
     
-    /* Register built-in apps */
+    /* Register built-in apps. One that is installed as a program (found
+     * above) is listed once. Its launch goes through the shell like the
+     * dock's (desktop_on_app_launched), which starts the program or focuses
+     * its open window, so the drawer never starts a second copy. */
+    uint32_t disk_count = g_drawer.app_count;
     for (int i = 0; builtin_apps[i].name; i++) {
+        int installed = 0;
+        for (uint32_t d = 0; d < disk_count; d++) {
+            if (drawer_strcasecmp(g_drawer.apps[d].name, builtin_apps[i].name) == 0) {
+                g_drawer.apps[d].exec_path[0] = '\0';
+                g_drawer.apps[d].category = builtin_apps[i].category;
+                drawer_strcpy(g_drawer.apps[d].path, builtin_apps[i].path, APP_PATH_MAX);
+                installed = 1;
+                break;
+            }
+        }
+        if (installed) continue;
         app_drawer_register_app(
             builtin_apps[i].name,
             builtin_apps[i].path,

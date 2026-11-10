@@ -57,3 +57,4 @@ build/
 *.iso
 kernel/boot_guard.o
 desktop/shell/main.o
+/.reox/

@@ -33,7 +33,19 @@ REOX_MK_PREV_GOAL := $(.DEFAULT_GOAL)
 REOX_SDK_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 NEOLYX_ROOT  := $(abspath $(REOX_SDK_DIR)/..)
 
+# toolchain.env holds defaults; a value from the environment or the make
+# command line wins (a plain include would overwrite an environment value).
+REOX_ENV_ROOT := $(REOX_ROOT)
+REOX_ENV_HOST_PATH := $(REOXC_HOST_PATH)
 include $(REOX_SDK_DIR)/toolchain.env
+ifneq ($(REOX_ENV_ROOT),)
+REOX_ROOT := $(REOX_ENV_ROOT)
+endif
+ifneq ($(REOX_ENV_HOST_PATH),)
+REOXC_HOST_PATH := $(REOX_ENV_HOST_PATH)
+endif
+# reoxc-neolyx reads these from its environment
+export REOX_ROOT REOXC_HOST_PATH
 
 # ---- tools -----------------------------------------------------------------
 CC ?= gcc

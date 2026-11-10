@@ -68,4 +68,9 @@ int nxserver_close_requested(uint32_t shell_id);
  * client window. Safe to call for any id. */
 void nxserver_window_destroyed(uint32_t shell_id);
 
+/* 1 if process pid has connected to the window server since boot (one of
+ * the last 16 to connect), 0 otherwise. The shell uses it to tell an app
+ * that is still starting from one that already came and went. */
+int nxserver_pid_has_connected(uint32_t pid);
+
 #endif /* NXSERVER_H */

@@ -235,7 +235,10 @@ launch() {
     [ -n "$idx" ] || { log "/apps/$name is not in the app drawer"; return 1; }
     count=$(grep -ac '^\[DRAWER\] Found program /apps/' "$SERIAL")
     for tries in 1 2 3; do
-        before=$(grep -ac "^\[DRAWER\] Launching /apps/" "$SERIAL")
+        # Test programs start from the drawer ("[DRAWER] Launching");
+        # built-in apps installed as programs start through the shell
+        # ("[DESKTOP] Starting"), which focuses an open window instead.
+        before=$(grep -acE "^\[(DRAWER\] Launching|DESKTOP\] Starting) /apps/" "$SERIAL")
         key meta_l
         sleep 4
         key right
@@ -244,8 +247,8 @@ launch() {
         key ret
         sleep 3
         local last
-        last=$(grep -a "^\[DRAWER\] Launching /apps/" "$SERIAL" | tail -n +$((before + 1)) | tail -1 | tr -d '\r')
-        if [ "$last" = "[DRAWER] Launching /apps/$name" ]; then return 0; fi
+        last=$(grep -aE "^\[(DRAWER\] Launching|DESKTOP\] Starting) /apps/" "$SERIAL" | tail -n +$((before + 1)) | tail -1 | tr -d '\r')
+        if [ "$last" = "[DRAWER] Launching /apps/$name" ] || [ "$last" = "[DESKTOP] Starting /apps/$name" ]; then return 0; fi
         log "launch attempt $tries for $name did not start it (${last:-nothing launched}); retrying"
         key esc
         sleep 2

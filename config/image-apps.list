@@ -10,7 +10,8 @@
 # editing the scripts.
 #
 # Rules (checked by scripts/lib/image_apps.sh; a bad line stops the build):
-#   - folders and files are relative to the repository root, with no "..",
+#   - folders are relative to the repository root and built files to their
+#     folder, with no "..",
 #     no leading "/" and only letters, digits, "_", "-", ".", "/";
 #   - image paths start with /apps/ or /System/ and use the same characters;
 #   - an image path appears only once.
@@ -32,3 +33,9 @@ tests/userland/cpuhog      cpuhog      /apps/cpuhog
 tests/userland/classtest   classtest   /apps/classtest
 tests/userland/nettest     nettest     /apps/nettest
 tests/userland/memprobe    memprobe    /apps/memprobe
+
+# --- S2: built-in apps that run as their own process ---
+# REOX apps (their Makefile lists REOX_SRCS) need reoxc and the REOX
+# runtime: build_all.sh finds them through REOX_ROOT (sdk/toolchain.env).
+# The desktop launches these by name (g_disk_apps in desktop_shell.c).
+desktop/apps/Calculator.app   bin/calculator   /apps/Calculator

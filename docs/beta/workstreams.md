@@ -14,7 +14,7 @@ one of: Not started, In progress, Waiting on owner, Paused, Done.
 | Stream | Area | State | Merged PRs | Open PRs | Next step |
 |--------|------|-------|------------|----------|-----------|
 | S1 | Window server, input and display security | In progress | #44, #48 | #55 | Restrict fb.map, fb.flip and input.poll to system processes after the ABI batch |
-| S2 | Built-in apps out of the desktop process | Not started | | | Wave 2 (around 2026-11-10): app bundle layout doc, then Files |
+| S2 | Built-in apps out of the desktop process | In progress | | Calculator out of process | App bundle layout doc, then Files |
 | S3 | Kernel process, file and terminal syscalls | In progress | #49 | #58 | PR 1 (mmap, fstat, dup, pipe) by 2026-11-10; proposal approved |
 | S4 | nxlibc, the NeolyxOS C library | In progress | | | Core headers and link flags by 2026-11-12 |
 | S5 | Shell, commands and Terminal | Not started | | | Wave 2: shell parser with host tests |
@@ -34,7 +34,7 @@ one of: Not started, In progress, Waiting on owner, Paused, Done.
 | Userspace shell in Terminal (PTY) | S3, S5 | Not started |
 | HTTPS (crypto, TLS 1.3, HTTP client) | S6 | In progress |
 | Signed packages, real store client, Store app | S7 | Not started |
-| Apps outside the desktop process (Files, Settings, Text Editor, Calculator, Task Manager) | S2 | Not started |
+| Apps outside the desktop process (Files, Settings, Text Editor, Calculator, Task Manager) | S2 | In progress (Calculator) |
 | Only the window server may touch the screen and global input | S1 | In progress |
 | CI on every PR and a QEMU boot smoke test | S10 | In progress |
 | Low-end VM performance runs (1 CPU, 1 GiB) | S10 | Not started |
